@@ -9,13 +9,18 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import type { TrendPoint } from "@/lib/admin/metrics";
+import type { TrendPoint, TxTrendPoint } from "@/lib/admin/metrics";
 
-// Same red/green convention the rest of the app uses for charge/payment, so a
-// colour means the same thing here as it does on an owner's own screen.
+// THE SAME COLOURS AS THE CHART IN REPORTES (`reportes-facturacion.tsx`),
+// so a colour means the same thing on the owner's screen and here: contado
+// green (`--money-in`), abono sky, fiado red. Since 2026-11-02, when the owner
+// asked for the third bar («"Fiados", "Abonos" y "De contado"»), abonos are no
+// longer emerald -- next to a green contado bar the two would read as one.
+// Counts, not money: see `getTransactionTrend`.
 const activityConfig = {
-  charges: { label: "Fiados", color: "var(--destructive)" },
-  payments: { label: "Abonos", color: "var(--color-emerald-500)" },
+  fiado: { label: "Fiados", color: "var(--destructive)" },
+  abono: { label: "Abonos", color: "var(--color-sky-600)" },
+  contado: { label: "De contado", color: "var(--money-in)" },
 } satisfies ChartConfig;
 
 const growthConfig = {
@@ -38,10 +43,19 @@ function formatBucket(iso: string, bucket: string): string {
   }).format(d);
 }
 
-export function MetricCharts({ trend, bucket }: { trend: TrendPoint[]; bucket: string }) {
+export function MetricCharts({
+  trend,
+  txTrend,
+  bucket,
+}: {
+  trend: TrendPoint[];
+  txTrend: TxTrendPoint[];
+  bucket: string;
+}) {
   const data = trend.map((p) => ({ ...p, label: formatBucket(p.bucket, bucket) }));
+  const activity = txTrend.map((p) => ({ ...p, label: formatBucket(p.bucket, bucket) }));
 
-  if (data.length === 0) {
+  if (data.length === 0 && activity.length === 0) {
     return (
       <p className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
         No hay actividad en este rango.
@@ -56,15 +70,16 @@ export function MetricCharts({ trend, bucket }: { trend: TrendPoint[]; bucket: s
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="flex min-w-0 flex-col gap-2 rounded-lg border p-4">
-        <p className="text-sm font-medium">Actividad — fiados vs abonos</p>
+        <p className="text-sm font-medium">Actividad — fiados, abonos y de contado</p>
         <ChartContainer config={activityConfig} className="h-[220px] w-full">
-          <BarChart data={data} margin={{ top: 10 }}>
+          <BarChart data={activity} margin={{ top: 10 }}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} fontSize={11} />
             <ChartTooltip content={<ChartTooltipContent />} />
             <ChartLegend content={<ChartLegendContent />} />
-            <Bar dataKey="charges" fill="var(--color-charges)" radius={4} />
-            <Bar dataKey="payments" fill="var(--color-payments)" radius={4} />
+            <Bar dataKey="fiado" fill="var(--color-fiado)" radius={4} />
+            <Bar dataKey="abono" fill="var(--color-abono)" radius={4} />
+            <Bar dataKey="contado" fill="var(--color-contado)" radius={4} />
           </BarChart>
         </ChartContainer>
       </div>

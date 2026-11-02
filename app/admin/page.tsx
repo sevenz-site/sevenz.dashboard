@@ -21,6 +21,7 @@ import {
   getTotals,
   sinNegociosDePrueba,
   getTransactions,
+  getTransactionTrend,
   getTrend,
   type Bucket,
   type MetricFilters as Filters,
@@ -79,10 +80,14 @@ function Stat({
   hint,
   alert = false,
   explica,
+  montos,
 }: {
   label: string;
   value: string;
   hint?: string;
+  // One line per currency under the count -- the owner's request of
+  // 2026-11-02. Never added together: each currency is its own line.
+  montos?: { currency: string; amount: number }[];
   alert?: boolean;
   // Qué cuenta esta cifra exactamente, y sobre todo qué NO cuenta.
   //
@@ -100,6 +105,16 @@ function Stat({
         {value}
       </span>
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
+      {montos && montos.length > 0 ? (
+        <ul className="mt-1 flex flex-col gap-0.5 text-xs tabular-nums text-muted-foreground">
+          {montos.map((m) => (
+            <li key={m.currency} className="flex justify-between gap-2">
+              <span>{m.currency}</span>
+              <span>{money(m.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {explica ? (
         <Popover>
           {/* size-4, apagado hasta el hover y con aria-label: la regla de
@@ -239,7 +254,11 @@ export default async function AdminMetricsPage({
 // kind (1) and how much MONEY each kind moved (2). Counts add up across
 // currencies; amounts never do.
 async function SeccionTransacciones({ filters, bucket }: { filters: Filters; bucket: Bucket }) {
-  const [tx, trend] = await Promise.all([getTransactions(filters), getTrend(filters, bucket)]);
+  const [tx, trend, txTrend] = await Promise.all([
+    getTransactions(filters),
+    getTrend(filters, bucket),
+    getTransactionTrend(filters, bucket),
+  ]);
 
   const cuantas = (kind: TransactionRow["kind"]) =>
     tx.filter((r) => r.kind === kind).reduce((s, r) => s + Number(r.tx_count), 0);
@@ -248,10 +267,14 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
   const abono = cuantas("abono");
 
   const monedas = [...new Set(tx.map((r) => r.currency))].sort();
-  const monto = (currency: string, kind: string, origin?: string) =>
+  const monto = (currency: string, kind?: string, origin?: string) =>
     tx
-      .filter((r) => r.currency === currency && r.kind === kind && (!origin || r.origin === origin))
+      .filter((r) => r.currency === currency && (!kind || r.kind === kind) && (!origin || r.origin === origin))
       .reduce((s, r) => s + Number(r.amount), 0);
+  // Per-currency amounts for a card; a currency with nothing of that kind is
+  // left out rather than shown as a row of zeros.
+  const montosDe = (kind?: string) =>
+    monedas.map((c) => ({ currency: c, amount: monto(c, kind) })).filter((m) => m.amount !== 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -260,28 +283,32 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
           label="Transacciones"
           value={String(contado + fiado + abono)}
           hint="contado + fiado + abono"
+          montos={montosDe()}
           explica="Todas las transacciones del periodo, sumando monedas: aquí sí se puede, porque cuenta operaciones y no dinero. Una venta mixta —una parte pagada y otra fiada— cuenta una vez como contado y otra como fiado, igual que sale en el historial del cliente."
         />
         <Stat
           label="Ventas de contado"
           value={String(contado)}
+          montos={montosDe("contado")}
           explica="Ventas pagadas enteras, una por moneda: una venta que se pagó en dólares y en euros cuenta como dos. Incluye las del Mostrador. No escriben nada en el saldo del cliente, y por eso antes no salían en este panel."
         />
         <Stat
           label="Fiados"
           value={String(fiado)}
+          montos={montosDe("fiado")}
           explica="Todo lo que quedó debiendo: la parte fiada de una venta, la deuda antigua con la que nace un cliente, los fiados leídos de una foto de libreta y los anotados a mano antes del flujo de venta. El desglose de abajo los separa. Los fiados borrados no cuentan."
         />
         <Stat
           label="Abonos"
           value={String(abono)}
+          montos={montosDe("abono")}
           explica="Pagos a una deuda. Un abono repartido entre varios fiados cuenta una vez (por moneda), porque es una sola transacción. También cuenta lo que el cliente pagó en el momento de una venta fiada, que no escribe un abono aparte."
         />
       </div>
 
       <Tabla
         titulo="Monto por tipo"
-        nota="Lo que movió cada tipo de transacción, una fila por moneda."
+        nota="Lo que movió cada tipo de transacción, una fila por moneda. El total suma los tres tipos de esa moneda."
       >
         <thead className="border-b bg-muted/30">
           <tr>
@@ -289,12 +316,13 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
             <th className={th}>Contado</th>
             <th className={th}>Fiado</th>
             <th className={th}>Abono</th>
+            <th className={th}>Total</th>
           </tr>
         </thead>
         <tbody>
           {monedas.length === 0 ? (
             <tr>
-              <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
                 No hay transacciones en este rango.
               </td>
             </tr>
@@ -305,6 +333,7 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
                 <td className={td}>{money(monto(c, "contado"))}</td>
                 <td className={td}>{money(monto(c, "fiado"))}</td>
                 <td className={td}>{money(monto(c, "abono"))}</td>
+                <td className={`${td} font-semibold`}>{money(monto(c))}</td>
               </tr>
             ))
           )}
@@ -324,6 +353,7 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
                   {o.etiqueta}
                 </th>
               ))}
+              <th className={th}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -335,6 +365,9 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
                     {money(monto(c, "fiado", o.clave))}
                   </td>
                 ))}
+                {/* Equals the Fiado column of «Monto por tipo» by construction:
+                    both add the same rows. */}
+                <td className={`${td} font-semibold`}>{money(monto(c, "fiado"))}</td>
               </tr>
             ))}
           </tbody>
@@ -348,6 +381,7 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
               <th className="px-3 py-2 text-left font-medium">Moneda</th>
               <th className={th}>Abonos</th>
               <th className={th}>Al vender a fiado</th>
+              <th className={th}>Total</th>
             </tr>
           </thead>
           <tbody>
@@ -356,13 +390,14 @@ async function SeccionTransacciones({ filters, bucket }: { filters: Filters; buc
                 <td className="px-3 py-2 font-medium">{c}</td>
                 <td className={td}>{money(monto(c, "abono", "abono"))}</td>
                 <td className={td}>{money(monto(c, "abono", "al_vender"))}</td>
+                <td className={`${td} font-semibold`}>{money(monto(c, "abono"))}</td>
               </tr>
             ))}
           </tbody>
         </Tabla>
       ) : null}
 
-      <MetricCharts trend={trend} bucket={bucket} />
+      <MetricCharts trend={trend} txTrend={txTrend} bucket={bucket} />
     </div>
   );
 }

@@ -207,6 +207,24 @@ export async function getTransactions(f: MetricFilters): Promise<TransactionRow[
   return (data ?? []) as TransactionRow[];
 }
 
+// The activity chart of /admin → Transacciones (migration 176): how many
+// contado, fiado and abono transactions per bucket, by the SAME rule as the
+// cards above it -- both read `admin_tx_rows`. Counts only: a bar that added
+// dollars to euros would be the fault of 2026-10-20 again.
+export type TxTrendPoint = { bucket: string; contado: number; fiado: number; abono: number };
+
+export async function getTransactionTrend(f: MetricFilters, bucket: Bucket = "week"): Promise<TxTrendPoint[]> {
+  const db = createServiceClient();
+  const { data, error } = await db.rpc("admin_metrics_transactions_trend", { p_bucket: bucket, ...rpcArgs(f) });
+  if (error) throw new Error(`admin_metrics_transactions_trend: ${error.message}`);
+  return ((data ?? []) as TxTrendPoint[]).map((p) => ({
+    bucket: p.bucket,
+    contado: Number(p.contado),
+    fiado: Number(p.fiado),
+    abono: Number(p.abono),
+  }));
+}
+
 export async function getOrders(f: MetricFilters): Promise<OrderRow[]> {
   const db = createServiceClient();
   const { data, error } = await db.rpc("admin_metrics_orders", rpcArgs(f));
