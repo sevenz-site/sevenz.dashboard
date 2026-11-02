@@ -135,7 +135,24 @@ export function parseSurface() {
   };
   walk(apiDir, "");
 
-  return { tables: [...tables].sort(), views: [...views].sort(), definers, routes: routes.sort(), buckets: [...buckets].sort() };
+  // Server actions: every exported async function of a file that starts
+  // with "use server". Keyed like the dev manifest keys them.
+  const actions = [];
+  const walkActions = (dir) => {
+    for (const e of readdirSync(dir)) {
+      const full = join(dir, e);
+      if (statSync(full).isDirectory()) { if (e !== "node_modules") walkActions(full); continue; }
+      if (!/\.tsx?$/.test(e)) continue;
+      const src = readFileSync(full, "utf8");
+      if (!/^\s*["']use server["']/m.test(src.slice(0, 400))) continue;
+      const rel = full.slice(ROOT.length).replace(/\\/g, "/").replace(/^\//, "");
+      for (const m of src.matchAll(/^export async function (\w+)/gm)) actions.push(`${rel}#${m[1]}`);
+    }
+  };
+  walkActions(join(ROOT, "app"));
+  walkActions(join(ROOT, "lib"));
+
+  return { tables: [...tables].sort(), views: [...views].sort(), definers, routes: routes.sort(), buckets: [...buckets].sort(), actions: actions.sort() };
 }
 
 // ── 2. What was reviewed ─────────────────────────────────────────────────
@@ -286,6 +303,86 @@ export const MANIFEST = {
     submit_shared_document_id: "public",
     // the client leaves feedback, by token
     submit_shared_feedback: "public",
+  },
+
+  // Every server action, and how it is attacked:
+  //   atacada   -- by qa:attack-actions, over HTTP, with a positive control
+  //   cubierta: -- by another suite that already attacks it, check named
+  //   excluida: -- left out on purpose, reason written
+  // A new action with no line here fails qa:attack-coverage.
+  actions: {
+    "app/(app)/abonos/actions.ts#registrarAbonoDirigido": "cubierta: qa:abono-accion, abono dirigido a un fiado de OTRO dueño",
+    "app/(app)/abonos/actions.ts#registrarAbonoRepartido": "atacada",
+    "app/(app)/actions.ts#completeOnboarding": "atacada",
+    "app/(app)/actions.ts#getNotifications": "atacada",
+    "app/(app)/actions.ts#getUnreadNotificationCount": "atacada",
+    "app/(app)/actions.ts#logout": "atacada",
+    "app/(app)/actions.ts#recordImportNotification": "atacada",
+    "app/(app)/clients/[id]/actions.ts#flagClient": "atacada",
+    "app/(app)/clients/[id]/actions.ts#hideClientPermanently": "atacada",
+    "app/(app)/clients/[id]/actions.ts#restoreClient": "atacada",
+    "app/(app)/clients/[id]/actions.ts#setClientProfilePicture": "atacada",
+    "app/(app)/clients/[id]/actions.ts#setClientWhatsappNotices": "atacada",
+    "app/(app)/clients/[id]/actions.ts#trashClient": "atacada",
+    "app/(app)/clients/[id]/actions.ts#unflagClient": "atacada",
+    "app/(app)/clients/[id]/actions.ts#updateClient": "atacada",
+    "app/(app)/clients/nuevo/actions.ts#permisoDelNumero": "atacada",
+    "app/(app)/clients/nuevo/actions.ts#registrarCliente": "atacada",
+    "app/(app)/clients/nuevo/actions.ts#validarCliente": "atacada",
+    "app/(app)/dashboard/actions.ts#deleteMovement": "atacada",
+    "app/(app)/dashboard/actions.ts#getOrCreateShareLink": "atacada",
+    "app/(app)/dashboard/actions.ts#guardarWhatsappDeCliente": "atacada",
+    "app/(app)/dashboard/actions.ts#restoreMovement": "atacada",
+    "app/(app)/dashboard/search-transactions.ts#searchTransactionsByCode": "atacada",
+    "app/(app)/import/actions.ts#confirmImport": "atacada",
+    "app/(app)/productos/actions.ts#buscarProductos": "atacada",
+    "app/(app)/productos/actions.ts#createProduct": "atacada",
+    "app/(app)/productos/actions.ts#getOrCreateCatalogLink": "atacada",
+    "app/(app)/productos/actions.ts#restoreProduct": "atacada",
+    "app/(app)/productos/actions.ts#setProductPublished": "atacada",
+    "app/(app)/productos/actions.ts#trashProduct": "atacada",
+    "app/(app)/productos/actions.ts#updateProduct": "atacada",
+    "app/(app)/productos/ordenes/actions.ts#descartarPedido": "atacada",
+    "app/(app)/productos/ordenes/actions.ts#quitarLineaDelPedido": "atacada",
+    "app/(app)/productos/ordenes/actions.ts#quitarMonedaDelPedido": "atacada",
+    "app/(app)/productos/ordenes/actions.ts#registrarPedidoComoVenta": "cubierta: qa:pedido-registro, filas 8 y 15a (pedido de OTRO dueño)",
+    "app/(app)/productos/ordenes/actions.ts#restaurarMonedaDelPedido": "atacada",
+    "app/(app)/productos/ordenes/actions.ts#restaurarPedido": "atacada",
+    "app/(app)/profile/actions.ts#changePassword": "atacada",
+    "app/(app)/profile/actions.ts#deleteLogo": "atacada",
+    "app/(app)/profile/actions.ts#guardarAvisosWhatsapp": "atacada",
+    "app/(app)/profile/actions.ts#registrarPreguntaAvisos": "atacada",
+    "app/(app)/profile/actions.ts#updateBusinessSettings": "atacada",
+    "app/(app)/profile/actions.ts#updateLogo": "atacada",
+    "app/(app)/reportes/actions.ts#calificarAsistente": "atacada",
+    "app/(app)/reportes/actions.ts#guardarUmbralDeStock": "atacada",
+    "app/(app)/ventas/actions.ts#buscarProductosParaVenta": "atacada",
+    "app/(app)/ventas/actions.ts#cuentaDelCliente": "atacada",
+    "app/(app)/ventas/actions.ts#datosDelCliente": "atacada",
+    "app/(app)/ventas/actions.ts#eliminarVenta": "atacada",
+    "app/(app)/ventas/actions.ts#guardarPermisoDeVenta": "atacada",
+    "app/(app)/ventas/actions.ts#productoParaVentaPorId": "atacada",
+    "app/(app)/ventas/actions.ts#registrarVenta": "cubierta: qa:venta-accion, fila 8a («cliente de OTRO dueño: rechazado»)",
+    "app/(app)/ventas/actions.ts#resolverMostrador": "atacada",
+    "app/(app)/ventas/actions.ts#resumenDeVenta": "atacada",
+    "app/admin/actions.ts#runServiceChecks": "atacada",
+    "app/admin/cuentas/actions.ts#accionBloquear": "atacada",
+    "app/admin/cuentas/actions.ts#accionCambiarPlan": "atacada",
+    "app/admin/cuentas/actions.ts#accionDarDemo": "atacada",
+    "app/admin/cuentas/actions.ts#accionDesbloquear": "atacada",
+    "app/admin/cuentas/actions.ts#accionMarcarPrueba": "atacada",
+    "app/admin/cuentas/actions.ts#accionRegistrarPago": "atacada",
+    "app/c/[token]/actions.ts#crearOrden": "atacada",
+    "app/c/[token]/actions.ts#productosDelCarrito": "atacada",
+    "app/forgot-password/actions.ts#requestPasswordReset": "excluida: manda correos reales a través de Supabase Auth, y su abuso lo frena el límite de Supabase",
+    "app/login/actions.ts#login": "atacada",
+    "app/reset-password/actions.ts#resetPassword": "atacada",
+    "app/s/[token]/actions.ts#acceptWhatsappConsent": "atacada",
+    "app/s/[token]/actions.ts#revokeWhatsappConsent": "atacada",
+    "app/s/[token]/actions.ts#submitDocumentId": "atacada",
+    "app/s/[token]/actions.ts#submitFeedback": "atacada",
+    "app/s/[token]/actions.ts#uploadProfilePicture": "atacada",
+    "app/signup/actions.ts#signup": "excluida: crea cuentas y manda correos reales a través de Supabase Auth",
   },
 
   // Routes under app/api and what stops a stranger.

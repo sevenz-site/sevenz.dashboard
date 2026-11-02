@@ -1034,6 +1034,7 @@ funcionalidades»*.
 | `npm run qa:attack-coverage` | Compara lo que el repo construye con lo que el ataque conoce (`qa/attack-surface.mjs`). Rojo = una pieza nueva sin clasificar, o una función cuya exposición cambió | Nada: un segundo, sin base. Va en la sección 1 |
 | `npm run qa:attack` | El ataque. Con la clave anónima (la que va en el JavaScript público) y la sesión de un dueño A contra un dueño B, recorre **todas** las tablas y **todas** las funciones `SECURITY DEFINER` de la lista, más los escenarios fijos: escribir en lo de otro, regalarle filas a otro, escalar plan o prueba, falsear el libro, una cuenta bloqueada, archivos ajenos, pedido del catálogo falsificado, crons sin clave, páginas ajenas por URL, inyección, XSS guardado y cabeceras. Termina comprobando en la base que B quedó intacto | **Dev** y `npm run dev` corriendo (trampa 1 de la sección 0). Se niega a correr contra otro proyecto |
 | `npm run qa:ledger-integrity` | El libro escrito a mano (migración `177`): `running_balance` y `created_by` | Dev |
+| `npm run qa:attack-actions` | Las **acciones de servidor** llamadas por HTTP, como lo haría alguien con la consola del navegador: cabecera `next-action` y argumentos inventados. Fase 1, las que solo protege el código (`/admin`, `/s`, `/c`): sin sesión, con la de un dueño normal y con un token falso. Fase 2, las del dueño: A con los ids de B. **Cada ataque lleva su control positivo** —la misma acción, con permiso, tiene que funcionar— y el veredicto se lee en una foto de B tomada en la base antes y después | **Dev** y `npm run dev` corriendo. Visita todas las páginas al empezar para que el servidor registre sus acciones. No manda WhatsApp, correos, Gemini ni Mixpanel |
 
 **Cómo se lee `qa:attack`**: `BLOQUEADO` es el ataque fallando, `VULN` es el
 ataque saliendo bien y `DECISIÓN` es algo que se deja pasar a propósito, o que
@@ -1051,6 +1052,7 @@ enseñárselo. Por cada tipo de cambio, esto es lo que se añade, y se añade
 | Una **tabla o vista** | Su fila en `MANIFEST.tables`, con `via`: cómo se llega a las filas de otro negocio (`owner`, `client`, `sale`…). Con eso ya entra en la lectura anónima, la escritura anónima y la lectura de A sobre B | `qa/attack-surface.mjs` |
 | Una **función `SECURITY DEFINER`** | Su exposición en `MANIFEST.definers`: `service` (solo el servidor), `owner` (cualquier dueño; tiene que comprobar de quién es lo que toca) o `public` (sin cuenta, a propósito). Si es `public` u `owner`, una línea de por qué | `qa/attack-surface.mjs` |
 | Una función que **escribe** con ids del navegador | Un intento con los ids de B en «A → B · escribir» | `qa/attack.mjs` sección 3 |
+| Una **acción de servidor** (`"use server"`) | Su fila en `MANIFEST.actions` (`atacada`, `cubierta: <suite>` o `excluida: <por qué>`) y, si es `atacada`, su entrada en la tabla `T`: el ataque con los ids de B **y su control** con permiso. Una acción sin control no cuenta como bloqueada: sale `SIN PROBAR` | `qa/attack-surface.mjs` y `qa/attack-actions.mjs` |
 | Una **ruta de API** | Su tipo en `MANIFEST.routes`: `cron`, `session` o `public` | `qa/attack-surface.mjs` |
 | Una **página pública** (sin sesión) | XSS guardado en todo texto que venga de un dueño o de un cliente, inyección en el token y que no enseñe datos que no debe | `qa/attack.mjs` sección 9 |
 | Una **página del dueño** con un id en la URL | A la abre con el id de B | `qa/attack.mjs` sección 9 |
@@ -1090,10 +1092,13 @@ como «no se miró».
 
 ### Lo que esta sección NO cubre, dicho para que no se lea como cubierto
 
-Llamar por HTTP a las **acciones de servidor** con ids ajenos (se revisan en el
-código y se atacan las tablas que hay debajo); el **registro, la entrada y la
-recuperación de contraseña**, que gestiona Supabase Auth; el **abuso de coste**
-de `/api/extract` y del asistente; y **producción**, que no se ataca nunca.
+Desde el 2026-11-02 las **acciones de servidor** sí se atacan por HTTP, todas
+menos dos: `signup` y `requestPasswordReset`, que crean cuentas o mandan
+correos reales. Tres más no se atacan aquí porque otra suite ya lo hace con su
+control (`registrarVenta`, `registrarAbonoDirigido`,
+`registrarPedidoComoVenta`). Siguen fuera: los **flujos de Supabase Auth** en
+sí (registro, entrada y recuperación de contraseña); el **abuso de coste** de
+`/api/extract` y del asistente; y **producción**, que no se ataca nunca.
 
 ## 6. Migration hygiene
 

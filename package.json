@@ -86,6 +86,7 @@
     "qa:ledger-integrity": "node qa/ledger-integrity.mjs",
     "qa:attack": "node qa/attack.mjs",
     "qa:attack-coverage": "node qa/attack-coverage.mjs",
+    "qa:attack-actions": "node qa/attack-actions.mjs",
     "qa:bloqueo": "node qa/bloqueo.mjs",
     "qa:admin-metricas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/admin-metricas.mjs",
     "qa:asistente": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/asistente-reportes.mjs",

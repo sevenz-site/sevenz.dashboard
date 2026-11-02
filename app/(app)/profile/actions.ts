@@ -22,6 +22,26 @@ function mensajeDeGuardado(error: unknown): string {
   return mensajeDeError("guardar los cambios", error, "profile");
 }
 
+// A logo path must name a file inside the owner's own folder of the `logos`
+// bucket — the shape LogoUploader has written since 2026-08-19
+// (`<ownerId>/logo-<ts>.jpg`).
+//
+// Finding 10 of the 2026-11-02 audit: both doors that write `logo_path` stored
+// whatever the browser sent, so an owner could point their logo at another
+// business's file and show it on their own links and receipts. Storage
+// policies stop uploading or deleting in someone else's folder; they say
+// nothing about pointing at it, so the check lives here.
+//
+// A bare `startsWith` is NOT enough: `<ownerId>/../<otherId>/logo.png` passes
+// it, and the browser normalises `..` when it builds the public URL in
+// `getPublicLogoUrl`. Hence a single file-name segment from a closed set of
+// characters — no slash, no `..`, no `%` to smuggle an encoded one.
+function isOwnLogoPath(ownerId: string, path: string): boolean {
+  const prefix = `${ownerId}/`;
+  if (!path.startsWith(prefix)) return false;
+  const file = path.slice(prefix.length);
+  return /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(file) && !file.includes("..");
+}
 
 // Saves the logo path as soon as the file lands in storage, so uploading is
 // self-contained — otherwise the file exists but nothing points at it until
@@ -32,6 +52,10 @@ export async function updateLogo(logoPath: string): Promise<{ error: string | nu
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  if (logoPath && !isOwnLogoPath(user.id, logoPath)) {
+    return { error: "No pudimos guardar el logo. Vuelve a subirlo." };
+  }
 
   const { error } = await supabase
     .from("owners")
@@ -127,6 +151,13 @@ export async function updateBusinessSettings(
     }
   }
 
+  // A path outside the owner's folder is dropped, not rejected: failing the
+  // whole save would leave an owner unable to edit their business details
+  // over a hidden field they never touched. Dropping it keeps the stored logo
+  // as it is; an empty value still clears it.
+  const logoUpdate =
+    !logoPath ? { logo_path: null } : isOwnLogoPath(user.id, logoPath) ? { logo_path: logoPath } : {};
+
   const { error } = await supabase
     .from("owners")
     .update({
@@ -136,7 +167,7 @@ export async function updateBusinessSettings(
       whatsapp,
       address: address || null,
       tax_id: taxId || null,
-      logo_path: logoPath || null,
+      ...logoUpdate,
       payment_info: paymentInfo || null,
       country,
     })

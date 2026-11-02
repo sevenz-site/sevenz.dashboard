@@ -35,7 +35,10 @@ for (const r of Object.keys(MANIFEST.routes)) if (!s.routes.includes(r)) falla(`
 for (const b of s.buckets) if (!MANIFEST.buckets[b]) falla(`bucket nuevo sin clasificar: ${b} — ¿private o public-read?`);
 for (const b of Object.keys(MANIFEST.buckets)) if (!s.buckets.includes(b)) falla(`el bucket ${b} ya no se crea en ninguna migración: quítalo de MANIFEST.buckets`);
 
-const conteo = `${relaciones.length} tablas y vistas · ${s.definers.size} funciones SECURITY DEFINER · ${s.routes.length} rutas · ${s.buckets.length} buckets`;
+for (const a of s.actions) if (!MANIFEST.actions[a]) falla(`acción de servidor nueva sin clasificar: ${a} — atácala en qa/attack-actions.mjs (con su control) o di qué suite la cubre`);
+for (const a of Object.keys(MANIFEST.actions)) if (!s.actions.includes(a)) falla(`la acción ${a} ya no existe: quítala de MANIFEST.actions`);
+
+const conteo = `${relaciones.length} tablas y vistas · ${s.definers.size} funciones SECURITY DEFINER · ${s.routes.length} rutas · ${s.buckets.length} buckets · ${s.actions.length} acciones de servidor`;
 if (fallos.length === 0) {
   console.log(`ALL GREEN — superficie cubierta: ${conteo}`);
 } else {
