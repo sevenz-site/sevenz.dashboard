@@ -82,10 +82,14 @@ let comoDueno = null;
 
 try {
   // ── El negocio de prueba: el que más variedad tiene ──────────────────
+  // BY ID, NOT BY NAME, since 2026-11-02: the fixture was renamed in dev
+  // («Negocio prueba DEV» → «La tienda del chino DEV») and the suite stopped
+  // finding it -- a red row that said nothing about the assistant. A
+  // business can be renamed from Mi negocio at any time; its id cannot.
   const { data: dueno, error: eDueno } = await admin
     .from("owners")
     .select("id, business_name, country")
-    .eq("business_name", "Negocio prueba DEV")
+    .eq("id", "ce68896a-3965-48d4-9734-6e4f6e697781")
     .maybeSingle();
   if (eDueno || !dueno) throw new Error(`no encuentro el negocio de prueba: ${eDueno?.message ?? "no existe"}`);
 
