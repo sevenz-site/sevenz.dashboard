@@ -8,7 +8,9 @@ import {
   CatalogFilterProvider,
   CatalogSearchField,
   CatalogFilterChips,
+  CatalogCategoryChips,
 } from "@/components/dashboard/catalog-filters";
+import type { Categoria } from "@/lib/products/categories";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
@@ -48,6 +50,7 @@ export default async function ProductosPage() {
     country,
     rateContext,
     ordenesSinAtender,
+    { data: categorias },
   ] = await Promise.all([
       supabase
         .from("products")
@@ -81,6 +84,8 @@ export default async function ProductosPage() {
       // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
       // `head: true` count, so it costs a plan and no rows.
       countUnregisteredOrders(supabase, user!.id),
+      // Migration 184: the owner's categories, for the chips.
+      supabase.from("product_categories").select("id, name").eq("owner_id", user!.id),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano
@@ -127,7 +132,12 @@ export default async function ProductosPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <CatalogFilterProvider rows={rows} rates={rates} compareCurrency={defaultCurrency}>
+      <CatalogFilterProvider
+        rows={rows}
+        rates={rates}
+        compareCurrency={defaultCurrency}
+        categorias={(categorias ?? []) as Categoria[]}
+      >
         <ScreenHeader
           title="Catálogo"
           /* En plural desde el frame 1175:5881: un producto tiene precio al
@@ -147,7 +157,15 @@ export default async function ProductosPage() {
              donde cae la vista; el menú es la ocasional y va apartada. */
           topAction={<CatalogMenu initialToken={catalogLink?.token ?? null} />}
           search={<CatalogSearchField />}
-          filters={<CatalogFilterChips />}
+          filters={
+            // The category chips (migration 184) under the three filter chips:
+            // a second row, because they are a different question («what
+            // kind of product») from sorting and narrowing.
+            <div className="flex min-w-0 flex-col gap-2">
+              <CatalogFilterChips />
+              <CatalogCategoryChips />
+            </div>
+          }
         />
         {/* THE ORDERS SECTION, inside Catálogo -- the owner's decision of
             2026-10-16 (CT-71), which asked for BOTH surfaces: the bell and a

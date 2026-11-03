@@ -4,6 +4,7 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ProductRow } from "@/lib/products/catalog";
 import type { BolivarRates, CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
+import type { CategoriaConConteo } from "@/components/dashboard/category-field";
 
 // LO QUE EL FLUJO DE CREAR O EDITAR UN PRODUCTO NECESITA DEL SERVIDOR.
 //
@@ -20,6 +21,9 @@ export type DatosDelFlujo = {
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
   supplierSuggestions: string[];
+  // Migration 184, with how many (live) products each one has: the delete
+  // confirmation names that number.
+  categorias: CategoriaConConteo[];
   lastCostCurrency: CostCurrency | null;
   lastBaseCurrency: PriceCurrency | null;
 };
@@ -28,10 +32,10 @@ export async function cargarDatosDelFlujo(
   supabase: SupabaseClient,
   ownerId: string,
 ): Promise<DatosDelFlujo> {
-  const [{ data: products }, { data: ultimoProducto }, country, rateContext] = await Promise.all([
+  const [{ data: products }, { data: ultimoProducto }, country, rateContext, { data: categorias }] = await Promise.all([
     supabase
       .from("products")
-      .select("supplier")
+      .select("supplier, category_id")
       .eq("owner_id", ownerId)
       .is("trashed_at", null),
     // La moneda del ÚLTIMO producto creado: con ella abre el siguiente.
@@ -45,7 +49,13 @@ export async function cargarDatosDelFlujo(
       .maybeSingle(),
     readOwnerCountry(supabase, ownerId),
     getOwnerRateContext(supabase, ownerId),
+    supabase.from("product_categories").select("id, name").eq("owner_id", ownerId),
   ]);
+
+  const porCategoria = new Map<string, number>();
+  for (const p of (products ?? []) as { category_id: string | null }[]) {
+    if (p.category_id) porCategoria.set(p.category_id, (porCategoria.get(p.category_id) ?? 0) + 1);
+  }
 
   return {
     rates: rateContext ? await getBolivarRates(rateContext.effectiveRate) : null,
@@ -53,6 +63,10 @@ export async function cargarDatosDelFlujo(
     supplierSuggestions: ((products ?? []) as { supplier: string | null }[])
       .map((p) => p.supplier ?? "")
       .filter((s) => s.trim() !== ""),
+    categorias: ((categorias ?? []) as { id: string; name: string }[]).map((c) => ({
+      ...c,
+      productos: porCategoria.get(c.id) ?? 0,
+    })),
     lastCostCurrency: (ultimoProducto?.cost_currency as CostCurrency | null) ?? null,
     lastBaseCurrency: (ultimoProducto?.base_currency as PriceCurrency | null) ?? null,
   };

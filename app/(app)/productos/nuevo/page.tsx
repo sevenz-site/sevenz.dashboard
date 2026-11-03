@@ -43,6 +43,7 @@ export default async function NuevoProductoPage() {
         wholesale: [datos.lastBaseCurrency ?? datos.defaultCurrency],
       }}
       supplierSuggestions={datos.supplierSuggestions}
+      categorias={datos.categorias}
       lastCostCurrency={datos.lastCostCurrency}
     />
   );

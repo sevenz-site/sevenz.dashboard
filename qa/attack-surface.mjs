@@ -193,6 +193,8 @@ export const MANIFEST = {
     plans: { via: "none" },
     product_currencies: { via: "product" },
     product_hides: { via: "owner" },
+    // 184: one per product; the composite key keeps a product off another owner's
+    product_categories: { via: "owner" },
     // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
     stock_alerts: { via: "owner" },
     product_price_overrides: { via: "product" },
@@ -369,6 +371,10 @@ export const MANIFEST = {
     "app/(app)/import/actions.ts#confirmImport": "atacada",
     "app/(app)/productos/actions.ts#buscarProductos": "atacada",
     "app/(app)/productos/actions.ts#createProduct": "atacada",
+    // 184: takes only a name and writes it for auth.uid(); no id of anyone's travels
+    "app/(app)/productos/actions.ts#crearCategoria": "cubierta: qa:categorias, el dueño solo crea en su negocio y el nombre repetido se rechaza",
+    "app/(app)/productos/actions.ts#eliminarCategoria": "atacada",
+    "app/(app)/productos/actions.ts#renombrarCategoria": "atacada",
     "app/(app)/productos/actions.ts#getOrCreateCatalogLink": "atacada",
     "app/(app)/productos/actions.ts#restoreProduct": "atacada",
     "app/(app)/productos/actions.ts#setProductPublished": "atacada",

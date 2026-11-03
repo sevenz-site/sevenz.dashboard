@@ -46,6 +46,7 @@ export default async function EditarProductoPage({
       overrides={delProducto.overrides}
       initialCurrencies={delProducto.initialCurrencies}
       supplierSuggestions={datos.supplierSuggestions}
+      categorias={datos.categorias}
       // AL EDITAR MANDA LA DEL PRODUCTO QUE SE ABRE, no la del último creado:
       // esa es para estrenar uno, y aquí ya hay una decisión tomada.
       lastCostCurrency={null}

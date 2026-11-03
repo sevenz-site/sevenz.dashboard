@@ -95,9 +95,15 @@ type SharedProduct = {
   // hoy casi ningún producto tiene inventario escrito y nadie lo mantiene
   // (`CT-59`). Aplanar el null a 0 convertiría «no se sabe» en «no hay».
   stock: number | null;
+  // Migration 184. Optional: while the code reaches production before or
+  // after the migration it is absent, and the product simply has no category.
+  category_id?: string | null;
 };
 
 type SharedCatalog = {
+  // Migration 184: the chips — only categories with a published product, the
+  // owner's choice («Solo con productos publicados»). Absent before 184.
+  categories?: { id: string; name: string }[];
   // EL UMBRAL DEL NEGOCIO --«avísame cuando queden N o menos»--, desde la
   // migración `164`. Es lo único que separa «quedan pocas» de «hay de sobra»
   // en esta cuadrícula, y viaja como un escalar porque es del NEGOCIO y no del
@@ -370,10 +376,12 @@ export default async function CatalogoPublicoPage({
              El porqué de pasarlas hechas en vez de mover estas ~110 líneas a
              un componente de cliente está en `catalog-search-grid.tsx`. */
           <CatalogSearchGrid
+            categorias={shared.categories ?? []}
             items={shared.products.map((p) => {
               return {
                 id: p.id,
                 name: p.name,
+                categoryId: p.category_id ?? null,
                 card: (
                   <li key={p.id} className="relative flex">
                     {/* ── «COMPARTIR», TAMBIÉN AQUÍ — encargo del dueño el

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SupplierField } from "@/components/dashboard/supplier-field";
+import { CategoryField, type CategoriaConConteo } from "@/components/dashboard/category-field";
 import {
   Select,
   SelectContent,
@@ -132,6 +133,7 @@ export function ProductoFlujo({
   overrides,
   initialCurrencies,
   supplierSuggestions,
+  categorias: categoriasIniciales = [],
   lastCostCurrency,
   ownerId,
 }: {
@@ -147,6 +149,10 @@ export function ProductoFlujo({
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
+  // The business's categories with how many products each has (migration
+  // 184). The sheet keeps its own copy so creating, renaming or deleting shows
+  // at once.
+  categorias?: CategoriaConConteo[];
   // La moneda del costo del ULTIMO producto creado por este negocio, o
   // null si todavia no tiene ninguno. Solo la usa el dialogo de alta: al
   // editar manda la del producto que se esta abriendo.
@@ -258,6 +264,8 @@ export function ProductoFlujo({
 
   // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
   const [supplier, setSupplier] = useState(product?.supplier ?? "");
+  const [categoryId, setCategoryId] = useState<string | null>(product?.category_id ?? null);
+  const [categorias, setCategorias] = useState<CategoriaConConteo[]>(categoriasIniciales);
 
   // LA MONEDA DEL COSTO DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
   //
@@ -598,6 +606,7 @@ export function ProductoFlujo({
       : null,
     stockOpening: stock || null,
     supplier: supplier || null,
+    categoryId,
     wholesaleMinQuantity: minQty || null,
     publishedRetail: ventaRetail && pubRetail,
     publishedWholesale: ventaWholesale && pubWholesale,
@@ -753,6 +762,17 @@ export function ProductoFlujo({
               value={supplier}
               onChange={setSupplier}
               suggestions={supplierSuggestions}
+              disabled={saving}
+            />
+
+            {/* UNDER «PROVEEDOR», where the owner drew the arrow on
+                2026-11-03. Creating, editing and deleting categories all
+                happen from its sheet. */}
+            <CategoryField
+              value={categoryId}
+              onChange={setCategoryId}
+              categorias={categorias}
+              onCategoriasChange={setCategorias}
               disabled={saving}
             />
         </div>
@@ -998,6 +1018,7 @@ export function ProductoFlujo({
           cost={cost}
           costCurrency={costCurrency}
           supplier={supplier}
+          categoria={categorias.find((c) => c.id === categoryId)?.name ?? null}
           description={description}
           photoPath={photoPath}
           pubRetail={pubRetail}
@@ -2168,6 +2189,7 @@ function Verifica({
   cost,
   costCurrency,
   supplier,
+  categoria,
   description,
   photoPath,
   pubRetail,
@@ -2188,6 +2210,7 @@ function Verifica({
   cost: string;
   costCurrency: string;
   supplier: string;
+  categoria: string | null;
   description: string;
   photoPath: string | null;
   pubRetail: boolean;
@@ -2226,6 +2249,7 @@ function Verifica({
           moneda={cost.trim() ? costCurrency : null}
         />
         <FilaDeRepaso nombre="Proveedor" valor={supplier.trim() || SIN_DATO} />
+        <FilaDeRepaso nombre="Categoría" valor={categoria ?? SIN_DATO} />
         <FilaAncha nombre="Descripción">
           <p className="min-w-0 flex-1 break-words">{description.trim() || SIN_DATO}</p>
         </FilaAncha>

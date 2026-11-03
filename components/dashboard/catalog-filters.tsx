@@ -8,6 +8,8 @@ import { FilterChip } from "@/components/dashboard/client-filters";
 import { priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 import { isPublished, listPrice, type ProductRow } from "@/lib/products/catalog";
 import { foldForSearch } from "@/lib/search/fold";
+import { CategoryChips } from "@/components/category-chips";
+import type { Categoria } from "@/lib/products/categories";
 
 // EL BUSCADOR Y LOS CHIPS DEL CATALOGO.
 //
@@ -47,6 +49,10 @@ type CatalogFilterState = {
   setMinAmount: (v: string) => void;
   maxAmount: string;
   setMaxAmount: (v: string) => void;
+  // Migration 184: the chip chosen, `null` = «Todas».
+  categorias: Categoria[];
+  categoryId: string | null;
+  setCategoryId: (v: string | null) => void;
   // Ya filtrada y ordenada. La lista la consume tal cual.
   visible: ProductRow[];
   total: number;
@@ -64,9 +70,13 @@ export function CatalogFilterProvider({
   rows,
   rates,
   compareCurrency,
+  categorias = [],
   children,
 }: {
   rows: ProductRow[];
+  // All of the owner's categories, empty ones too: here he is looking at his
+  // own shop, and an empty chip tells him which category has nothing yet.
+  categorias?: Categoria[];
   // null para un negocio colombiano.
   rates: BolivarRates | null;
   // La moneda en la que se comparan precios de monedas distintas. Ver abajo.
@@ -78,6 +88,7 @@ export function CatalogFilterProvider({
   const [status, setStatus] = useState<StatusFilter>("todos");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
 
   // DOS PRECIOS EN MONEDAS DISTINTAS NO SE COMPARAN CRUDOS, y la tabla lo
   // permite: `base_currency` es por producto, asi que un negocio venezolano
@@ -115,6 +126,7 @@ export function CatalogFilterProvider({
 
     const filtered = rows.filter((p) => {
       if (q && !foldForSearch(p.name).includes(q)) return false;
+      if (categoryId && p.category_id !== categoryId) return false;
       // «Publicado» es estar en ALGUN catalogo, de mayor o de detal. Separar
       // el filtro en dos haria tres estados donde el tendero piensa en uno:
       // «esto se ve o no se ve».
@@ -138,7 +150,7 @@ export function CatalogFilterProvider({
       );
     }
     return sorted;
-  }, [rows, query, status, minAmount, maxAmount, sortBy, comparable]);
+  }, [rows, query, status, minAmount, maxAmount, sortBy, comparable, categoryId]);
 
   const value: CatalogFilterState = {
     query,
@@ -151,6 +163,9 @@ export function CatalogFilterProvider({
     setMinAmount,
     maxAmount,
     setMaxAmount,
+    categorias,
+    categoryId,
+    setCategoryId,
     visible,
     total: rows.length,
   };
@@ -275,6 +290,12 @@ export function CatalogFilterChips() {
       </FilterChip>
     </div>
   );
+}
+
+// The category row, under the three filter chips of the header.
+export function CatalogCategoryChips() {
+  const f = useCatalogFilters();
+  return <CategoryChips tone="dark" categorias={f.categorias} value={f.categoryId} onChange={f.setCategoryId} />;
 }
 
 export { useCatalogFilters };

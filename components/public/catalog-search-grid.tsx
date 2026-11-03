@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { foldForSearch } from "@/lib/search/fold";
+import { CategoryChips } from "@/components/category-chips";
+import type { Categoria } from "@/lib/products/categories";
 
 // EL BUSCADOR DEL CATÁLOGO QUE VE EL CLIENTE.
 //
@@ -44,10 +46,15 @@ import { foldForSearch } from "@/lib/search/fold";
 // y entonces el arreglo es filtrar en el servidor con el texto en la URL.
 export function CatalogSearchGrid({
   items,
+  categorias = [],
 }: {
-  items: { id: string; name: string; card: ReactNode }[];
+  items: { id: string; name: string; categoryId?: string | null; card: ReactNode }[];
+  // Migration 184: already filtered by the database to those with a
+  // published product, so no chip here can lead to an empty grid.
+  categorias?: Categoria[];
 }) {
   const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
 
   // `foldForSearch`, EXACTLY what the owner's catalogue does in
   // `catalog-filters.tsx`: «azucar» finding a product on the shopkeeper's
@@ -55,13 +62,17 @@ export function CatalogSearchGrid({
   // functions. Both moved to accent-insensitive together on 2026-10-31.
   const visibles = useMemo(() => {
     const q = foldForSearch(query.trim());
-    if (!q) return items;
-    return items.filter((i) => foldForSearch(i.name).includes(q));
-  }, [items, query]);
+    return items.filter(
+      (i) => (!categoryId || i.categoryId === categoryId) && (!q || foldForSearch(i.name).includes(q)),
+    );
+  }, [items, query, categoryId]);
 
   return (
     <div className="flex flex-col gap-4">
       <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
+
+      {/* The same chips as the owner's catalogue, in the light tone. */}
+      <CategoryChips categorias={categorias} value={categoryId} onChange={setCategoryId} />
 
       {visibles.length === 0 ? (
         // DICE QUÉ SE BUSCÓ, no solo que no hay nada. En un teléfono es fácil
