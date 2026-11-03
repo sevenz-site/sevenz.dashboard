@@ -1,0 +1,14 @@
+import { go, shot, openMenu, escape, sleep, clearPopups } from "../lib.mjs";
+import { M, NAV } from "./_m.mjs";
+const S = "compartir-tu-catalogo";
+await go(`/dashboard`, 4000);
+await shot(S, 1, NAV("Catálogo"));
+await go(`/productos`, 6000);
+await shot(S, 2, "Publicar Arroz blanco 1 kg en el catálogo", { pad: 8 });
+await shot(S, 3, "js:[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Compartir'&&b.getBoundingClientRect().height>0&&b.getBoundingClientRect().top>=0)");
+await openMenu("Más opciones");
+await shot(S, 4, "Vista previa", { blur: false });
+await escape(); await sleep(400);
+await go(`/c/${M.catalogToken}`, 6000);
+await clearPopups(); await sleep(500);
+await shot(S, 5, null, { crop: 0 });

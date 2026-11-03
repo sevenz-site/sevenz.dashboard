@@ -1,0 +1,17 @@
+import { go, shot, openMenu, escape, js, sleep, clearPopups } from "../lib.mjs";
+import { M } from "./_m.mjs";
+const S = "compartir-el-link-del-cliente";
+await go(`/clients/${M.clientes.julia}`, 5000);
+await shot(S, 1, "Compartir saldo vía WhatsApp");
+await openMenu("Más opciones");
+await shot(S, 2, "Compartir enlace", { blur: false });
+await escape(); await sleep(500);
+await go(`/s/${M.shareToken}`, 5000);
+await clearPopups(); await sleep(500);
+await shot(S, 3, null, { crop: 0 });
+await go(`/notificaciones`, 5000);
+await shot(S, 4, null, { crop: 0 });
+await go(`/clients/${M.clientes.julia}`, 5000);
+const href = await js("[...document.querySelectorAll('a')].find(a=>a.textContent.startsWith('Fiado'))?.getAttribute('href')");
+await go(href, 5000);
+await shot(S, 5, "Compartir", { crop: 0 });

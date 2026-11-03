@@ -16,6 +16,7 @@ import Link from "next/link";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatCurrency, formatDocumentId } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
+import { formatCantidad } from "@/lib/products/cantidad";
 
 // The notification rows themselves, shared by the desktop header's popover
 // and the phone's own /notificaciones page — the two differ in how they fetch
@@ -137,6 +138,35 @@ export function NotificationList({
                 </>
               ) : n.kind === "product_hidden" ? (
                 <ProductHideRow notification={n} />
+              ) : n.kind === "stock_alert" ? (
+                <>
+                  {/* CT-162. The colours are the stock chip's: amber for «por
+                      agotarse», red for «agotado» (`stock-badge.tsx`), so the
+                      bell and the product card say the same thing the same
+                      way. The figure is the one at the moment of the notice,
+                      not today's. */}
+                  <Package
+                    className={
+                      n.level === "out"
+                        ? "mt-0.5 size-4 shrink-0 text-destructive"
+                        : "mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      {n.level === "out" ? `${n.productName} se agotó` : `${n.productName} se está agotando`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {n.level === "out"
+                        ? "Ya no te quedan"
+                        : `${n.quantity === 1 ? "Queda" : "Quedan"} ${formatCantidad(n.quantity)}`}{" "}
+                      · <Fecha iso={n.occurredAt} formato="hora" />
+                    </p>
+                    <Button asChild type="button" variant="outline" size="sm" className="mt-1.5 h-7">
+                      <Link href={`/productos/${n.productId}`}>Ver producto</Link>
+                    </Button>
+                  </div>
+                </>
               ) : n.kind === "catalog_order" ? (
                 <>
                   {/* ── EL MISMO ICONO QUE LA TARJETA «PEDIDOS» DE INICIO ──

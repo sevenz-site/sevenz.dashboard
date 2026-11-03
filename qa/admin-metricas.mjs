@@ -92,7 +92,7 @@ const delta = (antes, despues, clave) => {
 const igual = (x, n, monto) => x.n === n && x.monto === monto;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
-const M = JSON.parse(readFileSync(new URL("../../Illustrations/Web-v2/demo-manifest.json", import.meta.url), "utf8"));
+const M = JSON.parse(readFileSync(new URL("../scripts/ayuda/demo-manifest.json", import.meta.url), "utf8"));
 const VE = M.ownerId;
 const { data: coOwner } = await admin.from("owners").select("id, country").eq("country", "CO").limit(1).single();
 const CO = coOwner.id;

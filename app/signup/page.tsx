@@ -104,7 +104,9 @@ export default function SignupPage() {
         <CardHeader>
           <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
           <CardTitle className="text-xl">Crea tu cuenta</CardTitle>
-          <CardDescription>Empieza a compartir el saldo con tus clientes.</CardDescription>
+          {/* The tagline since 2026-11-03 (owner's request); it read «Empieza a
+              compartir el saldo con tus clientes.» */}
+          <CardDescription>¡Cuentas claras sin tanta vaina!</CardDescription>
         </CardHeader>
         <CardContent>
           <form
