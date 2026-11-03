@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { validatePasswordComplexity } from "@/lib/password";
+import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 
 export type ResetPasswordState = { error: string | null };
 
@@ -31,6 +31,7 @@ export async function resetPassword(
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) {
+    if (error.code === "weak_password") return { error: LEAKED_PASSWORD_MESSAGE };
     return { error: "No pudimos actualizar tu contraseña. Intenta de nuevo." };
   }
 

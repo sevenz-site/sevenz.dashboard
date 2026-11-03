@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { validatePasswordComplexity } from "@/lib/password";
+import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 import { mensajeDeError } from "@/lib/errores-legibles";
 
 export type ProfileState = { error: string | null; success: boolean };
@@ -281,6 +281,7 @@ export async function changePassword(
   const { error } = await supabase.auth.updateUser({ password: newPassword });
 
   if (error) {
+    if (error.code === "weak_password") return { error: LEAKED_PASSWORD_MESSAGE, success: false };
     return { error: "No pudimos actualizar tu contraseña. Intenta de nuevo.", success: false };
   }
 

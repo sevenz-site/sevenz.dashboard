@@ -1049,12 +1049,22 @@ funcionalidades»*.
 | `npm run qa:attack` | El ataque. Con la clave anónima (la que va en el JavaScript público) y la sesión de un dueño A contra un dueño B, recorre **todas** las tablas y **todas** las funciones `SECURITY DEFINER` de la lista, más los escenarios fijos: escribir en lo de otro, regalarle filas a otro, escalar plan o prueba, falsear el libro, una cuenta bloqueada, archivos ajenos, pedido del catálogo falsificado, crons sin clave, páginas ajenas por URL, inyección, XSS guardado y cabeceras. Termina comprobando en la base que B quedó intacto | **Dev** y `npm run dev` corriendo (trampa 1 de la sección 0). Se niega a correr contra otro proyecto |
 | `npm run qa:ledger-integrity` | El libro escrito a mano (migración `177`): `running_balance` y `created_by` | Dev |
 | `npm run qa:ledger-console` | El libro desde la **consola del navegador** (migración `180`): con la sesión de un dueño escribiendo directo a las tablas, intenta un abono mayor que la deuda, editar un fiado (monto, tipo, cliente, bolívares tecleados), fecharlo atrás, borrar del todo un movimiento, una venta o un cliente con deudas, y añadir un pago a una venta ya cerrada. **La mitad son controles**: fiar, cobrar hasta el último céntimo, papelera y restaurar, el recálculo, Colombia, borrar lo recién escrito, y **dos abonos a la vez** (entra uno solo). Sin ellos, cerrar el libro del todo pasaría la prueba | **Dev**, sin servidor: la consola habla con Supabase, no con Next |
+| `npm run qa:sesiones` | Lo que se le promete al dueño sobre su cuenta (fase 3, 2026-11-02): «Solo en este dispositivo» deja dentro a los demás, «En todos mis dispositivos» saca a todos (incluido este) y ninguno puede renovar, un valor raro mandado a `logout` NUNCA amplía lo que hace, cambiar la contraseña saca a los otros dispositivos y deja este, y una contraseña filtrada («Password1!») se rechaza con `weak_password`. **La fila 5 en rojo significa que el interruptor «Prevent use of leaked passwords» está apagado en dev** | **Dev**, con `npm run dev`: las dos filas de cerrar sesión llaman a la acción por HTTP |
 | `npm run qa:attack-actions` | Las **acciones de servidor** llamadas por HTTP, como lo haría alguien con la consola del navegador: cabecera `next-action` y argumentos inventados. Fase 1, las que solo protege el código (`/admin`, `/s`, `/c`): sin sesión, con la de un dueño normal y con un token falso. Fase 2, las del dueño: A con los ids de B. **Cada ataque lleva su control positivo** —la misma acción, con permiso, tiene que funcionar— y el veredicto se lee en una foto de B tomada en la base antes y después | **Dev** y `npm run dev` corriendo. Visita todas las páginas al empezar para que el servidor registre sus acciones. No manda WhatsApp, correos, Gemini ni Mixpanel |
 
 **Cómo se lee `qa:attack`**: `BLOQUEADO` es el ataque fallando, `VULN` es el
 ataque saliendo bien y `DECISIÓN` es algo que se deja pasar a propósito, o que
 espera al dueño. Solo `VULN` para el lanzamiento. Las `DECISIÓN` se nombran en el
 informe, para que el dueño vea que siguen ahí.
+
+**`qa:sesiones` solo mide dev, y su fila 5 depende de un interruptor que NO es
+una migración.** «Prevent use of leaked passwords» (Authentication → Sign In /
+Providers → Email) vive en la configuración de Auth de cada proyecto, y la rama
+dev no se lo copia a producción ni al revés. El día que se lance algo que
+prometa al dueño que una contraseña filtrada se rechaza, el informe pregunta si
+está encendido en **PRODUCCIÓN** (`rabmiyqodnvnrwiartuj`) — lo enciende el
+dueño en el panel, no se comprueba con SQL. Encendido en dev desde antes del
+2026-11-02, medido ese día.
 
 ### La pregunta de cada lanzamiento: ¿qué casos nuevos trae este diff?
 

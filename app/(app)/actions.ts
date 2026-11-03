@@ -5,9 +5,46 @@ import { createClient } from "@/lib/supabase/server";
 import { BADGE_MAX } from "@/lib/types";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
-export async function logout() {
+// ── WHERE THE SESSION ENDS: THIS DEVICE OR ALL OF THEM ──────────────────
+//
+// Owner's decision on 2026-11-02 (phase 3 of the console hardening): the
+// sidebar's «Cerrar sesión» opens a dialog that asks «solo en este
+// dispositivo» or «en todos mis dispositivos».
+//
+// UNTIL THAT DAY THIS WAS ALWAYS "ALL": `signOut()` with no argument is
+// scope `global` in supabase-js, so every logout already signed out every
+// device -- nobody knew, and the owner was never told. The default is now
+// `local`, the everyday case; `global` is the one for a lost phone or an
+// account somebody else got into.
+//
+// THE ARGUMENT COMES FROM THE BROWSER, so only the exact string "global"
+// widens it. Anything else -- including supabase-js's third scope, "others",
+// which would leave THIS device signed in after a button that says it closes
+// the session -- is read as "local". `qa:sesiones` row 3 holds this.
+//
+// A FAILED SIGN-OUT IS REPORTED, NOT SWALLOWED. supabase-js keeps the session
+// cookie when the call fails for a network reason, and the old code redirected
+// anyway. For «en todos» that is the worst kind of failure: the owner believes
+// the intruder is out and nothing happened. So the dialog gets the error and
+// stays open.
+//
+// What «en todos» cannot do: an access token already issued keeps working
+// against the database until it expires (up to 60 minutes, measured
+// 2026-11-02). Screens are closed at once -- the proxy asks Auth on every
+// request -- and the token cannot be renewed; the console window that remains
+// is bounded by RLS and by migration 180's rules.
+export async function logout(scope?: string): Promise<{ error: string }> {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" });
+  if (error) {
+    console.error("logout: signOut failed", error);
+    return {
+      error:
+        scope === "global"
+          ? "No pudimos cerrar la sesión en tus otros dispositivos. Revisa tu conexión e intenta de nuevo."
+          : "No pudimos cerrar la sesión. Revisa tu conexión e intenta de nuevo.",
+    };
+  }
   redirect("/login");
 }
 
