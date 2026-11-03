@@ -11,6 +11,7 @@ import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-mov
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import { PaymentSummary, type PaymentLine } from "@/components/dashboard/payment-summary";
+import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatPlazoDias } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
@@ -68,8 +69,19 @@ export type DatosDelDetalle = {
   deudaAntigua?: boolean;
   productos?: SaleLineRow[];
   createdAt: string;
+  // «TOTAL POR COBRAR»: what the BOOK owed in this currency right AFTER this
+  // transaction -- its `running_balance`, the same figure as the «Por cobrar»
+  // foot of its row in the history. Owner's decision of 2026-11-03, asked
+  // with an old fiado on the table: «La de su tarjeta del historial». For the
+  // newest transaction it is also the main «Por cobrar» card. For an abono
+  // split into several lines, the balance after the LAST one.
   runningBalance: number;
   balanceLabel?: string;
+  // «TOTAL» under a fiado's products: what THIS fiado still owes. It was the
+  // value of «Total por cobrar» from 2026-10-20 to 2026-11-03 (see the
+  // owner's page for why it was moved there); the owner kept the figure and
+  // gave it its own row. `null`/absent draws no row.
+  pendienteDelFiado?: number | null;
   // `undefined` quita la fila entera; `null` dibuja el hueco de «sin foto».
   photoUrl?: string | null;
   entryCurrency?: MovementCurrencyCode | null;
@@ -165,6 +177,7 @@ export function DetalleDeTransaccion({
   createdAt,
   runningBalance,
   balanceLabel = "Total por cobrar",
+  pendienteDelFiado = null,
   photoUrl,
   entryCurrency = null,
   entryAmount = null,
@@ -328,9 +341,6 @@ export function DetalleDeTransaccion({
         }).abonos.slice(abonoInicial && abonoInicial > 0.005 ? 1 : 0)
       : [];
 
-  const colorSaldo =
-    runningBalance > 0 ? "text-destructive" : runningBalance < 0 ? "text-money-in" : "";
-
   return (
     <dl className="flex flex-col gap-4">
       <Grupo>
@@ -386,6 +396,7 @@ export function DetalleDeTransaccion({
           currency={currency}
           ledger={ledger}
           lines={lineasDelAbono}
+          saldoDelLibro={runningBalance}
         />
       ) : (
       /* LA TARJETA DEL RESUMEN. El frame la dibuja con su marco y su título:
@@ -415,6 +426,26 @@ export function DetalleDeTransaccion({
           />
         ) : null}
 
+        {/* «TOTAL», RIGHT UNDER THE PRODUCTS -- owner's request of
+            2026-11-03: what this fiado still owes, which «Total por cobrar»
+            showed until that day. Drawn in every fiado, products or not: a
+            fiado typed by hand or an old debt still owes something, and
+            hiding the row there would hide the figure. */}
+        {type === "charge" && pendienteDelFiado != null ? (
+          (() => {
+            const t = formatLedgerAmount(pendienteDelFiado, currency, ledger);
+            return (
+              <FilaDeTotal
+                rotulo="Total"
+                cifra={t.primary}
+                bolivares={t.secondary ? `${t.secondary} hoy` : null}
+                moneda={currency}
+                tono={pendienteDelFiado > 0.005 ? "debe" : "neutro"}
+              />
+            );
+          })()
+        ) : null}
+
         {/* «Abonó» — UNA SOLA SECCIÓN, CON TARJETAS O CON CIFRA.
             Frames `1463:18100` (nodo `1463:18127`), `1465:18349` (nodo
             `1465:18372`) y `1479:9456` (nodo `1479:9479`).
@@ -432,7 +463,9 @@ export function DetalleDeTransaccion({
                 `1463:18100` enseña ahí un importe, no un texto.
 
             NO HAY FILA «Monto» EN NINGÚN FRAME: el importe del fiado no se
-            repite, porque lo que queda vivo es «Total por cobrar». */}
+            repite, porque lo que queda vivo es «Total por cobrar».
+            Since 2026-11-03 what the fiado still owes is the «Total» row
+            under the products, and «Total por cobrar» is the book's. */}
         {/* «Abonos» EN TODO FIADO, tenga abonos dirigidos o no. Hasta el
             2026-10-21 esta sección solo salía si había alguno y, si no, caía
             en la fila «Abonó» de abajo. Ahora el frame `1510:9784` pone
@@ -450,8 +483,9 @@ export function DetalleDeTransaccion({
             Its first card is the payment made «al día de la compra», and an
             old debt has no purchase: it drew a «+€0,00» row for a moment that
             never happened. The cost, said out loud: abonos aimed at this
-            debt are not listed here. They still count -- in «Total por
-            cobrar» and in the «Estado» column of the cuotas table below. */}
+            debt are not listed here. They still count -- in «Total» (and,
+            since 2026-11-03, in the book's «Total por cobrar») and in the
+            «Estado» column of the cuotas table below. */}
         {deudaAntigua ? null : type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
             {/* «Abonos relacionados», EN 14 REGULAR — frame `1510:9784`, nodo
@@ -665,31 +699,18 @@ export function DetalleDeTransaccion({
             pone ahí, separado por una línea. No es un dato más del movimiento:
             es en qué queda la cuenta después de él, y es lo que casi todo el
             mundo abre esta pantalla para mirar. */}
-        <div className="flex items-center justify-between gap-4 border-t pt-3">
-          <span className="text-base font-semibold">{balanceLabel}</span>
-          <span className="flex items-center gap-2">
-            <span className="flex flex-col items-end">
-              <span className={`text-base font-semibold tabular-nums ${colorSaldo}`}>
-                {balance.primary}
-              </span>
-              {balance.secondary ? (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {balance.secondary} hoy
-                </span>
-              ) : null}
-              {/* DEBAJO DE LA EQUIVALENCIA, donde lo pidió el dueño: la cifra
-                  dice cuánto y el chip dice de quién es. Sin él, un «por
-                  cobrar» en verde sobre una cuenta que no debe nada es un
-                  dato sin explicación. */}
-              {aFavor ? (
-                <span className="pt-0.5">
-                  <ChipDeEstado estado="a_favor" />
-                </span>
-              ) : null}
-            </span>
-            {currency ? <CurrencyFlagIcon currency={currency} className="size-4 shrink-0" /> : null}
-          </span>
-        </div>
+        {/* El chip «A favor» va DEBAJO DE LA EQUIVALENCIA, donde lo pidió el
+            dueño: la cifra dice cuánto y el chip dice de quién es. Sin él, un
+            «por cobrar» en verde sobre una cuenta que no debe nada es un dato
+            sin explicación. Lo dibuja `FilaDeTotal`. */}
+        <FilaDeTotal
+          rotulo={balanceLabel}
+          cifra={balance.primary}
+          bolivares={balance.secondary ? `${balance.secondary} hoy` : null}
+          moneda={currency}
+          tono={runningBalance > 0 ? "debe" : runningBalance < 0 ? "a_favor" : "neutro"}
+          aFavor={aFavor}
+        />
       </div>
       )}
 

@@ -355,6 +355,25 @@ export default async function DetalleDelClientePage({
           })
       : undefined;
 
+  // «TOTAL POR COBRAR», THE BOOK'S AND NOT THE FIADO'S -- owner's decision of
+  // 2026-11-03, asked for this view: «Igual» as the owner's. It is the
+  // `running_balance` this payload already carries, the history row's «Por
+  // cobrar»; for a split abono, its lowest line, which is the book after the
+  // whole payment (each line only lowers it).
+  const lineasDelGrupo =
+    m.type === "payment"
+      ? movimientos.filter(
+          (x) =>
+            x.type === "payment" &&
+            paymentGroupKey({ ...x, transaction_code: x.transaction_code ?? null }) ===
+              paymentGroupKey({ ...m, transaction_code: m.transaction_code ?? null }),
+        )
+      : [];
+  const saldoDelLibro =
+    lineasDelGrupo.length > 0
+      ? Math.min(...lineasDelGrupo.map((x) => Number(x.running_balance)))
+      : Number(m.running_balance);
+
   return (
     <ZonaDelNegocioProvider country={shared.owner_country}>
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
@@ -424,7 +443,13 @@ export default async function DetalleDelClientePage({
         //
         // `?? running_balance` por si la `132` no ha corrido en el entorno:
         // degrada a lo de antes en vez de enseñar un cero.
-        runningBalance={m.pending ?? Number(m.running_balance)}
+        //
+        // SINCE 2026-11-03 THAT FIGURE IS THE «Total» ROW under the products,
+        // and «Total por cobrar» is the book's (see `saldoDelLibro` above).
+        // Both sides agree because both pass the same two numbers. Without
+        // `pending` (132 not run) the «Total» row is simply not drawn.
+        runningBalance={saldoDelLibro}
+        pendienteDelFiado={m.type === "charge" && m.pending != null ? Number(m.pending) : null}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount}

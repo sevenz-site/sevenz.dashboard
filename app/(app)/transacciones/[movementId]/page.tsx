@@ -213,6 +213,13 @@ export default async function TransaccionPage({
 
     // ── «TOTAL POR COBRAR» DE UN FIADO ES LO QUE ESE FIADO DEBE ─────────
     //
+    // DISPLACED ON 2026-11-03, and both decisions stay written. The owner
+    // asked for «Total por cobrar» to be the BOOK's debt -- the same figure as
+    // the history card's «Por cobrar» (`running_balance`) -- and for THIS
+    // figure to move to a new «Total» row under the products. The problem
+    // described below does not come back: the fiado's own remainder is still
+    // on the card, next to its abonos, only under its own label.
+    //
     // No `running_balance`, que es el saldo del CLIENTE justo después de este
     // movimiento y no se mueve cuando llegan abonos posteriores.
     //
@@ -338,10 +345,16 @@ export default async function TransaccionPage({
   // líneas de otro cliente.
   let lineasDelAbono: PaymentLine[] | undefined;
   let lineasDelReparto = 1;
+  // «TOTAL POR COBRAR» OF AN ABONO: the book after the WHOLE abono. A split
+  // writes its lines in one transaction and the chain is recalculated (142),
+  // each line only lowers the balance, so the last one is the lowest.
+  let saldoTrasElAbono: number | null = null;
   if (m.type === "payment") {
     const consulta = supabase
       .from("movements")
-      .select("id, amount, created_at, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id")
+      .select(
+        "id, amount, created_at, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id, running_balance",
+      )
       .eq("client_id", cliente.id)
       .eq("type", "payment")
       .is("deleted_at", null);
@@ -355,6 +368,9 @@ export default async function TransaccionPage({
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
     const lineas = filas ?? [];
+    if (lineas.length > 0) {
+      saldoTrasElAbono = Math.min(...lineas.map((l) => Number(l.running_balance)));
+    }
     // EL BORRADO SE LLEVA TODAS LAS LÍNEAS DEL CÓDIGO, de los dos libros si
     // cruzó monedas: fue UN pago. Por eso este recuento no filtra la moneda.
     if (m.transaction_code) {
@@ -470,7 +486,8 @@ export default async function TransaccionPage({
         deudaAntigua={m.is_old_debt === true}
         productos={productos}
         createdAt={m.created_at}
-        runningBalance={pendienteDelFiado ?? Number(m.running_balance)}
+        runningBalance={saldoTrasElAbono ?? Number(m.running_balance)}
+        pendienteDelFiado={m.type === "charge" ? pendienteDelFiado : null}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount == null ? null : Number(m.entry_amount)}

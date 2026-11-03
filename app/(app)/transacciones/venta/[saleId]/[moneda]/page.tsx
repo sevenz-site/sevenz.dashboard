@@ -8,6 +8,7 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { CatalogOrderTrace } from "@/components/dashboard/catalog-order-trace";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
@@ -284,20 +285,12 @@ export default async function VentaDeContadoPage({
           {/* «Total» Y NO «Total por cobrar»: aquí no queda nada por cobrar.
               Es la diferencia que el frame `1487:9972` marca contra el del
               fiado, y es la que importa de toda esta pantalla. */}
-          <div className="flex items-center justify-between gap-4 border-t pt-3">
-            <span className="text-base font-semibold">Total</span>
-            <span className="flex items-center gap-2">
-              <span className="flex flex-col items-end">
-                <span className="text-base font-semibold tabular-nums">{formatear(total)}</span>
-                {enBs != null ? (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} al día de pago
-                  </span>
-                ) : null}
-              </span>
-              {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" /> : null}
-            </span>
-          </div>
+          <FilaDeTotal
+            rotulo="Total"
+            cifra={formatear(total)}
+            bolivares={enBs != null ? `${formatBs(enBs)} al día de pago` : null}
+            moneda={moneda}
+          />
         </div>
 
         <Grupo>

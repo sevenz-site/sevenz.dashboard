@@ -778,6 +778,39 @@ Vale en los dos historiales **y en la ficha de la transacción**, que es donde
 se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
 `Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
 
+### «Por cobrar» es UNA cifra, en los tres sitios donde sale
+
+**Regla del dueño, escrita a la segunda vez que la pidió.** El 2026-10-23, para
+el pie del historial: *«"Por cobrar" … en la card principal de la moneda y en
+la card de la última transacción. Deben coincidir»*. El 2026-11-03, para la
+ficha: *«"Total por cobrar" debe ser la deuda total en esa moneda. La misma
+deuda que aparece en el card del historial con el label "Por cobrar" y misma
+deuda que aparece en el card principal "Por cobrar"»*.
+
+**Los tres sitios, y en todos es el saldo del LIBRO de esa moneda**, nunca lo
+que debe un fiado suelto:
+
+| Dónde | Rótulo | Qué cifra |
+|---|---|---|
+| La tarjeta principal de la ficha del cliente | «Por cobrar» | Lo que se debe hoy (`client_summary`) |
+| El pie de cada fila del historial | «Por cobrar» | El libro justo DESPUÉS de esa transacción (`running_balance`) |
+| La ficha de la transacción, fiado y abono | «Total por cobrar» | La misma que el pie de SU fila: su `running_balance`. En un abono repartido, el de su última línea, que es la más baja |
+
+En la transacción más reciente las tres coinciden por construcción. En una
+vieja, la ficha dice lo mismo que su fila, no lo de hoy: lo eligió el dueño el
+2026-11-03, con el caso de un fiado viejo delante.
+
+**Lo que debe un fiado tiene su propio rótulo, «Total»**, bajo sus productos, y
+no puede volver a ocupar el sitio de «Total por cobrar». Lo ocupó del
+2026-10-20 al 2026-11-03 —con buena razón, la que cuenta el comentario de
+`app/(app)/transacciones/[movementId]/page.tsx`— y esa es justo la forma en
+que las tres cifras dejaron de coincidir sin que nada avisara.
+
+**Las dos vistas, igual**: la del dueño y la del cliente pasan las mismas dos
+cifras al mismo componente (`DetalleDeTransaccion`, `PaymentSummary`, y la fila
+común `fila-de-total.tsx`). Una pantalla nueva que enseñe un «por cobrar» se
+comprueba contra las otras dos con la misma transacción delante.
+
 ## Una deuda antigua no tiene compra: ninguna pantalla le dibuja una
 
 **Pedido por el dueño el 2026-10-31**, a la segunda vez que salió el mismo
@@ -1245,6 +1278,32 @@ cambiar con el log diciendo que todo fue bien.
 
 Así que el orden completo es **`npm run build` → `npx wrangler deploy` →
 `git push origin main`**, y la comprobación en vivo va después de las tres.
+
+### Y `dev` se sube DESPUÉS de que `sevenz.site` publique, nunca a la vez
+
+Pedido por el dueño el 2026-11-03, tras un lanzamiento que se quedó a medias.
+
+**Qué sirve el dominio, medido ese día**: el worker **`sevenz-site`** (no
+`sevenz-web`, que es el de `wrangler deploy`), que Cloudflare compila desde git.
+Cada push compila: el de `main` se **despliega** en el dominio y el de `dev`
+solo sube una versión de vista previa (alias `dev`). Se ve con
+`npx wrangler versions list --name sevenz-site`: las de `main` salen sin alias,
+las de `dev` con `"workers/alias":"dev"`.
+
+**Qué pasó**: el back-merge (paso 4 del despliegue) subió `dev` en el MISMO
+comando que `main`, con segundos de diferencia, y Cloudflare solo compiló
+`dev`. La compilación de `main` no llegó a existir: el dominio siguió sirviendo
+la versión anterior más de doce minutos mientras el worker de `wrangler`
+enseñaba la nueva. Nada daba error.
+
+**La regla**: push de `main` → esperar a que `sevenz.site` enseñe la frase nueva
+(suelen ser unos 9 minutos) → solo entonces el back-merge y el push de `dev`.
+
+**Si vuelve a pasar**, el arreglo es un commit vacío en `main`
+(`git commit --allow-empty`) y su push, que dispara la compilación otra vez sin
+cambiar código; luego se espera al dominio y después se sube `dev`. Antes de
+eso, `wrangler versions list --name sevenz-site` dice si la compilación de
+`main` existe: si la última versión sin alias es anterior al push, no existe.
 
 **And the live page is what gets checked, not the log.** Fetch it with
 `cache: 'no-store'` and assert on both sides: the new sentence present AND the
