@@ -921,6 +921,35 @@ quedaría sin ninguna salida.
 descuido estético y uno muerto como «le di y no hizo nada». Ninguno de los dos
 síntomas se parece a la causa, y ninguna suite los ve.
 
+## 4f. La Ayuda de la web contra este lanzamiento — `help-center-sync`
+
+**En CADA lanzamiento del dashboard, y no solo cuando el diff «parece» de
+pantallas.** Pedido por el dueño el 2026-11-03: *«La sección de ayuda debe
+mantenerse actualizada con los flujos de cada funcionalidad, su paso a paso y
+screenshots, así como incluir nuevos flujos, nuevas funcionalidades o eliminar
+flujos o funcionalidades que ya no existan. En el QA checklist incluye la regla
+que se debe revisar esa sección de ayuda contra el lanzamiento del app»*.
+
+**Se corre el skill `help-center-sync`.** Compara el diff con
+`Web/lib/soporte.ts` y sus capturas, y si algo cambió en lo que el tendero ve
+—un rótulo, un paso, una pantalla nueva, una que desaparece— reescribe los
+pasos y **vuelve a sacar las capturas**. No se apunta para luego: se hace en
+este lanzamiento.
+
+**Por qué es parada y no consejo.** El día que se escribió, la Ayuda describía
+un formulario de abono que ya no existía y botones renombrados semanas antes, y
+no tenía ni un tema de catálogo, pedidos o reportes. Ninguna frase era mentira
+cuando se escribió. Una guía envejece en silencio, y quien se entera es un
+tendero siguiendo pasos que no llevan a ninguna parte.
+
+**Y es un SEGUNDO despliegue.** La Ayuda vive en `Web/`: un merge del dashboard
+no la publica. Si el skill cambió algo, el informe lo dice y el lanzamiento de
+`Web/` va detrás (sección 4b).
+
+**La fila del informe nunca se omite**: dice qué temas se tocaron, o «ninguno»
+con la prueba —qué archivos visibles toca el diff y que ninguno de sus rótulos
+sale en `soporte.ts`—.
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
@@ -1301,6 +1330,10 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 4f row is never skipped either**: it carries the `help-center-sync`
+result — which help topics this release changed, or «ninguno» with the
+evidence.
 
 **The 5b row is never skipped**, not even for a narrow diff: it carries the
 `qa:attack` result, the `qa:attack-coverage` result, and in words which new

@@ -22,6 +22,7 @@ import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { CuentaPausadaProvider } from "@/components/dashboard/cuenta-pausada";
 import { motivoDeBloqueo } from "@/lib/cuenta-pausada-server";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
+import { refreshStockAlerts } from "@/lib/stock-alerts";
 import { getImportUsageForOwner } from "@/lib/import-usage";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [{ data: owner }, unreadCount, importUsage, motivo] = await Promise.all([
     supabase.from("owners").select("business_name, onboarding_completed_at, plan, country").eq("id", user.id).single(),
-    getUnreadNotificationCount(),
+    // Today's inventory notices (CT-162) before counting, so a product still
+    // low since yesterday puts its notice in the badge on the first load of
+    // the day. Chained, not parallel: the count has to see the new row.
+    refreshStockAlerts(supabase).then(() => getUnreadNotificationCount()),
     getImportUsageForOwner(supabase, user.id),
     // Si la cuenta esta pausada. Va en el layout y no en la cartera porque
     // el aviso tiene que salir se entre por donde se entre, y porque desde

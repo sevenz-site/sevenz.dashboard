@@ -1,0 +1,47 @@
+{
+  "email": "demo-landing@sevenz-demo.test",
+  "ownerId": "1f66c270-15e7-4eeb-b528-c45deb095d1c",
+  "catalogToken": "eb5868b924086aed1429795ec88b53c9",
+  "shareToken": "84c7ea3c57f7661d4c7e68fbfb89e9f3",
+  "clientes": {
+    "julia": "c2c321e3-1b64-4ef0-8c7a-1cc1a0fa5ef8",
+    "pedro": "3bfdf7d4-c7a9-4843-b259-8029e1b19e8b",
+    "luisa": "2e278256-57fc-46d5-8dc4-1c786f8e3392",
+    "miguel": "b3253407-ab63-4275-9aac-b09d555c6a2f",
+    "yolimar": "c6014bf8-244e-413e-abca-5dec6b3c5db2",
+    "ender": "b13c4237-8014-4c80-abef-72c9f7d09950",
+    "carmen": "b3e4eb7d-1410-4a53-8393-4847a680768b",
+    "alexis": "4beec327-839f-496a-8363-73514c78ad60",
+    "dayana": "967fab2d-1c9a-44c8-9641-2adbcf79d3f2",
+    "rafael": "86325d7c-8b41-4b13-9514-e9e08705db7b",
+    "mariela": "f35abb45-5d66-4113-b7e7-fbd02b8cb9da",
+    "jhonny": "0bcbb11c-0a43-4bc9-81cb-85994622cebe",
+    "rosa": "e0748503-1033-4146-a51b-526e69f32f23",
+    "nelson": "1387ff13-75a2-43b8-976e-80a07505c5e5"
+  },
+  "productos": {
+    "harina": "73120248-8eed-4b3e-84ac-0fad65934927",
+    "arroz": "0dfb2c31-d955-4327-9ec1-48dae799ac69",
+    "aceite": "b3c6745c-fbf3-4b19-a7ab-559b77d3aa93",
+    "azucar": "2c0e4ee1-732e-4a3f-9b2f-0f6bc2bacd39",
+    "cafe": "b6f9125b-e2d2-445b-9ee2-15573018f0a7",
+    "pasta": "ac225867-b7fb-46eb-89fb-0e5d9bf03aac",
+    "leche": "a14b5aae-c307-4900-b550-8fee7b18f4b7",
+    "margarina": "157285ba-a750-43e7-8ca3-d056096bf467",
+    "sal": "034777c7-e584-4410-b921-077426b22026",
+    "detergente": "16bd04fb-ad5a-4a21-b23d-88aa22369c5e",
+    "jabon": "38afe16c-77fc-4d83-9e9f-141b63cec7c9",
+    "refresco": "44e4003a-8d1b-412e-abcb-3ea43146e1a5",
+    "oliva": "045ade9e-1517-424c-927e-caa5870c45da",
+    "pastaIt": "3ead4a4e-8507-42ce-bca6-627ff80226f4"
+  },
+  "ventas": {
+    "contadoEjemplo": "84579358-86db-4573-9e9a-c26c7dcaa836",
+    "fiadoJulia": "54708264-917d-4108-bbff-7864ee8ce1cf",
+    "fiadoPedro": "9e910e5f-06f9-4d13-b3f7-2955ec4729c8"
+  },
+  "tasa": {
+    "usd": 889.2553,
+    "eur": 992.80018713
+  }
+}

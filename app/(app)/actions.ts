@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { refreshStockAlerts } from "@/lib/stock-alerts";
 import { BADGE_MAX } from "@/lib/types";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
@@ -178,6 +179,18 @@ export type NotificationItem =
       // y la misma fila. Tres tipos obligarían a escribir esa fila tres
       // veces, y la tercera se quedaría atrás el día que cambie.
       estado: "recibido" | "descartado" | "restaurado";
+    }
+  | {
+      id: string;
+      kind: "stock_alert";
+      occurredAt: string;
+      productId: string;
+      productName: string;
+      // Migration 183 (CT-162): 'low' is «se está agotando», 'out' is «se
+      // agotó». `quantity` is what was on the shelf WHEN the notice was
+      // written, so the row stays true after the count moves on.
+      level: "low" | "out";
+      quantity: number;
     };
 
 const NOTIFICATION_PHOTO_SIGNED_URL_TTL_SECONDS = 300;
@@ -192,6 +205,10 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   } = await supabase.auth.getUser();
   if (!user) return [];
 
+  // Today's inventory notices first, so opening the bell shows them even if
+  // the app has been open since yesterday. See lib/stock-alerts.ts.
+  await refreshStockAlerts(supabase);
+
   const [
     { data: opens, error: opensError },
     { data: imports, error: importsError },
@@ -199,6 +216,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     { data: hides, error: hidesError },
     { data: productHides, error: productHidesError },
     { data: orders, error: ordersError },
+    { data: stockAlerts, error: stockAlertsError },
   ] = await Promise.all([
     supabase
       .from("link_opens")
@@ -270,6 +288,14 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       .or(`status.eq.new,discarded_at.not.is.null,restored_at.not.is.null`)
       .order("created_at", { ascending: false })
       .limit(20),
+    // CT-162, migration 183. The product's name rides along: a notice that
+    // does not say WHICH product is running out cannot be acted on.
+    supabase
+      .from("stock_alerts")
+      .select("id, product_id, kind, quantity, created_at, read_at, products(name)")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (opensError) console.error("getNotifications: link_opens query failed", opensError);
@@ -279,6 +305,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   if (productHidesError)
     console.error("getNotifications: product_hides query failed", productHidesError);
   if (ordersError) console.error("getNotifications: catalog_orders query failed", ordersError);
+  if (stockAlertsError) console.error("getNotifications: stock_alerts query failed", stockAlertsError);
 
   const openRows = opens ?? [];
   const importRows = imports ?? [];
@@ -405,6 +432,18 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     catalog_order_items: { id: string }[] | null;
   }[];
 
+  // Same cast as `productHideRows`: `product_id` is a plain FK, so the embed
+  // is one object even though supabase-js types it as an array.
+  const stockAlertRows = (stockAlerts ?? []) as unknown as {
+    id: string;
+    product_id: string;
+    kind: "low" | "out";
+    quantity: number;
+    created_at: string;
+    read_at: string | null;
+    products: { name: string } | null;
+  }[];
+
   const clientIds = [
     ...new Set([
       ...openRows.map((r) => r.client_id),
@@ -453,6 +492,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
   const unreadDeletionIds = deletionRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadHideIds = hideRows.filter((r) => !r.read_at).map((r) => r.id);
   const unreadProductHideIds = productHideRows.filter((r) => !r.read_at).map((r) => r.id);
+  const unreadStockAlertIds = stockAlertRows.filter((r) => !r.read_at).map((r) => r.id);
   await Promise.all([
     unreadOpenIds.length > 0
       ? supabase.from("link_opens").update({ read_at: new Date().toISOString() }).in("id", unreadOpenIds)
@@ -477,6 +517,12 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           .from("product_hides")
           .update({ read_at: new Date().toISOString() })
           .in("id", unreadProductHideIds)
+      : null,
+    unreadStockAlertIds.length > 0
+      ? supabase
+          .from("stock_alerts")
+          .update({ read_at: new Date().toISOString() })
+          .in("id", unreadStockAlertIds)
       : null,
   ]);
 
@@ -615,6 +661,19 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         estado,
       };
     }),
+    ...stockAlertRows
+      .filter((r) => r.products != null)
+      .map(
+        (r): NotificationItem => ({
+          id: r.id,
+          kind: "stock_alert",
+          occurredAt: r.created_at,
+          productId: r.product_id,
+          productName: r.products!.name,
+          level: r.kind,
+          quantity: Number(r.quantity),
+        }),
+      ),
   ];
 
   return items
@@ -644,6 +703,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
     { data: hides, error: hideError },
     { data: productHides, error: productHideError },
     { data: unattendedOrders, error: ordersCountError },
+    { data: unreadStockAlerts, error: stockAlertsCountError },
   ] = await Promise.all([
     supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
     supabase
@@ -672,6 +732,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
       .eq("owner_id", user.id)
       .eq("status", "new")
       .limit(CAP),
+    supabase.from("stock_alerts").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
   ]);
 
   if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
@@ -682,6 +743,8 @@ export async function getUnreadNotificationCount(): Promise<number> {
     console.error("getUnreadNotificationCount: product_hides query failed", productHideError);
   if (ordersCountError)
     console.error("getUnreadNotificationCount: catalog_orders query failed", ordersCountError);
+  if (stockAlertsCountError)
+    console.error("getUnreadNotificationCount: stock_alerts query failed", stockAlertsCountError);
 
   return (
     (opens?.length ?? 0) +
@@ -689,6 +752,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
     (deletions?.length ?? 0) +
     (hides?.length ?? 0) +
     (productHides?.length ?? 0) +
-    (unattendedOrders?.length ?? 0)
+    (unattendedOrders?.length ?? 0) +
+    (unreadStockAlerts?.length ?? 0)
   );
 }

@@ -1,0 +1,12 @@
+import { go, click, type, shot, DIALOG } from "../lib.mjs";
+const S = "calculadora-de-tasa";
+const IN = (i) => `js:document.querySelectorAll('[role=dialog] input')[${i}]`;
+await go(`/dashboard`, 4000);
+await shot(S, 1, "Calcular");
+await click("Calcular", { wait: 2000 });
+await type(IN(0), "2000", { wait: 1000 });
+await shot(S, 2, IN(0), { blur: false });
+await shot(S, 3, IN(1));
+await shot(S, 4, "Invertir", { scope: DIALOG });
+await shot(S, 5, "Compartir", { scope: DIALOG });
+await shot(S, 6, "Filtrar por fecha", { scope: DIALOG });

@@ -193,6 +193,8 @@ export const MANIFEST = {
     plans: { via: "none" },
     product_currencies: { via: "product" },
     product_hides: { via: "owner" },
+    // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
+    stock_alerts: { via: "owner" },
     product_price_overrides: { via: "product" },
     products: { via: "owner" },
     rate_limit_counters: { via: "none" },
@@ -297,6 +299,8 @@ export const MANIFEST = {
     whatsapp_send_begin: "service",
     whatsapp_send_finish: "service",
     whatsapp_share_token_for_client: "service",
+    // 183: the single writer of stock_alerts, reached only from triggers and refresh_stock_alerts
+    sync_stock_alert: "service",
     client_accepts_whatsapp: "owner",
     import_libreta: "owner",
     // 175/177: only the owner's own trial end
@@ -305,6 +309,8 @@ export const MANIFEST = {
     // 177: no longer callable by a stranger
     owner_puede_escribir: "owner",
     record_movement_rejection: "owner",
+    // 183: takes no argument, acts on auth.uid()'s products only
+    refresh_stock_alerts: "owner",
     record_owner_declared_whatsapp_consent: "owner",
     registrar_abono_repartido: "owner",
     revoke_owner_declared_whatsapp_consent: "owner",

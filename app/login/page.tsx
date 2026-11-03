@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { InputWithIcon } from "@/components/ui/input-with-icon";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthBackLink } from "@/components/auth-back-link";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { email as emailRule, required } from "@/lib/form-validation";
@@ -41,8 +41,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <Image src="/logo-primary.svg" alt="Sevenz" width={120} height={44} className="mb-2" />
-          <CardTitle className="text-xl">Controla el fiado de tu bodega o comercio</CardTitle>
-          <CardDescription>Entra a tu cuenta para ver lo que te deben.</CardDescription>
+          {/* One line since 2026-11-03, owner's decision: the web v3 headline
+              replaced «Controla el fiado de tu bodega o comercio», and the
+              subtitle «Entra a tu cuenta para ver lo que te deben.» went with
+              it — both spoke only of the fiado. */}
+          <CardTitle className="text-xl">Lo que vendes y lo que te deben en una sola app.</CardTitle>
         </CardHeader>
         <CardContent>
           <Suspense fallback={null}>
