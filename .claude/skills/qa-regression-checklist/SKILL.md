@@ -1184,6 +1184,7 @@ sí (registro, entrada y recuperación de contraseña); el **abuso de coste** de
   `181` es **solo dev**: enciende el interruptor e instala el fallo provocado
   de `qa:sale-rollback`; en producción va únicamente su apunte en el ledger,
   como no-op, por la regla de `CLAUDE.md` sobre migraciones de un solo entorno.
+- **La limpieza de archivos (migración `182`, `DM-12`) también sale OBSERVANDO**, y su fin tiene fecha: siete noches después de la primera en producción. **El mismo día del lanzamiento se programa un aviso para esa fecha** — sin él, una observación sin final se queda observando para siempre, que es lo mismo que no haberla construido. Qué hacer al terminar está en `DM-12` de `../docs/PENDIENTES.md`, paso a paso; lo que no se puede saltar es que **encenderla y cambiar la frase de la Política de privacidad van en el mismo paso**. Y su verificación en producción lleva `servidor_escribe = true`: el cron necesita esos dos permisos y producción no los da por defecto.
 - **A new `SECURITY DEFINER` function closes with ALL three roles named**:
   `revoke execute on function … from public, anon, authenticated;` and then
   `grant … to` exactly who needs it. On Supabase a new function is granted to
@@ -1219,6 +1220,7 @@ no escribe nada.
 | Documento del cliente | `qa:document-id`, `qa:documento`, `qa:documento-cliente`, `qa:orden-letra` |
 | **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |
 | `/admin` y métricas | `qa:multi-owner` |
+| **Logos, fotos de producto, o cualquier columna que guarde la ruta de un archivo** | **`qa:storage-cleanup`** — necesita `npm run dev`. La limpieza nocturna (`DM-12`, migración `182`) borra lo que ninguna fila nombra: **una columna nueva que guarde rutas de `logos` o `product-photos` y que la `182` no conozca convierte sus archivos en «abandonados» y la limpieza los borra**, sin copia de seguridad. Si el diff añade una, se añade a las dos funciones de la `182` antes de lanzar |
 | Maquetación y accesibilidad | `qa:bordes`, `qa:contraste` |
 | **Registrar un pedido como venta** | `qa:pedido-registro`, `qa:pedidos`, **`qa:aviso-mala-paga`**, **`qa:sello-del-pedido`**, **`qa:barra-de-abajo`**, `qa:lineas-borradas`, `qa:suscripciones` |
 

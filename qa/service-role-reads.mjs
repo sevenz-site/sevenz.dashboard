@@ -35,7 +35,12 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 // dev-only tooling that provisions and mutates fixtures, and analytics/ now
 // goes through lib/admin/metrics.ts like everything else.
 const ROOTS = ["app", "lib", "components", "hooks"];
-const ALLOWED_TABLES = new Set(["bcv_exchange_rate_fetches"]);
+// The storage cleanup's two tables (migration 182, `DM-12`, 2026-11-02) are
+// the same case: system tables no owner session reaches, read and written by
+// the nightly cron alone, with their service_role grant written explicitly in
+// the migration that creates them -- so it exists in production too, and the
+// migration's verification query checks it there.
+const ALLOWED_TABLES = new Set(["bcv_exchange_rate_fetches", "storage_cleanup_settings", "storage_cleanup_log"]);
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {

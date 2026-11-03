@@ -7,6 +7,7 @@ import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
+import { storageFileExists } from "@/lib/storage-file-exists";
 
 export type ProductResult = { error: string | null; id?: string };
 
@@ -78,6 +79,11 @@ function ownPhotoPath(photoPath: string | null | undefined, userId: string): str
   return path;
 }
 
+// What a save answers when the photo it points at no longer exists: a draft
+// older than the nightly cleanup's 7 days (`DM-12`, migration 182). See
+// `lib/storage-file-exists.ts` for why the check runs only on a new path.
+const PHOTO_GONE = "La foto de este producto ya no está disponible. Vuelve a subirla y guarda de nuevo.";
+
 async function ownsProduct(productId: string) {
   const supabase = await createClient();
   const {
@@ -87,12 +93,14 @@ async function ownsProduct(productId: string) {
 
   const { data } = await supabase
     .from("products")
-    .select("id")
+    .select("id, photo_path")
     .eq("id", productId)
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  return { supabase, user, ok: Boolean(data) };
+  // `photoPath` is the one already saved, so `updateProduct` can tell a new
+  // photo (checked against Storage) from the one it keeps (never checked).
+  return { supabase, user, ok: Boolean(data), photoPath: (data?.photo_path as string | null) ?? null };
 }
 
 // Las monedas en las que un producto puede llevar precio. VES no está: es la
@@ -409,6 +417,9 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
   const checked = validate(input);
   if ("error" in checked) return { error: checked.error };
 
+  const photo = ownPhotoPath(input.photoPath, user.id);
+  if (photo && !(await storageFileExists("product-photos", photo))) return { error: PHOTO_GONE };
+
   const { data, error } = await supabase
     .from("products")
     .insert({ owner_id: user.id, ...rowFrom(input, checked, user.id) })
@@ -429,13 +440,18 @@ export async function updateProduct(
   productId: string,
   input: ProductInput,
 ): Promise<ProductResult> {
-  const { supabase, user, ok } = await ownsProduct(productId);
+  const { supabase, user, ok, photoPath: savedPhoto } = await ownsProduct(productId);
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
   if (!ok) return { error: "No encontramos ese producto." };
   if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
 
   const checked = validate(input);
   if ("error" in checked) return { error: checked.error };
+
+  const photo = ownPhotoPath(input.photoPath, user.id);
+  if (photo && photo !== savedPhoto && !(await storageFileExists("product-photos", photo))) {
+    return { error: PHOTO_GONE };
+  }
 
   const { error } = await supabase
     .from("products")

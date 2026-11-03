@@ -16,6 +16,14 @@ export const runtime = "nodejs";
 // El plan Hobby de Vercel permite **2 cron jobs** y cada uno dispara **una vez
 // al día**. Uno ya está ocupado por la tasa de cambio, así que queda uno.
 //
+// OUTDATED SINCE AT LEAST 2026-11-02, and kept because it is why this route is
+// shaped as it is: Vercel's usage page now gives Hobby **100 cron jobs per
+// project**, each still at most once a day (checked that day, when
+// `/api/cron/storage-cleanup` became the third). So "only one left" is no
+// longer the constraint, and the six separate triggers below no longer wait on
+// Vercel Pro -- only on somebody deciding the daily retry is worse than them.
+// The design itself still works and was not changed.
+//
 // El diseño original eran tres disparos el lunes y tres el jueves, para que un
 // fallo de Kapso de treinta segundos no dejara a dieciocho dueños sin su
 // mensaje. No cabe. Esto lo sustituye, y sale ganando en un aspecto:

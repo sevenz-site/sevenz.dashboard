@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { storageFileExists } from "@/lib/storage-file-exists";
 
 export type ProfileState = { error: string | null; success: boolean };
 
@@ -115,6 +116,21 @@ export async function updateBusinessSettings(
   // The logo being replaced or removed, read BEFORE the update so its file can
   // be cleaned up once the new value is saved.
   const { data: before } = await supabase.from("owners").select("logo_path").eq("id", user.id).single();
+
+  // A logo uploaded and left unsaved for more than 7 days may have been
+  // removed by the nightly cleanup (`DM-12`, migration 182). Checked only when
+  // the path is new: the saved one is referenced and never cleaned.
+  if (
+    "logo_path" in logoUpdate &&
+    logoUpdate.logo_path &&
+    logoUpdate.logo_path !== (before?.logo_path ?? null) &&
+    !(await storageFileExists("logos", logoUpdate.logo_path))
+  ) {
+    return {
+      error: "El logo que subiste ya no está disponible. Vuelve a subirlo y guarda de nuevo.",
+      success: false,
+    };
+  }
 
   const { error } = await supabase
     .from("owners")
