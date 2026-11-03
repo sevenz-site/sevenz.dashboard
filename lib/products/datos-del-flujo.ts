@@ -4,7 +4,7 @@ import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ProductRow } from "@/lib/products/catalog";
 import type { BolivarRates, CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
-import type { CategoriaConConteo } from "@/components/dashboard/category-field";
+import type { CategoriaConConteo } from "@/components/dashboard/category-manager";
 
 // LO QUE EL FLUJO DE CREAR O EDITAR UN PRODUCTO NECESITA DEL SERVIDOR.
 //

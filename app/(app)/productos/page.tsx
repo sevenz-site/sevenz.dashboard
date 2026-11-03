@@ -8,7 +8,7 @@ import {
   CatalogFilterProvider,
   CatalogSearchField,
   CatalogFilterChips,
-  CatalogCategoryChips,
+  CatalogCategorySection,
 } from "@/components/dashboard/catalog-filters";
 import type { Categoria } from "@/lib/products/categories";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -84,7 +84,7 @@ export default async function ProductosPage() {
       // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
       // `head: true` count, so it costs a plan and no rows.
       countUnregisteredOrders(supabase, user!.id),
-      // Migration 184: the owner's categories, for the chips.
+      // Migration 184: the owner's categories, for the «Categorías» section.
       supabase.from("product_categories").select("id, name").eq("owner_id", user!.id),
     ]);
 
@@ -157,15 +157,7 @@ export default async function ProductosPage() {
              donde cae la vista; el menú es la ocasional y va apartada. */
           topAction={<CatalogMenu initialToken={catalogLink?.token ?? null} />}
           search={<CatalogSearchField />}
-          filters={
-            // The category chips (migration 184) under the three filter chips:
-            // a second row, because they are a different question («what
-            // kind of product») from sorting and narrowing.
-            <div className="flex min-w-0 flex-col gap-2">
-              <CatalogFilterChips />
-              <CatalogCategoryChips />
-            </div>
-          }
+          filters={<CatalogFilterChips />}
         />
         {/* THE ORDERS SECTION, inside Catálogo -- the owner's decision of
             2026-10-16 (CT-71), which asked for BOTH surfaces: the bell and a
@@ -180,6 +172,8 @@ export default async function ProductosPage() {
             gradient is built from two theme tokens and a second hand-written
             copy of it is a copy that drifts. */}
         <OrdersCard unattended={ordenesSinAtender} />
+        {/* Categories under the card, frame `1958:16272` (2026-11-03). */}
+        <CatalogCategorySection />
         {/* SOLO `loadFailed`. Las otras ocho props existían para los dos
             diálogos que esta tabla montaba; desde el 2026-10-20 el alta y la
             edición son rutas propias y cada una pide sus datos. */}

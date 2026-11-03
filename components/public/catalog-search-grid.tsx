@@ -67,12 +67,30 @@ export function CatalogSearchGrid({
     );
   }, [items, query, categoryId]);
 
+  // Counted over what this page lists, which is only what the shop published
+  // — owner's decision of 2026-11-03: *«Al cliente: solo los publicados»*. So
+  // a chip never promises a product the customer cannot open.
+  const conChips = useMemo(() => {
+    const conteo = new Map<string, number>();
+    for (const i of items) if (i.categoryId) conteo.set(i.categoryId, (conteo.get(i.categoryId) ?? 0) + 1);
+    return categorias.map((c) => ({ id: c.id, name: c.name, productos: conteo.get(c.id) ?? 0 }));
+  }, [items, categorias]);
+
   return (
     <div className="flex flex-col gap-4">
       <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
 
-      {/* The same chips as the owner's catalogue, in the light tone. */}
-      <CategoryChips categorias={categorias} value={categoryId} onChange={setCategoryId} />
+      {/* THE OWNER'S SECTION, WITH A VARIANT — his answer of 2026-11-03: the
+          same title and chips, no «Editar», because the customer manages
+          nothing here. No categories, no section: a title over nothing. */}
+      {conChips.length > 0 ? (
+        <section aria-labelledby="catalogo-categorias" className="flex flex-col gap-1">
+          <h2 id="catalogo-categorias" className="text-sm leading-5">
+            Categorías
+          </h2>
+          <CategoryChips categorias={conChips} total={items.length} value={categoryId} onChange={setCategoryId} />
+        </section>
+      ) : null}
 
       {visibles.length === 0 ? (
         // DICE QUÉ SE BUSCÓ, no solo que no hay nada. En un teléfono es fácil
