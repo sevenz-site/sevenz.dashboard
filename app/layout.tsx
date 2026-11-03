@@ -16,7 +16,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const TITULO = "Sevenz — ¡Cuentas claras, mueven el negocio!";
+// The owner's tagline, changed on 2026-11-03 from «¡Cuentas claras, mueven el
+// negocio!» to the line the new website (web v3) is built around.
+const TITULO = "Sevenz — ¡Cuentas claras sin tanta vaina!";
 // LA FRASE DE LA TARJETA QUE SE VE AL COMPARTIR UN ENLACE.
 //
 // Cambiada por el dueño el 2026-10-23. Antes decía «Saldo compartido en tiempo
