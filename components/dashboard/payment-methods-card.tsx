@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import { Copy, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -105,8 +104,8 @@ export function PaymentMethodsCard({ initialMethods }: { initialMethods: Payment
 // happens in in-app WebViews). If both fail, the text is still on screen.
 async function copyMethod(body: string) {
   const ok = await copyText(toWhatsappText(body));
-  if (ok) toast.success("Método de pago copiado", PROFILE_TOAST);
-  else toast.error("No pudimos copiarlo. Mantén pulsado el texto para copiarlo a mano.", PROFILE_TOAST);
+  if (ok) toast.success("Método de pago copiado");
+  else toast.error("No pudimos copiarlo. Mantén pulsado el texto para copiarlo a mano.");
 }
 
 function PaymentMethodRow({
@@ -142,11 +141,11 @@ function PaymentMethodRow({
     const result = await deletePaymentMethod(method.id);
     setDeleting(false);
     if (result.error) {
-      toast.error(result.error, PROFILE_TOAST);
+      toast.error(result.error);
       return;
     }
     setConfirmingDelete(false);
-    toast.success("Método de pago eliminado", PROFILE_TOAST);
+    toast.success("Método de pago eliminado");
     onDeleted();
   }
 

@@ -59,10 +59,14 @@ try {
   check("1. el dueño escribe running_balance = 777 y vuelve a 50", Number(r1) === 50, `queda ${r1}`);
   check("1b. y el saldo que ve el cliente sigue en 50", (await saldo(cli.id)) === 50, `saldo ${await saldo(cli.id)}`);
 
-  // 2. The rest of the same update still applies: restored, not rejected.
+  // 2. Until 180 the rest of the same update still applied (description
+  // edited, balance restored). Since 180 (2026-11-02) a session may not edit
+  // any column of a movement but `deleted_at`: the whole update is refused
+  // with SZ002, and both the balance and the description stay as they were.
+  // `qa:ledger-console` holds the full set of those refusals.
   const { error: e2 } = await A.db.from("movements").update({ running_balance: 1, description: "nota del dueño" }).eq("id", m1.id);
   const r2 = (await svc.from("movements").select("running_balance, description").eq("id", m1.id).single()).data;
-  check("2. una edición que toca otra columna pasa, y el saldo se queda", !e2 && r2.description === "nota del dueño" && Number(r2.running_balance) === 50, JSON.stringify(r2));
+  check("2. una edición que toca otra columna se rechaza entera (SZ002), y el saldo se queda", e2?.code === "SZ002" && r2.description == null && Number(r2.running_balance) === 50, `${e2?.code ?? "ENTRÓ"} · ${JSON.stringify(r2)}`);
 
   // 3. The service role is no exception: only the recalculation writes it.
   await svc.from("movements").update({ running_balance: 999 }).eq("id", m1.id);

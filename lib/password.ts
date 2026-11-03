@@ -22,6 +22,15 @@ export function getPasswordCriteria(password: string): PasswordCriterion[] {
   ];
 }
 
+// What Supabase answers with `error.code === "weak_password"` when the
+// password appears in public leaks («Prevent use of leaked passwords», turned
+// on 2026-11-02). One text for the three doors that set a password -- sign-up,
+// «Cambiar contraseña» and the recovery link -- because until that day only
+// sign-up read the code and the other two said «Intenta de nuevo», which an
+// owner would do with the same password forever.
+export const LEAKED_PASSWORD_MESSAGE =
+  "Esa contraseña es muy común o ha aparecido en filtraciones de datos conocidas — elige una diferente.";
+
 // Server-side counterpart to the live checklist — same criteria, returns a
 // single friendly Spanish message instead of a per-item breakdown.
 export function validatePasswordComplexity(password: string): string | null {

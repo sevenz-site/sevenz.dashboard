@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { validatePasswordComplexity } from "@/lib/password";
+import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
 import { isReferralSource } from "@/lib/referral-source";
 import { mensajeDeError } from "@/lib/errores-legibles";
@@ -127,7 +127,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     // identifier Supabase docs recommend checking, not the message text.
     if (error.code === "weak_password") {
       return {
-        error: "Esa contraseña es muy común o ha aparecido en filtraciones de datos conocidas — elige una diferente.",
+        error: LEAKED_PASSWORD_MESSAGE,
         success: false,
         values,
       };

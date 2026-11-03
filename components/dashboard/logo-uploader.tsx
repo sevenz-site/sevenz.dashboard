@@ -15,7 +15,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { createClient } from "@/lib/supabase/client";
 import { fileToResizedBlob } from "@/lib/image";
 // THE LOGO IS SAVED WITH "GUARDAR CAMBIOS", LIKE EVERY OTHER FIELD.
@@ -80,7 +79,7 @@ export function LogoUploader({
       onChange(path);
       setPreviewUrl(URL.createObjectURL(blob));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos subir el logo.", PROFILE_TOAST);
+      toast.error(error instanceof Error ? error.message : "No pudimos subir el logo.");
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";

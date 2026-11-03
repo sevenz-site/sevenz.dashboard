@@ -17,7 +17,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { logout } from "@/app/(app)/actions";
+import { LogoutDialog } from "@/components/dashboard/logout-dialog";
 import { useImportJobs } from "@/components/import/import-context";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
@@ -68,6 +68,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
   const router = useRouter();
   const tour = useTour();
   const [instalar, setInstalar] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();
   const { guard } = useUnsavedChangesGuard();
@@ -152,7 +153,10 @@ export function AppSidebar({ businessName }: { businessName: string }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => guard(() => logout())}>
+            {/* The unsaved-changes guard runs first, then the dialog asks
+                where to sign out. Inside the phone's Sheet the dialog opens
+                on top of it, like «Instalar app». */}
+            <SidebarMenuButton onClick={() => guard(() => setLogoutOpen(true))}>
               <LogOut />
               <span>Cerrar sesión</span>
             </SidebarMenuButton>
@@ -160,6 +164,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
         </SidebarMenu>
       </SidebarFooter>
       <InstallAppDialog open={instalar} onOpenChange={setInstalar} />
+      <LogoutDialog open={logoutOpen} onOpenChange={setLogoutOpen} />
     </Sidebar>
   );
 }

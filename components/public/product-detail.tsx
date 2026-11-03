@@ -620,14 +620,16 @@ export function ProductDetail({
               });
               toast.success("Agregado a tu carrito", {
                 description: `${formatCantidad(n)} · ${total}`,
-                // ARRIBA, Y SOLO ESTE AVISO. Abajo se solapaba con la píldora
-                // «Ver carrito», que es fija y aparece justo al añadir — el
-                // aviso tapaba el botón que acababa de ganarse su sitio.
+                // ARRIBA. Abajo se solapaba con la píldora «Ver carrito», que es
+                // fija y aparece justo al añadir — el aviso tapaba el botón que
+                // acababa de ganarse su sitio.
                 //
-                // Se pone por aviso y no en el `Toaster` del layout raíz: ese
-                // es el mismo para toda la app, y moverlo cambiaría de sitio
-                // todos los avisos del tendero para arreglar uno del cliente.
-                position: "top-center",
+                // This toast was the only one moved up, deliberately, so as not
+                // to move every owner toast for one client toast. On 2026-11-02
+                // the owner asked for exactly that («arregla el solape de avisos
+                // en las otras pantallas»), so the root `Toaster` now opens every
+                // toast at the top (components/ui/sonner.tsx) and this one no
+                // longer needs its own `position`.
               });
               // SE VUELVE AL CATÁLOGO, a petición del dueño el 2026-10-15.
               //

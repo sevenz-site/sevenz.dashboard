@@ -3,7 +3,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { PROFILE_TOAST } from "@/components/dashboard/profile-toast";
 import { Button } from "@/components/ui/button";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
@@ -83,11 +82,11 @@ export function BusinessSettingsForm({
     const result = await updateBusinessSettings(initialState, formData);
     if (result.error) {
       setError(result.error);
-      toast.error(result.error, PROFILE_TOAST);
+      toast.error(result.error);
       return false;
     }
     setError(null);
-    toast.success("Cambios guardados", PROFILE_TOAST);
+    toast.success("Cambios guardados");
     setIsDirty(false);
     setDirty(false);
     router.refresh();
@@ -282,9 +281,22 @@ export function BusinessSettingsForm({
           dueño corrija su dirección. */}
       <NotificacionesAccordion owner={owner} />
 
-      <section className="flex items-start gap-2 rounded-[10px] border p-4">
-        <p className="flex-1 text-sm">Contraseña</p>
-        <ChangePasswordDialog />
+      {/* The second line is NOT in frame 1928:24764. Owner's decision on
+          2026-11-02 (phase 3, B1): an owner who fears somebody got into the
+          account has to learn here that changing the password is the way out,
+          because it signs the other devices out (Supabase does it on every
+          password change; `qa:sesiones` row 4 measures it). It runs the full
+          width under the row: beside the button it got a 125px column at
+          375px and broke into five lines. */}
+      <section className="flex flex-col gap-2 rounded-[10px] border p-4">
+        <div className="flex items-start gap-2">
+          <p className="flex-1 text-sm">Contraseña</p>
+          <ChangePasswordDialog />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Si crees que alguien entró a tu cuenta, cámbiala: se cerrará la sesión en tus otros
+          dispositivos.
+        </p>
       </section>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
