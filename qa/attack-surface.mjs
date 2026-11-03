@@ -179,6 +179,9 @@ export const MANIFEST = {
     // either; the triggers reach them through definer helpers.
     ledger_rule_hits: { via: "none" },
     ledger_rules: { via: "none" },
+    // Migration 182 (DM-12): the cleanup's switch and its log. Service role only.
+    storage_cleanup_log: { via: "none" },
+    storage_cleanup_settings: { via: "none" },
     link_opens: { via: "client" },
     movement_deletions: { via: "client" },
     movement_rejections: { via: "none" },
@@ -254,6 +257,10 @@ export const MANIFEST = {
     // 180, the ledger rules. The log is written only by this one, which no
     // session may execute.
     ledger_rule_hit: "service",
+    // Migration 182: which files nobody uses. Only the cron route behind
+    // CRON_SECRET calls them; a session gets 42501.
+    storage_orphan_candidates: "service",
+    storage_orphan_recheck: "service",
     // 180: the insert guard runs as the caller and asks whether the rules are
     // on, so any owner may execute it. It returns a boolean and nothing else.
     // Revoking it from `authenticated` refused every direct fiado and abono
@@ -408,6 +415,7 @@ export const MANIFEST = {
   // Routes under app/api and what stops a stranger.
   routes: {
     "/api/cron/exchange-rate": "cron",
+    "/api/cron/storage-cleanup": "cron",
     "/api/cron/whatsapp": "cron",
     "/api/cron/whatsapp-cartera-attention": "cron",
     "/api/cron/whatsapp-cartera-summary": "cron",

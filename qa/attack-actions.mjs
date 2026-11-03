@@ -298,7 +298,13 @@ try {
         await svc.from("owners").update({ logo_path: `${B.id}/logo.png` }).eq("id", A.id);
         return [null, fd({ ...perfilA, logo_path: "" })];
       }]],
-      control: [A.cookie, () => [null, fd({ ...perfilA, logo_path: `${A.id}/logo-1730000000000.jpg` })]],
+      // The file is uploaded first, as the app does: since `DM-12` (2026-11-02)
+      // a save refuses a NEW logo path whose file does not exist, so a
+      // control that only wrote the column would now fail for a right reason.
+      control: [A.cookie, async () => {
+        await svc.storage.from("logos").upload(`${A.id}/logo-1730000000000.jpg`, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { contentType: "image/jpeg", upsert: true });
+        return [null, fd({ ...perfilA, logo_path: `${A.id}/logo-1730000000000.jpg` })];
+      }],
       // The control saves the owner's OWN logo path and checks it stuck: the
       // finding-10 filter must not drop a legitimate logo on every save.
       exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("logo_path").eq("id", A.id).single()).data.logo_path === `${A.id}/logo-1730000000000.jpg`,
@@ -369,7 +375,7 @@ try {
     if (!t.control) return (controles[t.clave] = null);
     const [quien, args] = t.control;
     const cookie = quien === "RECUPERACION" ? await sesion(A.email, "recovery") : quien === "SESION_PROPIA" ? await sesion(A.email) : quien;
-    const r = await llamar(t.clave, args(), cookie);
+    const r = await llamar(t.clave, await args(), cookie);
     const bien = t.exitoAsync ? await t.exitoAsync(r) : (t.exito ?? funciono)(r);
     return (controles[t.clave] = bien ? true : `control falló: ${r.status} ${r.valor instanceof Error ? r.valor.message : JSON.stringify(r.valor)?.slice(0, 90)}`);
   };
@@ -414,7 +420,7 @@ try {
   rec(0, "ERROR", "la suite se detuvo", "SIN PROBAR", e instanceof Error ? e.stack : String(e));
 } finally {
   for (const id of usuarios) {
-    await svc.storage.from("logos").remove([`${id}/logo.png`]).catch(() => null);
+    await svc.storage.from("logos").remove([`${id}/logo.png`, `${id}/logo-1730000000000.jpg`]).catch(() => null);
     const { data: cs } = await svc.from("clients").select("id").eq("owner_id", id);
     for (const c of cs ?? []) for (const t of ["share_links", "client_flags", "client_hides", "movements", "client_whatsapp_consents", "client_feedback", "import_notifications"]) await svc.from(t).delete().eq("client_id", c.id).then(() => null, () => null);
     const { data: ss } = await svc.from("sales").select("id").eq("owner_id", id);
