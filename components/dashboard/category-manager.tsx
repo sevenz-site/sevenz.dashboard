@@ -1,12 +1,18 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { Check, MoreVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,11 +51,11 @@ import {
 //
 // WHAT THE FRAMES DO NOT DRAW, and was settled on 2026-11-03:
 //
-//   - The pencil has no arrow. It opens the same popup, «Editar categoría» and
+//   - «Editar» has no arrow. It opens the same popup, «Editar categoría» and
 //     «Guardar» (owner's decision).
 //   - There is no «Sin categoría» row any more. Tapping the chosen row removes
 //     it (owner's decision), and the sheet closes either way.
-//   - The bin keeps its confirmation, which says how many products are left
+//   - «Eliminar» keeps its confirmation, which says how many products are left
 //     without a category. That is why `productos` stays in the type although
 //     the rows no longer print it.
 //   - A search with no match reuses the wording of the client's catalogue.
@@ -87,6 +93,18 @@ export function CategoryManagerSheet({
   const [error, setError] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
   const tecladoAbierto = useKeyboardOpen();
+
+  // THE FOCUS IS OURS BOTH WAYS (DESIGN-SYSTEM.md): closing, the menu hands
+  // focus back to its «⋮», which took it from the popup's field just after the
+  // popup claimed it (measured 2026-11-03). So the menu gives it up when an
+  // option opens a dialog, and the dialog hands it to the sheet on the way
+  // out, because its row may no longer exist.
+  const hojaRef = useRef<HTMLDivElement>(null);
+  const abreCapa = useRef(false);
+  const volverALaHoja = (e: Event) => {
+    e.preventDefault();
+    hojaRef.current?.focus();
+  };
 
   // Every opening starts clean: no error and no search left over from the
   // last time. Both doors open it by flipping `open` from outside, so the
@@ -158,7 +176,12 @@ export function CategoryManagerSheet({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         {/* `dvh`, not `vh`: the same trap the «Registrar» sheet documents. */}
-        <SheetContent side="bottom" showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-0 rounded-t-[16px]">
+        <SheetContent
+          ref={hojaRef}
+          side="bottom"
+          showCloseButton={false}
+          className="flex max-h-[90dvh] flex-col gap-0 rounded-t-[16px]"
+        >
           {/* The X comes first on purpose: Radix focuses the first control of
               a sheet, and if that were the search field the keyboard would
               rise over the list on every opening. */}
@@ -206,10 +229,7 @@ export function CategoryManagerSheet({
                       return (
                         <li
                           key={c.id}
-                          // Both rows measure 50px in the frame. It draws the
-                          // chosen one without the 10px gap of the others,
-                          // which would shift its buttons sideways; all of
-                          // them take the gap.
+                          // Both rows measure 50px in the frame.
                           className={`flex h-[50px] items-center gap-2.5 rounded-[10px] border px-2.5 ${
                             elegida ? "border-primary bg-accent" : "border-border"
                           }`}
@@ -230,31 +250,58 @@ export function CategoryManagerSheet({
                           ) : (
                             <span className="min-w-0 flex-1 truncate text-sm leading-5 text-primary">{c.name}</span>
                           )}
-                          <div className="flex shrink-0 items-center gap-2.5">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Eliminar ${c.name}`}
-                              onClick={() => {
-                                setError(null);
-                                setBorrando(c);
+                          {/* «⋮» INSTEAD OF A BIN AND A PENCIL, owner's request of
+                              2026-11-03: *«elimina los botones "Editar" y "Eliminar",
+                              cambiemoslo por botón "More"»*. This displaces the two
+                              buttons of frame `1961:16584`, and both options lead
+                              where those did.
+
+                              `modal={false}`: each option opens a dialog of its own,
+                              and a modal menu keeps its focus trap alive under it
+                              (DESIGN-SYSTEM.md, «Un menú de Radix que se queda
+                              montado no devuelve el foco»). */}
+                          <DropdownMenu modal={false}>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Más opciones de ${c.name}`}
+                                className="shrink-0"
+                                disabled={pendiente}
+                              >
+                                <MoreVertical className="size-4" aria-hidden="true" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              onCloseAutoFocus={(e) => {
+                                if (abreCapa.current) e.preventDefault();
+                                abreCapa.current = false;
                               }}
-                              disabled={pendiente}
                             >
-                              <Trash2 className="size-4 text-destructive" aria-hidden="true" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              aria-label={`Editar ${c.name}`}
-                              onClick={() => abrirPopup(c)}
-                              disabled={pendiente}
-                            >
-                              <Pencil className="size-4" aria-hidden="true" />
-                            </Button>
-                          </div>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  abreCapa.current = true;
+                                  abrirPopup(c);
+                                }}
+                              >
+                                <Pencil className="size-4" aria-hidden="true" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => {
+                                  abreCapa.current = true;
+                                  setError(null);
+                                  setBorrando(c);
+                                }}
+                              >
+                                <Trash2 className="size-4" aria-hidden="true" />
+                                Eliminar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </li>
                       );
                     })}
@@ -299,6 +346,7 @@ export function CategoryManagerSheet({
         <DialogContent
           showCloseButton={false}
           aria-describedby={undefined}
+          onCloseAutoFocus={volverALaHoja}
           className="top-[12dvh] translate-y-0 grid-cols-[minmax(0,1fr)] gap-5 rounded-[16px] bg-background p-4 sm:top-1/2 sm:-translate-y-1/2"
         >
           <div className="flex items-center justify-between gap-2.5">
@@ -358,7 +406,7 @@ export function CategoryManagerSheet({
       </Dialog>
 
       <AlertDialog open={borrando !== null} onOpenChange={(o) => (o ? null : setBorrando(null))}>
-        <AlertDialogContent>
+        <AlertDialogContent onCloseAutoFocus={volverALaHoja}>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar «{borrando?.name}»?</AlertDialogTitle>
             <AlertDialogDescription>
