@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   Package,
+  Undo2,
   UserRound,
   UserRoundMinus,
   UserRoundX,
@@ -262,6 +263,8 @@ export function ReportesFacturacion({
 
   const hayVentas = libros.some((l) => (datos.ventas[l] ?? 0) > 0);
   const hayCartera = libros.some((l) => (datos.porCobrar[l] ?? 0) > 0);
+  // A range with nothing but returns of paid fiados still has something to say.
+  const hayDevoluciones = libros.some((l) => (datos.devoluciones[l] ?? 0) > 0);
 
   // ── CUANDO NO HAY NADA, EL FLOTANTE SE APARTA ──────────────────────
   //
@@ -276,6 +279,7 @@ export function ReportesFacturacion({
   const vacia =
     !hayCartera &&
     !hayVentas &&
+    !hayDevoluciones &&
     datos.pedidosPorAtender === 0 &&
     datos.mejoresPagadores.length === 0 &&
     datos.plazos.porVencer + datos.plazos.vencido + datos.plazos.criticos + datos.plazos.malasPagas + datos.plazos.sinPlazo === 0;
@@ -343,7 +347,7 @@ export function ReportesFacturacion({
             </button>
           }
         />
-        {!hayCartera && !hayVentas ? (
+        {!hayCartera && !hayVentas && !hayDevoluciones ? (
           <EmptyState
             title="Todavía no hay nada que resumir"
             subtitle={`No se registraron ventas ni fiados ${periodoTexto}.`}
@@ -437,12 +441,16 @@ export function ReportesFacturacion({
             oculto={false}
             puntos={datos.serieTransacciones.map((p) => ({
               etiqueta: p.etiqueta,
-              valores: [p.contado, p.abono, p.fiado],
+              valores: [p.contado, p.abono, p.fiado, p.devolucion],
             }))}
             series={[
               { nombre: "De contado", clase: "bg-money-in" },
               { nombre: "Abono", clase: "bg-sky-600" },
               { nombre: "Fiado", clase: "bg-destructive" },
+              // Owner's request of 2026-11-03. The colour is mine, there is no
+              // frame: the orange of Reportes, the one hue left that does not
+              // say «money in» or «lent».
+              { nombre: "Devolución", clase: "bg-brand-report" },
             ]}
           />
           <div className="flex gap-3">
@@ -531,6 +539,28 @@ export function ReportesFacturacion({
           </div>
           <p className="text-xs leading-4 text-muted-foreground">
             Lo que fiaste {periodoTexto}. «Por cobrar», arriba, es lo que te deben en total.
+          </p>
+          {/* «DEVOLUCIONES», under the fiados, one card per currency: owner's
+              request of 2026-11-03. The sentence below is not decoration. This
+              card is the whole value of what came back, and «Fiados» and
+              «Abonos» already lost a part of it each: read side by side with
+              no explanation, the same return looks counted twice. */}
+          <div className="flex gap-3">
+            {libros.map((l) => (
+              <TarjetaDeMonto
+                key={l}
+                rotulo={libros.length > 1 ? `Devoluciones en ${NOMBRE_DEL_LIBRO[l]}` : "Devoluciones"}
+                valor={datos.devoluciones[l] ?? 0}
+                libro={l}
+                oculto={oculto}
+                tasas={tasas}
+                icono={<Undo2 className="size-4 text-brand-report" aria-hidden />}
+              />
+            ))}
+          </div>
+          <p className="text-xs leading-4 text-muted-foreground">
+            El valor de lo que te devolvieron {periodoTexto}. «Fiados» ya descuenta lo que rebajó cada
+            fiado, y «Abonos», lo devuelto en efectivo.
           </p>
           {/* UNA SOLA TARJETA DE PEDIDOS, y el frame dibuja dos idénticas.
               No es una por moneda: un pedido sin atender no tiene moneda

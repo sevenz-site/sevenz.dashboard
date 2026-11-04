@@ -40,6 +40,7 @@ export const SECCIONES = {
   "metricas-inventario": { tab: "inventario", titulo: "Métricas del inventario" },
   margen: { tab: "inventario", titulo: "Margen por producto" },
   "mas-vendidos": { tab: "inventario", titulo: "Más vendidos" },
+  "mas-devueltos": { tab: "inventario", titulo: "Más devueltos" },
 } as const satisfies Record<string, { tab: Apartado; titulo: string }>;
 
 export type Seccion = keyof typeof SECCIONES;

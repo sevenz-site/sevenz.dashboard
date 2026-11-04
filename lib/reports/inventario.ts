@@ -1,4 +1,4 @@
-import { cargarDevoluciones, lineasDevueltas } from "@/lib/reports/devoluciones";
+import { cargarDevoluciones, lineasDevueltas, rankingDeDevueltos } from "@/lib/reports/devoluciones";
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
 import type { BolivarRates } from "@/lib/products/price";
@@ -158,6 +158,15 @@ export type ProductoDeHoja = {
   nombre: string;
   fotoPath: string | null;
   /**
+   * The «Más devueltos» sheet: units that came back. With it the row says that
+   * instead of its profit, which is not what this list is about.
+   */
+  devueltas?: number;
+  /** Its `unit`, for that line. */
+  unidad?: string | null;
+  /** In the bin: its page would answer 404, so the row does not link there. */
+  sinFicha?: boolean;
+  /**
    * Existencias vivas, o `null` si el tendero no las ha anotado.
    *
    * NO SE APLANA A CERO, y es la misma regla que la migración `163` dejó
@@ -195,6 +204,9 @@ export type ProductoVendido = {
   unidades: number;
   unidad: string | null;
 };
+
+/** Cuántos productos dibuja «Más devueltos». Es un top 5 por encargo del dueño. */
+const EN_MAS_DEVUELTOS = 5;
 
 export type Inventario = {
   /** Cuántas unidades quedan para que algo cuente como «por agotarse». */
@@ -245,6 +257,8 @@ export type Inventario = {
   monedasConMercancia: number;
   margen: ProductoDeMargen[];
   masVendidos: ProductoVendido[];
+  /** Same shape, counting what came back in the range. */
+  masDevueltos: ProductoVendido[];
   /** Cuántas líneas vendidas en el rango no apuntan a un producto del catálogo. */
   lineasSueltas: number;
   /** Los que no tienen cantidad anotada, para la hoja de su aviso. */
@@ -293,6 +307,8 @@ export type Inventario = {
    * lista no cuadrara con el gráfico de al lado.
    */
   masVendidosLista: ProductoDeHoja[];
+  /** All of them, in the chart's order, for the «Más devueltos» sheet. */
+  masDevueltosLista: ProductoDeHoja[];
 };
 
 /** Cuántos productos caben en un gráfico de barras de 312px sin que sea una reja. */
@@ -510,15 +526,29 @@ export async function cargarInventario({
   // WHAT CAME BACK IN THE RANGE counts as sold lines with a negative quantity:
   // see `lib/reports/devoluciones.ts`. Outside the `if`, because a range can
   // hold returns of sales made before it.
-  const devueltas = lineasDevueltas(
-    await cargarDevoluciones(supabase, {
-      ownerId,
-      desdeIso: rango.desde.toISOString(),
-      hastaIso: rango.hasta.toISOString(),
-      productId,
-    }),
-  );
+  const devoluciones = await cargarDevoluciones(supabase, {
+    ownerId,
+    desdeIso: rango.desde.toISOString(),
+    hastaIso: rango.hasta.toISOString(),
+    productId,
+  });
+  const devueltas = lineasDevueltas(devoluciones);
   vendidas.push(...devueltas);
+
+  // ── MÁS DEVUELTOS — encargo del dueño el 2026-11-03 ─────────────────────
+  //
+  // ONE QUERY FOR ALL OF THEM, binned ones too: a product in the bin keeps its
+  // returns, and the list has to add up with the chart beside it.
+  const rankingDevueltos = rankingDeDevueltos(devoluciones);
+  const { data: fichasDevueltas, error: errorDevueltos } = rankingDevueltos.length
+    ? await supabase
+        .from("products")
+        .select("id, name, unit, photo_path, stock_opening, trashed_at")
+        .eq("owner_id", ownerId)
+        .in("id", rankingDevueltos.map((r) => r.id))
+    : { data: [], error: null };
+  if (errorDevueltos) throw new Error(`inventario: devueltos: ${errorDevueltos.message}`);
+  const fichaDevuelta = new Map((fichasDevueltas ?? []).map((p) => [p.id as string, p]));
 
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
@@ -668,6 +698,15 @@ export async function cargarInventario({
     sinCosto,
     margen,
     masVendidos,
+    masDevueltos: rankingDevueltos.slice(0, EN_MAS_DEVUELTOS).map((r) => {
+      const p = fichaDevuelta.get(r.id);
+      return {
+        id: r.id,
+        nombre: (p?.name as string | undefined) ?? r.nombre,
+        unidades: r.unidades,
+        unidad: (p?.unit as string | null | undefined) ?? null,
+      };
+    }),
     lineasSueltas,
     sinContarLista,
     sinCostoLista,
@@ -693,6 +732,19 @@ export async function cargarInventario({
       .map((id) => vivos.get(id) ?? borrados.get(id))
       .filter((p): p is Record<string, unknown> => p != null)
       .map(comoFila),
+    masDevueltosLista: rankingDevueltos.map((r) => {
+      const p = fichaDevuelta.get(r.id);
+      return {
+        id: r.id,
+        nombre: (p?.name as string | undefined) ?? r.nombre,
+        fotoPath: (p?.photo_path as string | null | undefined) ?? null,
+        cantidad: p?.stock_opening == null ? null : Number(p.stock_opening),
+        ganancia: null,
+        devueltas: r.unidades,
+        unidad: (p?.unit as string | null | undefined) ?? null,
+        sinFicha: !p || p.trashed_at != null,
+      };
+    }),
   };
 }
 

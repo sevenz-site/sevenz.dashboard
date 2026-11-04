@@ -8,6 +8,11 @@ import type { LineaVendida } from "@/lib/reports/ganancia";
 //
 // WHICH FIGURE MOVES, given what each card means since 2026-10-29:
 //
+//   «Devoluciones en X»   the whole value of what came back, and the only card
+//                         that says so. It is NOT the sum of the two below: a
+//                         return also lands on other fiados or as saldo a favor.
+//   Chart «Transacciones» one count per return, the event and not its ledger
+//                         lines, the same way a split abono counts once.
 //   «Ventas»              does not move: it is what was collected DE CONTADO,
 //                         and only fiados can be returned.
 //   «Fiados en X»         falls by `to_own`: what stopped being owed on that
@@ -24,6 +29,8 @@ import type { LineaVendida } from "@/lib/reports/ganancia";
 export type ReturnOfRange = {
   createdAt: string;
   productId: string | null;
+  // As sold. A product renamed or binned since still reads as what came back.
+  productName: string;
   quantity: number;
   unitPrice: number;
   amount: number;
@@ -53,7 +60,7 @@ export async function cargarDevoluciones(
   let q = supabase
     .from("sale_returns")
     .select(
-      "created_at, product_id, quantity, unit_price, amount, currency, to_own, to_cash, sales!inner(catalog_order_id)",
+      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, sales!inner(catalog_order_id)",
     )
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
@@ -70,6 +77,7 @@ export async function cargarDevoluciones(
   return (data ?? []).map((r) => ({
     createdAt: r.created_at as string,
     productId: (r.product_id as string | null) ?? null,
+    productName: r.product_name as string,
     quantity: Number(r.quantity),
     unitPrice: Number(r.unit_price),
     amount: Number(r.amount),
@@ -78,6 +86,24 @@ export async function cargarDevoluciones(
     toCash: Number(r.to_cash),
     fromCatalog: Boolean((r.sales as unknown as { catalog_order_id: string | null } | null)?.catalog_order_id),
   }));
+}
+
+/**
+ * «Más devueltos»: units per product, most first, the name breaking ties so the
+ * order is the same on every load. A line with no product behind it cannot be
+ * attributed, the same as in «Más vendidos».
+ */
+export function rankingDeDevueltos(devoluciones: ReturnOfRange[]) {
+  const porProducto = new Map<string, { id: string; nombre: string; unidades: number }>();
+  for (const d of devoluciones) {
+    if (!d.productId) continue;
+    const fila = porProducto.get(d.productId);
+    if (fila) fila.unidades += d.quantity;
+    else porProducto.set(d.productId, { id: d.productId, nombre: d.productName, unidades: d.quantity });
+  }
+  return [...porProducto.values()].sort(
+    (a, b) => b.unidades - a.unidades || a.nombre.localeCompare(b.nombre, "es"),
+  );
 }
 
 /** Returns as sold lines with a negative quantity. */

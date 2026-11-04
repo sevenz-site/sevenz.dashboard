@@ -40,6 +40,8 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //
 //   Gráfico «Transacciones»
 //     RECUENTOS, no importes.
+//       devolucion = one per return, on the day of the return. See
+//                 `devoluciones.ts`, which also says what the card does.
 //       contado = nº de pares (venta, libro) que NO dejaron cargo. Es la
 //                 misma definición de «de contado» que usa la tarjeta
 //                 «Ventas» y que el historial del cliente. Una venta mixta
@@ -150,6 +152,7 @@ export type PuntoDeTransacciones = {
   contado: number;
   abono: number;
   fiado: number;
+  devolucion: number;
 };
 
 /** Un cliente dentro de una de las cuatro hojas de «Plazos de pago». */
@@ -203,6 +206,8 @@ export type Facturacion = {
   abonos: Partial<Record<Libro, number>>;
   /** Lo fiado en el periodo: la suma de los cargos, por libro. */
   fiados: Partial<Record<Libro, number>>;
+  /** El valor de lo devuelto en el rango, por libro. Ver `devoluciones.ts`. */
+  devoluciones: Partial<Record<Libro, number>>;
   ventasPorCatalogo: Partial<Record<Libro, number>>;
   serieVentas: PuntoDeVentas[];
   serieTransacciones: PuntoDeTransacciones[];
@@ -504,9 +509,11 @@ export async function cargarFacturacion({
 
   const abonosPorLibro: Partial<Record<Libro, number>> = {};
   const fiadosPorLibro: Partial<Record<Libro, number>> = {};
+  const devolucionesPorLibro: Partial<Record<Libro, number>> = {};
   for (const l of libros) {
     abonosPorLibro[l] = 0;
     fiadosPorLibro[l] = 0;
+    devolucionesPorLibro[l] = 0;
   }
 
   // ── «TRANSACCIONES POR CATÁLOGO» SIGUE SIENDO LO VENDIDO ────────────
@@ -575,6 +582,7 @@ export async function cargarFacturacion({
     contado: 0,
     abono: 0,
     fiado: 0,
+    devolucion: 0,
   }));
 
   // ── «DE CONTADO» CUENTA VENTAS, NO FILAS DE PAGO ───────────────────
@@ -636,7 +644,10 @@ export async function cargarFacturacion({
   // Which card moves and why is at the top of `lib/reports/devoluciones.ts`.
   for (const d of await cargarDevoluciones(supabase, { ownerId, desdeIso, hastaIso, clientId })) {
     const libro = d.currency as Libro;
-    if (!libros.includes(libro) || cuboDe(cs, d.createdAt) < 0) continue;
+    const i = cuboDe(cs, d.createdAt);
+    if (!libros.includes(libro) || i < 0) continue;
+    serieTransacciones[i].devolucion += 1;
+    devolucionesPorLibro[libro] = (devolucionesPorLibro[libro] ?? 0) + d.amount;
     abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
     fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) - d.toOwn;
     if (d.fromCatalog) catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) - d.amount;
@@ -801,6 +812,7 @@ export async function cargarFacturacion({
     ventas: ventasPorLibro,
     abonos: abonosPorLibro,
     fiados: fiadosPorLibro,
+    devoluciones: devolucionesPorLibro,
     ventasPorCatalogo: catalogoPorLibro,
     serieVentas,
     serieTransacciones,

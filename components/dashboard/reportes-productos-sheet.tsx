@@ -18,6 +18,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { StockBadge } from "@/components/stock-badge";
+import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoDeHoja } from "@/lib/reports/inventario";
 import { esMonedaConocida, formatDinero, type Dinero } from "@/lib/reports/ganancia";
 import { foldForSearch } from "@/lib/search/fold";
@@ -139,6 +140,7 @@ export function ReportesProductosSheet({
   productos,
   conChip = false,
   umbral,
+  explicacion = "La ganancia es la diferencia entre el precio de venta menos el precio de costo multiplicado por las unidades que vendiste",
   vacio,
   tasas,
   children,
@@ -161,6 +163,8 @@ export function ReportesProductosSheet({
   // chip era justo la cifra que esa hoja viene a contestar --cuántas
   // unidades quedan-- y ahora hay que entrar a la ficha para verla.
   conChip?: boolean;
+  /** The line under the title. «Más devueltos» has no profit to explain. */
+  explicacion?: string;
   /** `owners.low_stock_threshold`. Needed even when `conChip` is false: it costs nothing and keeps the two sheets that do draw it from being special-cased by their callers. */
   umbral: number;
   /** Qué decir cuando la lista está vacía. */
@@ -198,8 +202,7 @@ export function ReportesProductosSheet({
               que irse de pantalla al tercer producto es justo cuando deja de
               servir. */}
           <p className="text-sm font-normal text-muted-foreground">
-            La ganancia es la diferencia entre el precio de venta menos el precio de costo
-            multiplicado por las unidades que vendiste
+            {explicacion}
           </p>
         </SheetHeader>
 
@@ -345,11 +348,9 @@ function FilaDeProducto({
   // es el DATO. Confundirlos manda al tendero a reponer algo que tiene de
   // sobra.
 
-  return (
-    <Link
-      href={`/productos/${p.id}`}
-      className="flex items-center gap-3 rounded-[10px] border border-l-4 border-l-foreground p-2 transition-colors active:bg-accent"
-    >
+  const clases = "flex items-center gap-3 rounded-[10px] border border-l-4 border-l-foreground p-2";
+  const cuerpo = (
+    <>
       {/* `unoptimized` ES OBLIGATORIO. Sin él `next/image` exige el dominio de
           Supabase en `next.config.ts` y, como no está, LANZA al pintar: no
           sale una foto rota, se cae la pantalla entera. Pasó el 2026-10-28 en
@@ -364,7 +365,13 @@ function FilaDeProducto({
 
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm font-semibold">{p.nombre}</span>
-        {p.ganancia ? (
+        {p.devueltas != null ? (
+          <span className="truncate text-xs text-muted-foreground tabular-nums">
+            Devuelto: {formatCantidad(p.devueltas)}
+            {p.unidad ? ` ${p.unidad}` : ""}
+            {p.sinFicha ? " · En la papelera" : ""}
+          </span>
+        ) : p.ganancia ? (
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums">
             {esMonedaConocida(p.ganancia.currency) ? (
               <CurrencyFlagIcon currency={p.ganancia.currency} className="size-3.5 shrink-0" />
@@ -388,7 +395,14 @@ function FilaDeProducto({
         ) : null}
       </span>
 
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      {p.sinFicha ? null : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+    </>
+  );
+
+  if (p.sinFicha) return <div className={clases}>{cuerpo}</div>;
+  return (
+    <Link href={`/productos/${p.id}`} className={`${clases} transition-colors active:bg-accent`}>
+      {cuerpo}
     </Link>
   );
 }
