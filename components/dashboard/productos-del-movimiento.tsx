@@ -25,8 +25,8 @@ export function ProductosDelMovimiento({
 }: {
   productos: SaleLineRow[];
   formatearMonto: (monto: number) => string;
-  // Only the owner's detail of a fiado passes it, and only then is the «⋮»
-  // drawn. The client's face marks the line and offers nothing.
+  // Only the owner's detail of a fiado or a cash sale passes it, and only then
+  // is the «⋮» drawn. The client's face marks the line and offers nothing.
   devolucion?: ReturnMenuContext | null;
 }) {
   return (

@@ -47,6 +47,12 @@
 //     same with one column less to think about. Compare with `===` on the
 //     ledger's own spelling, never against 'COP'.
 
+// A SALE PAID IN FULL IS THE SAME TABLE (migration 186, owner's request of
+// 2026-11-04): a fiado that owes nothing, so all of its value is left over and
+// the second popup always comes. Its worked example is at the top of that file.
+// One row more: a sale with no client (Mostrador) has nobody to hold a saldo a
+// favor, so the money goes back and there is nothing to ask.
+
 // HOW IT REACHES THE SCREEN (sitemap `1976:16103`): with nothing left over, one
 // popup. With something left over, a second popup asks, and its first button
 // depends on this table: «Abonar a otros fiados» with other fiados owing in that

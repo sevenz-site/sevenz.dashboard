@@ -317,6 +317,7 @@ export const MANIFEST = {
     record_owner_declared_whatsapp_consent: "owner",
     registrar_abono_repartido: "owner",
     registrar_devolucion: "owner",
+    registrar_devolucion_contado: "owner",
     eliminar_devolucion: "owner",
     restaurar_devolucion: "owner",
     revoke_owner_declared_whatsapp_consent: "owner",
@@ -376,6 +377,7 @@ export const MANIFEST = {
     "app/(app)/productos/actions.ts#buscarProductos": "atacada",
     "app/(app)/productos/actions.ts#createProduct": "atacada",
     // 184: takes only a name and writes it for auth.uid(); no id of anyone's travels
+    "app/(app)/devoluciones/actions.ts#registrarDevolucionDeContado": "cubierta: qa:devoluciones-contado, la función comprueba al dueño con sus propios derechos",
     "app/(app)/devoluciones/actions.ts#registrarDevolucion": "cubierta: qa:devoluciones, la función comprueba el dueño y rechaza fiados, líneas y clientes ajenos",
     "app/(app)/productos/actions.ts#crearCategoria": "cubierta: qa:categorias, el dueño solo crea en su negocio y el nombre repetido se rechaza",
     "app/(app)/productos/actions.ts#eliminarCategoria": "atacada",

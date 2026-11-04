@@ -7,14 +7,12 @@ import { SetupNotice } from "@/components/setup-notice";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
-import { returnedByLine, withReturns } from "@/lib/returns/read";
+import { bookSegment, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
 import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
@@ -56,38 +54,6 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 //
 // `moneda` nula es un negocio colombiano: un solo libro, y las líneas se
 // guardan con `currency` nulo. El filtro lo respeta.
-async function lineasDe(
-  supabase: SupabaseClient,
-  saleId: string | null,
-  moneda: LedgerCurrency | null,
-): Promise<SaleLineRow[]> {
-  if (!saleId) return [];
-  const { data } = await supabase
-    .from("sale_lines")
-    // `id` AND THE SHELF, for the «⋮» of each product (migration 185).
-    .select("id, name, quantity, unit_price, currency, products(stock_opening)")
-    .eq("sale_id", saleId);
-  // NORMALISED: `sale_lines` spells the Colombian book 'COP' and `movements`
-  // spells it NULL, so comparing the raw columns found no line at all for a
-  // Colombian fiado, which the «⋮» depends on.
-  const lineas = (data ?? []).filter(
-    (l) => ((l.currency as string | null) === "COP" ? null : (l.currency ?? null)) === moneda,
-  );
-  const devueltas = await returnedByLine(
-    supabase,
-    lineas.map((l) => l.id as string),
-  );
-  return lineas.map((l) => ({
-    id: l.id as string,
-    name: l.name as string,
-    quantity: Number(l.quantity),
-    unitPrice: Number(l.unit_price),
-    devuelto: devueltas.get(l.id as string) ?? 0,
-    stockCounted:
-      (l.products as unknown as { stock_opening: number | null } | null)?.stock_opening != null,
-  }));
-}
-
 export default async function TransaccionPage({
   params,
   searchParams,
@@ -118,12 +84,12 @@ export default async function TransaccionPage({
   // del navegador, y aquí ese id es toda la dirección de la página.
   const { data: fila } = await supabase
     .from("movements")
-    .select("*, clients!inner(id, name, owner_id)")
+    .select("*, clients!inner(id, name, owner_id, is_walk_in)")
     .eq("id", movementId)
     .is("deleted_at", null)
     .maybeSingle();
 
-  const cliente = fila?.clients as unknown as { id: string; name: string; owner_id: string } | null;
+  const cliente = fila?.clients as unknown as { id: string; name: string; owner_id: string; is_walk_in: boolean } | null;
   if (!fila || !cliente || cliente.owner_id !== user.id) notFound();
   const m = fila as unknown as Movement;
 
@@ -240,16 +206,9 @@ export default async function TransaccionPage({
     // CURRENCY only: see the table in `lib/returns/options.ts`.
     if (m.sale_id && m.is_old_debt !== true && productos.length > 0) {
       contextoDeDevolucion = {
-        movementId: m.id,
+        source: { kind: "fiado", movementId: m.id },
         pendingOfFiado: abierto == null ? 0 : Number(abierto.pending),
-        otherFiados: filasAbiertas
-          .filter((c) => c.movement_id !== m.id && (c.currency ?? null) === (m.currency ?? null))
-          .map((c) => ({
-            id: c.movement_id,
-            pending: Number(c.pending),
-            chargeAt: c.charge_at,
-            title: c.description || "Fiado",
-          })),
+        otherFiados: otherFiadosOf(filasAbiertas, m.currency, m.id),
         currency: m.currency,
         ledger,
       };
@@ -516,7 +475,9 @@ export default async function TransaccionPage({
     const codigos = new Map((fiadosDestino ?? []).map((f) => [f.id as string, f.transaction_code as string]));
 
     const aviso = [
-      "Se elimina la devolución: la deuda vuelve a como estaba y las unidades salen otra vez del inventario.",
+      devolucion.charge_movement_id
+        ? "Se elimina la devolución: la deuda vuelve a como estaba y las unidades salen otra vez del inventario."
+        : "Se elimina la devolución: las unidades salen otra vez del inventario.",
       devolucion.to_credit > 0
         ? "Si el saldo a favor ya se usó, esa parte vuelve a deberse en el fiado donde se aplicó."
         : null,
@@ -525,6 +486,9 @@ export default async function TransaccionPage({
     ]
       .filter(Boolean)
       .join(" ");
+
+    // THE MOSTRADOR HAS NO LINK TO SEND: nobody is behind it.
+    const compartirDevolucion = cliente.is_walk_in ? null : compartir;
 
     return (
       <div className="flex flex-1 flex-col gap-4">
@@ -537,7 +501,7 @@ export default async function TransaccionPage({
           <DetalleAcciones
             movementId={m.id}
             clientId={cliente.id}
-            compartir={compartir}
+            compartir={compartirDevolucion}
             puedePagar={false}
             avisoDeBorrado={aviso}
           />
@@ -552,7 +516,12 @@ export default async function TransaccionPage({
           currency={m.currency}
           ledger={ledger}
           runningBalance={Math.min(...lineas.map((l) => Number(l.running_balance)))}
-          fiadoHref={`/transacciones/${devolucion.charge_movement_id}`}
+          fiadoHref={devolucion.charge_movement_id ? `/transacciones/${devolucion.charge_movement_id}` : null}
+          ventaHref={
+            devolucion.charge_movement_id
+              ? null
+              : `/transacciones/venta/${devolucion.sale_id}/${bookSegment(m.currency)}`
+          }
           otherFiados={aOtros.map((l) => ({
             movementId: l.id,
             amount: Number(l.amount),
@@ -563,7 +532,7 @@ export default async function TransaccionPage({
           }))}
         />
 
-        <DetalleBotones movementId={m.id} compartir={compartir} puedePagar={false} />
+        <DetalleBotones movementId={m.id} compartir={compartirDevolucion} puedePagar={false} />
       </div>
     );
   }

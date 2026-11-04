@@ -81,7 +81,7 @@ export type SharedVentaDeContado = {
   transaction_code?: string | null;
   currency: LedgerCurrency | null;
   amount: number;
-  lineas: { name: string; quantity: number; unit_price: number }[];
+  lineas: { name: string; quantity: number; unit_price: number; devuelto?: number }[];
   // Lo que el cliente entregó y en qué, más la tasa sellada el día del pago y
   // la nota. La lista no los usa --los usa el detalle, que lee el mismo
   // payload-- y van en el tipo para que haya UN solo contrato con la `131`.

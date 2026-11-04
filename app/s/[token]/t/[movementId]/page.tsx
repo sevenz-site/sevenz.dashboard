@@ -15,6 +15,7 @@ import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { PaymentLine } from "@/components/dashboard/payment-summary";
 import { paymentGroupKey } from "@/lib/history/group-payments";
 import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
+import { bookSegment } from "@/lib/returns/read";
 import type { ReturnSummary } from "@/lib/returns/read";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -419,7 +420,12 @@ export default async function DetalleDelClientePage({
               currency={m.currency}
               ledger={ledger}
               runningBalance={Math.min(...lineas.map((l) => Number(l.running_balance)))}
-              fiadoHref={`/s/${token}/t/${devolucion.charge_movement_id}`}
+              fiadoHref={devolucion.charge_movement_id ? `/s/${token}/t/${devolucion.charge_movement_id}` : null}
+              ventaHref={
+                devolucion.charge_movement_id
+                  ? null
+                  : `/s/${token}/v/${devolucion.sale_id}/${bookSegment(m.currency)}`
+              }
               otherFiados={lineas
                 .filter(
                   (l) =>

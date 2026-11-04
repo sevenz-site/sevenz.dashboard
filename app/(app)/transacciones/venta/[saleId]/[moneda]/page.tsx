@@ -16,7 +16,9 @@ import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { SaleLineRow } from "@/lib/sale-lines";
+import { lineasDe, otherFiadosOf } from "@/lib/returns/read";
+import { libroDeVenta } from "@/lib/ventas-de-contado";
+import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -74,31 +76,26 @@ export default async function VentaDeContadoPage({
   const { data: venta } = await supabase
     .from("sales")
     .select(
-      "id, owner_id, created_at, client_id, transaction_code, catalog_order_id, clients!inner(id, name)",
+      "id, owner_id, created_at, client_id, transaction_code, catalog_order_id, clients!inner(id, name, is_walk_in)",
     )
     .eq("id", saleId)
     .maybeSingle();
 
-  const cliente = venta?.clients as unknown as { id: string; name: string } | null;
+  const cliente = venta?.clients as unknown as { id: string; name: string; is_walk_in: boolean } | null;
   if (!venta || !cliente || venta.owner_id !== user.id) notFound();
 
-  const [{ data: lineasCrudas }, { data: pagosCrudos }] = await Promise.all([
-    supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", saleId),
+  const [lineas, { data: pagosCrudos }] = await Promise.all([
+    lineasDe(supabase, saleId, moneda),
     supabase
       .from("sale_payments")
       .select("amount, currency, entry_currency, entry_amount, rate_used, description")
       .eq("sale_id", saleId),
   ]);
 
-  const lineas: SaleLineRow[] = (lineasCrudas ?? [])
-    .filter((l) => (l.currency ?? null) === moneda)
-    .map((l) => ({
-      name: l.name as string,
-      quantity: Number(l.quantity),
-      unitPrice: Number(l.unit_price),
-    }));
-
-  const pagos = (pagosCrudos ?? []).filter((p) => (p.currency ?? null) === moneda);
+  // NORMALISED: `sale_payments` spells the Colombian book 'COP' and `moneda` is
+  // null for it. Compared raw, this screen answered 404 to every Colombian
+  // cash sale until 2026-11-04.
+  const pagos = (pagosCrudos ?? []).filter((p) => libroDeVenta(p.currency as string) === moneda);
 
   // SIN PAGOS EN ESTA MONEDA NO HAY NADA QUE ENSEÑAR. Pasa si alguien escribe
   // la ruta a mano con la moneda equivocada, y también si la parte de contado
@@ -195,6 +192,24 @@ export default async function VentaDeContadoPage({
     porMoneda.set(clave, (porMoneda.get(clave) ?? 0) + Number(p.amount));
   }
 
+  // ── THE «⋮» OF EACH PRODUCT (migration 186) ─────────────────────────────
+  //
+  // A book that left a charge is not cash: its return belongs to that fiado.
+  // The table of what is offered is at the top of `lib/returns/options.ts`.
+  let contextoDeDevolucion: ReturnMenuContext | null = null;
+  if (lineas.length > 0 && !(fiados ?? []).some((f) => (f.currency ?? null) === moneda)) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: cliente.id,
+    });
+    contextoDeDevolucion = {
+      source: { kind: "contado", saleId, walkIn: cliente.is_walk_in },
+      pendingOfFiado: 0,
+      otherFiados: otherFiadosOf(abiertos ?? [], moneda, null),
+      currency: moneda,
+      ledger,
+    };
+  }
+
   const loQueSeLleva = [
     ...[...porMoneda].map(
       ([c, total]) =>
@@ -245,7 +260,11 @@ export default async function VentaDeContadoPage({
           </Fila>
 
           {lineas.length > 0 ? (
-            <ProductosDelMovimiento productos={lineas} formatearMonto={formatear} />
+            <ProductosDelMovimiento
+              productos={lineas}
+              formatearMonto={formatear}
+              devolucion={contextoDeDevolucion}
+            />
           ) : null}
 
           {/* ── «PAGÓ», UNA SOLA FILA — frame `1580:11620` ──────────────

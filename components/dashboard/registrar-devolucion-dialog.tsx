@@ -10,7 +10,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fecha } from "@/components/fecha";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
-import { registrarDevolucion } from "@/app/(app)/devoluciones/actions";
+import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { TOLERANCE, choicesFor, splitOfReturn, spreadOverFiados, type OtherFiado } from "@/lib/returns/options";
 import type { SaleLineRow } from "@/lib/sale-lines";
@@ -41,10 +41,19 @@ import type { LedgerCurrency } from "@/lib/types";
 //     cannot hold next to a debt. «El cliente debe» is then what THIS fiado owes.
 //   · When more than one fiado owes, a list asks which. It is mine.
 //   · When the abono does not take it all, the same popup returns with the rest.
+//
+// A SALE PAID IN FULL, owner's request of 2026-11-04 (migration 186), has no
+// frame: the same popups with `pendingOfFiado` at 0, so all the value is left
+// over and the second one always comes. Mine, to be said in the report: its
+// first line and the second popup's sentence, which cannot speak of a fiado; the
+// reminder that a saldo a favor buys another product, which is how his cases 2
+// and 3 are done; and a sale with no client staying in one popup, because with a
+// single answer there is nothing to ask.
 
 export type ReturnContext = {
-  movementId: string;
-  // What this fiado still owes.
+  // What it hangs from. `walkIn` is the Mostrador.
+  source: { kind: "fiado"; movementId: string } | { kind: "contado"; saleId: string; walkIn: boolean };
+  // What this fiado still owes. 0 in a sale paid in full.
   pendingOfFiado: number;
   // The other open fiados OF THE SAME CURRENCY. A debt in the other book does
   // not appear here on purpose: it changes nothing in the table.
@@ -97,19 +106,19 @@ export function RegistrarDevolucionDialog({
     .filter((f) => f.pending > TOLERANCE);
   const remainingDebt = round2(remaining.reduce((sum, f) => sum + f.pending, 0));
   const choices = choicesFor(rest, remainingDebt);
+  const { source } = context;
+  const isCash = source.kind === "contado";
+  const walkIn = source.kind === "contado" && source.walkIn;
 
   async function register(fiados: FiadoLine[], aFavor: number, efectivo: number) {
     if (guardia() || !line.id) return;
     setSaving(true);
     setError(null);
-    const result = await registrarDevolucion({
-      movementId: context.movementId,
-      lineId: line.id,
-      quantity,
-      fiados,
-      aFavor,
-      efectivo,
-    });
+    const money = { lineId: line.id, quantity, fiados, aFavor, efectivo };
+    const result =
+      source.kind === "fiado"
+        ? await registrarDevolucion({ ...money, movementId: source.movementId })
+        : await registrarDevolucionDeContado({ ...money, saleId: source.saleId });
     if (!result.ok) {
       setSaving(false);
       if (!avisarCuentaPausada(result.error)) setError(result.error);
@@ -214,10 +223,12 @@ export function RegistrarDevolucionDialog({
               </span>
             </div>
 
-            {/* THE FRAME'S TWO AMBERS, as drawn: there is no warning token, and
-                on this fill `--brand-report` measures above the 4,5:1 floor. */}
+            {/* THE FRAME'S TWO AMBERS, as drawn, and on this fill
+                `--brand-report` measures above the 4,5:1 floor. */}
             <ul className="flex list-disc flex-col rounded-lg border border-[#ffe586] bg-[#fffbeb] py-2.5 pr-2.5 pl-6 text-xs leading-4 font-semibold text-brand-report">
-              {context.pendingOfFiado <= TOLERANCE ? (
+              {isCash ? (
+                <li>Esta compra ya estaba pagada.</li>
+              ) : context.pendingOfFiado <= TOLERANCE ? (
                 <li>Este fiado ya estaba pagado.</li>
               ) : own >= context.pendingOfFiado - TOLERANCE ? (
                 <li>Este fiado queda pagado.</li>
@@ -229,11 +240,15 @@ export function RegistrarDevolucionDialog({
                   ? `${quantity === 1 ? "1 Unidad vuelve" : `${quantity} Unidades vuelven`} al inventario.`
                   : "Este producto no lleva cantidad, así que el inventario no cambia."}
               </li>
-              <li>No cuenta como abono o ingreso de dinero.</li>
+              {walkIn ? (
+                <li>Es una venta sin cliente, así que el dinero se devuelve.</li>
+              ) : (
+                <li>No cuenta como abono o ingreso de dinero.</li>
+              )}
               <li>Puedes revertir la devolución desde el historial.</li>
             </ul>
 
-            {leftOver > 0 ? (
+            {leftOver > 0 && !walkIn ? (
               <Button
                 type="button"
                 className="h-10 w-full text-base font-semibold"
@@ -251,10 +266,10 @@ export function RegistrarDevolucionDialog({
                   type="button"
                   className="h-10 w-full text-base font-semibold"
                   disabled={saving}
-                  onClick={() => void register([], 0, 0)}
+                  onClick={() => void register([], 0, walkIn ? value : 0)}
                 >
                   {saving ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-                  Registrar devolución
+                  {walkIn ? "Devolver dinero" : "Registrar devolución"}
                 </Button>
                 <DialogClose asChild>
                   <Button
@@ -274,7 +289,12 @@ export function RegistrarDevolucionDialog({
         {step === "sobrante" ? (
           <>
             <DialogDescription className="text-sm leading-5 text-primary">
-              {toFiados > 0 ? (
+              {isCash && toFiados === 0 ? (
+                <>
+                  Esta compra ya estaba pagada; Sobran{" "}
+                  <strong className="tabular-nums">{money(rest).primary}</strong>
+                </>
+              ) : toFiados > 0 ? (
                 <>
                   Abonaste <strong className="tabular-nums">{money(toFiados).primary}</strong> a otros fiados; Sobran{" "}
                   <strong className="tabular-nums">{money(rest).primary}</strong>
@@ -320,6 +340,10 @@ export function RegistrarDevolucionDialog({
               {remainingDebt > TOLERANCE ? (
                 <p className="-mt-2 text-xs leading-4 text-muted-foreground">
                   Este cliente todavía debe {money(remainingDebt).primary} en esta moneda.
+                </p>
+              ) : isCash ? (
+                <p className="-mt-2 text-xs leading-4 text-muted-foreground">
+                  Con el saldo a favor puede llevarse otro producto.
                 </p>
               ) : null}
             </div>

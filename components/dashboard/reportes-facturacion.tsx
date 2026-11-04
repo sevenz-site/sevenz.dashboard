@@ -447,10 +447,9 @@ export function ReportesFacturacion({
               { nombre: "De contado", clase: "bg-money-in" },
               { nombre: "Abono", clase: "bg-sky-600" },
               { nombre: "Fiado", clase: "bg-destructive" },
-              // Owner's request of 2026-11-03. The colour is mine, there is no
-              // frame: the orange of Reportes, the one hue left that does not
-              // say «money in» or «lent».
-              { nombre: "Devolución", clase: "bg-brand-report" },
+              // Owner's request of 2026-11-03; #BF4C00, «warning» in his Figma,
+              // by his request of 2026-11-04.
+              { nombre: "Devolución", clase: "bg-warning" },
             ]}
           />
           <div className="flex gap-3">
@@ -554,13 +553,14 @@ export function ReportesFacturacion({
                 libro={l}
                 oculto={oculto}
                 tasas={tasas}
-                icono={<Undo2 className="size-4 text-brand-report" aria-hidden />}
+                icono={<Undo2 className="size-4 text-warning" aria-hidden />}
               />
             ))}
           </div>
           <p className="text-xs leading-4 text-muted-foreground">
             El valor de lo que te devolvieron {periodoTexto}. «Fiados» ya descuenta lo que rebajó cada
-            fiado, y «Abonos», lo devuelto en efectivo.
+            fiado. El dinero que devolviste ya está restado de «Ventas» o de «Abonos», según cómo se
+            había pagado.
           </p>
           {/* UNA SOLA TARJETA DE PEDIDOS, y el frame dibuja dos idénticas.
               No es una por moneda: un pedido sin atender no tiene moneda

@@ -39,6 +39,9 @@ const REFUSALS: Record<string, string> = {
   excede_el_fiado: "Uno de esos fiados debe menos de lo que le ibas a abonar. Vuelve a intentarlo.",
   reparto_no_cuadra: "La cuenta de lo que sobra cambió. Vuelve a intentarlo.",
   hay_deuda_en_esa_moneda: "Este cliente tiene deuda en esa moneda, así que no puede quedar a favor.",
+  venta_ajena: "No encontramos esa venta.",
+  tiene_fiado: "Esta parte de la venta quedó fiada. Registra la devolución desde su fiado.",
+  sin_cliente: "Una venta sin cliente no puede dejar saldo a favor.",
 };
 
 export async function registrarDevolucion(
@@ -81,17 +84,67 @@ export async function registrarDevolucion(
     return { ok: false, error: mensajeDeError("registrar la devolución", error, "registrarDevolucion") };
   }
 
-  const result = data as { ok: boolean; code?: string; movement_id?: string };
-  if (!result.ok) {
-    return {
-      ok: false,
-      error: REFUSALS[result.code ?? ""] ?? "No pudimos registrar la devolución. Vuelve a intentarlo.",
-    };
-  }
+  const result = data as RpcResult;
+  if (!result.ok) return { ok: false, error: refusalOf(result) };
 
   revalidatePath("/dashboard");
   revalidatePath("/productos");
   revalidatePath(`/clients/${fiado.client_id}`);
   revalidatePath(`/transacciones/${input.movementId}`);
+  return { ok: true, movementId: result.movement_id as string };
+}
+
+type RpcResult = { ok: boolean; code?: string; movement_id?: string };
+
+const refusalOf = (result: RpcResult) =>
+  REFUSALS[result.code ?? ""] ?? "No pudimos registrar la devolución. Vuelve a intentarlo.";
+
+// THE SAME THING FOR A SALE PAID IN FULL (migration 186). A function of its own
+// because there is no fiado to start from: everything hangs from the sale.
+export async function registrarDevolucionDeContado(
+  input: Omit<ReturnInput, "movementId"> & { saleId: string },
+): Promise<{ ok: true; movementId: string } | { ok: false; error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: REFUSALS.sin_sesion };
+
+  if (!(await puedeEscribir(supabase, user.id))) {
+    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  }
+
+  const { data: venta } = await supabase
+    .from("sales")
+    .select("id, client_id")
+    .eq("id", input.saleId)
+    .eq("owner_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!venta) return { ok: false, error: REFUSALS.venta_ajena };
+
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    return { ok: false, error: REFUSALS.cantidad_invalida };
+  }
+
+  const { data, error } = await supabase.rpc("registrar_devolucion_contado", {
+    p_sale_id: input.saleId,
+    p_line_id: input.lineId,
+    p_quantity: input.quantity,
+    p_fiados: input.fiados,
+    p_a_favor: input.aFavor,
+    p_efectivo: input.efectivo,
+  });
+
+  if (error) {
+    return { ok: false, error: mensajeDeError("registrar la devolución", error, "registrarDevolucionDeContado") };
+  }
+
+  const result = data as RpcResult;
+  if (!result.ok) return { ok: false, error: refusalOf(result) };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/productos");
+  revalidatePath(`/clients/${venta.client_id}`);
   return { ok: true, movementId: result.movement_id as string };
 }

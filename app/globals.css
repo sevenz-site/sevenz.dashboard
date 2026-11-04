@@ -36,6 +36,7 @@
   --color-brand-field-border: var(--brand-field-border);
   --color-brand-tab-selected: var(--brand-tab-selected);
   --color-brand-report: var(--brand-report);
+  --color-warning: var(--warning);
   --color-brand-sales: var(--brand-sales);
   --color-brand-muted: var(--brand-muted);
   --color-money-due: var(--money-due);
@@ -130,6 +131,10 @@
      oscuro y existe para un icono sobre fondo claro, donde el de marca se
      lava. Sobre blanco da 4,94:1, medido por `npm run qa:contraste`. */
   --brand-report: #bf4c00;
+  /* THE SAME COLOUR, UNDER THE NAME THE OWNER'S FIGMA GIVES IT, requested on
+     2026-11-04 for the returns of the chart. An alias and not a second value,
+     so the two can never drift apart. */
+  --warning: var(--brand-report);
   /* EL VERDE DE LOS ICONOS DE VENTAS en Reportes (frames `1752:14744` y
      `1752:14808`). Lo pidio el dueno el 2026-10-27 con el color como
      requisito.

@@ -1,4 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SaleLineRow } from "@/lib/sale-lines";
+import type { LedgerCurrency } from "@/lib/types";
+import type { OtherFiado } from "@/lib/returns/options";
 
 // A RETURN, AS THE SCREENS READ IT. The same keys `get_shared_balance` builds
 // for the client's link (migration 185), so both faces draw one shape.
@@ -15,8 +18,26 @@ export type ReturnSummary = {
   to_fiados: number;
   to_credit: number;
   to_cash: number;
-  charge_movement_id: string;
+  // Null for a return of a sale paid in full (migration 186).
+  charge_movement_id: string | null;
+  sale_id: string;
 };
+
+/** The open fiados of one book, as the return popups read them. */
+export function otherFiadosOf(
+  open: { movement_id: string; pending: number; charge_at: string; currency: LedgerCurrency | null; description: string | null }[],
+  currency: LedgerCurrency | null,
+  exceptId: string | null,
+): OtherFiado[] {
+  return open
+    .filter((c) => c.movement_id !== exceptId && (c.currency ?? null) === (currency ?? null))
+    .map((c) => ({
+      id: c.movement_id,
+      pending: Number(c.pending),
+      chargeAt: c.charge_at,
+      title: c.description || "Fiado",
+    }));
+}
 
 type WithGroup = { type: string; payment_group_id?: string | null };
 
@@ -34,7 +55,7 @@ export async function withReturns<T extends WithGroup>(
 
   const { data, error } = await supabase
     .from("sale_returns")
-    .select("id, product_name, quantity, unit_price, amount, to_own, to_fiados, to_credit, to_cash, charge_movement_id")
+    .select("id, product_name, quantity, unit_price, amount, to_own, to_fiados, to_credit, to_cash, charge_movement_id, sale_id")
     .in("id", ids);
   if (error) {
     // A label is missing, the money is not: the row still draws from `movements`.
@@ -54,7 +75,8 @@ export async function withReturns<T extends WithGroup>(
         to_fiados: Number(r.to_fiados),
         to_credit: Number(r.to_credit),
         to_cash: Number(r.to_cash),
-        charge_movement_id: r.charge_movement_id as string,
+        charge_movement_id: (r.charge_movement_id as string | null) ?? null,
+        sale_id: r.sale_id as string,
       } satisfies ReturnSummary,
     ]),
   );
@@ -64,6 +86,9 @@ export async function withReturns<T extends WithGroup>(
     return devolucion ? { ...r, devolucion } : r;
   });
 }
+
+/** The route segment of a book in `/transacciones/venta` and `/s/.../v`. */
+export const bookSegment = (currency: string | null) => currency?.toLowerCase() ?? "cop";
 
 /** How many units of each line came back, for the products of a fiado. */
 export async function returnedByLine(
@@ -82,4 +107,37 @@ export async function returnedByLine(
     out.set(id, (out.get(id) ?? 0) + Number(r.quantity));
   }
   return out;
+}
+
+// The lines of one book of a sale, with what the «⋮» of each needs.
+export async function lineasDe(
+  supabase: SupabaseClient,
+  saleId: string | null,
+  moneda: LedgerCurrency | null,
+): Promise<SaleLineRow[]> {
+  if (!saleId) return [];
+  const { data } = await supabase
+    .from("sale_lines")
+    // `id` AND THE SHELF, for the «⋮» of each product (migration 185).
+    .select("id, name, quantity, unit_price, currency, products(stock_opening)")
+    .eq("sale_id", saleId);
+  // NORMALISED: `sale_lines` spells the Colombian book 'COP' and `movements`
+  // spells it NULL, so comparing the raw columns found no line at all for a
+  // Colombian fiado, which the «⋮» depends on.
+  const lineas = (data ?? []).filter(
+    (l) => ((l.currency as string | null) === "COP" ? null : (l.currency ?? null)) === moneda,
+  );
+  const devueltas = await returnedByLine(
+    supabase,
+    lineas.map((l) => l.id as string),
+  );
+  return lineas.map((l) => ({
+    id: l.id as string,
+    name: l.name as string,
+    quantity: Number(l.quantity),
+    unitPrice: Number(l.unit_price),
+    devuelto: devueltas.get(l.id as string) ?? 0,
+    stockCounted:
+      (l.products as unknown as { stock_opening: number | null } | null)?.stock_opening != null,
+  }));
 }

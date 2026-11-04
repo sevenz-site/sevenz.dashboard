@@ -13,13 +13,20 @@ import type { LineaVendida } from "@/lib/reports/ganancia";
 //                         return also lands on other fiados or as saldo a favor.
 //   Chart «Transacciones» one count per return, the event and not its ledger
 //                         lines, the same way a split abono counts once.
-//   «Ventas»              does not move: it is what was collected DE CONTADO,
-//                         and only fiados can be returned.
+//   «Ventas»              falls by `to_cash` of a return of a CASH sale, and by
+//                         nothing else. It is the money collected de contado,
+//                         and a sale paid with saldo a favor adds nothing to it.
+//                         With a $10 shirt: money back reads $0; swapped for
+//                         another $10 shirt through a saldo a favor reads $10;
+//                         swapped for $15 trousers reads $15. Each is exactly
+//                         what stayed in the till. Owner's three cases of
+//                         2026-11-04, migration 186. `ventasDelPeriodo` (the
+//                         Inicio) has to say the same.
 //   «Fiados en X»         falls by `to_own`: what stopped being owed on that
 //                         fiado. What went to other fiados or a favor was
 //                         already paid money, not lending undone.
-//   «Abonos en X»         falls by `to_cash`, the only money that left the till.
-//                         The rest of a return never entered it.
+//   «Abonos en X»         falls by `to_cash` of a return of a FIADO, the only
+//                         money that left the till. The rest never entered it.
 //   Catálogo              falls by the value, when the sale came from an order.
 //   Ganancia, Más         fall per line: a return is a sold line with a negative
 //   vendidos, Proveedores quantity, and `cuentasPorProducto` needs no change.
@@ -39,6 +46,8 @@ export type ReturnOfRange = {
   toOwn: number;
   toCash: number;
   fromCatalog: boolean;
+  // It hangs from a fiado. If not, it came from a sale paid in full.
+  fromFiado: boolean;
 };
 
 export async function cargarDevoluciones(
@@ -60,7 +69,7 @@ export async function cargarDevoluciones(
   let q = supabase
     .from("sale_returns")
     .select(
-      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, sales!inner(catalog_order_id)",
+      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, charge_movement_id, sales!inner(catalog_order_id)",
     )
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
@@ -85,6 +94,7 @@ export async function cargarDevoluciones(
     toOwn: Number(r.to_own),
     toCash: Number(r.to_cash),
     fromCatalog: Boolean((r.sales as unknown as { catalog_order_id: string | null } | null)?.catalog_order_id),
+    fromFiado: r.charge_movement_id != null,
   }));
 }
 

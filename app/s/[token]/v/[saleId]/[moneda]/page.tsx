@@ -112,6 +112,7 @@ export default async function VentaDeContadoDelClientePage({
     name: l.name,
     quantity: Number(l.quantity),
     unitPrice: Number(l.unit_price),
+    devuelto: Number(l.devuelto ?? 0),
   }));
 
   const total = Number(venta.amount);

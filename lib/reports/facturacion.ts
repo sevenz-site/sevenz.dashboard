@@ -648,7 +648,12 @@ export async function cargarFacturacion({
     if (!libros.includes(libro) || i < 0) continue;
     serieTransacciones[i].devolucion += 1;
     devolucionesPorLibro[libro] = (devolucionesPorLibro[libro] ?? 0) + d.amount;
-    abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
+    if (d.fromFiado) {
+      abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
+    } else {
+      ventasPorLibro[libro] = (ventasPorLibro[libro] ?? 0) - d.toCash;
+      serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) - d.toCash;
+    }
     fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) - d.toOwn;
     if (d.fromCatalog) catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) - d.amount;
   }

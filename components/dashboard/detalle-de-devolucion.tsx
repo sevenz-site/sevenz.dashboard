@@ -30,6 +30,7 @@ export function DetalleDeDevolucion({
   ledger,
   runningBalance,
   fiadoHref,
+  ventaHref = null,
   otherFiados,
 }: {
   createdAt: string;
@@ -39,6 +40,8 @@ export function DetalleDeDevolucion({
   // The book after the whole return, the same figure as its row's foot.
   runningBalance: number;
   fiadoHref: string | null;
+  // Only a return of a sale paid in full: it has no fiado to link back to.
+  ventaHref?: string | null;
   otherFiados: ReturnFiadoLine[];
 }) {
   const money = (n: number) => formatLedgerAmount(n, currency, ledger).primary;
@@ -77,6 +80,8 @@ export function DetalleDeDevolucion({
             {currency ? <CurrencyFlagIcon currency={currency} className="size-4" /> : null}
           </span>
         </div>
+
+        {ventaHref ? <Linea rotulo="Compra de contado" cifra="" href={ventaHref} /> : null}
 
         <p className="pt-1 text-xs leading-4 text-muted-foreground">¿Qué se hizo con el dinero?</p>
 
