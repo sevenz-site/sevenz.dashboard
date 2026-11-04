@@ -12,6 +12,7 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import { formatCantidad } from "@/lib/products/cantidad";
 import {
   TOLERANCE,
   bookAfter,
@@ -206,7 +207,10 @@ export function RegistrarDevolucionDialog({
           <>
             <DialogDescription className="flex items-center justify-between gap-4 py-2">
               <span className="text-xs leading-4 text-muted-foreground">Producto</span>
-              <span className="min-w-0 text-right text-sm leading-5 break-words text-primary">{line.name}</span>
+              <span className="min-w-0 text-right text-sm leading-5 break-words text-primary">
+                {/* What was bought, not what is left: owner's request of 2026-11-04. */}
+                {line.name} x {formatCantidad(line.quantity)}
+              </span>
             </DialogDescription>
 
             <div className="flex flex-col gap-1">
@@ -264,7 +268,7 @@ export function RegistrarDevolucionDialog({
                 </li>
               ) : null}
               {isCash ? (
-                <li>Esta compra ya estaba pagada, así que sobran {money(leftOver).primary}.</li>
+                <li>Al devolver esta compra de contado sobrarán {money(leftOver).primary}.</li>
               ) : context.pendingOfFiado <= TOLERANCE ? (
                 <li>Este fiado ya estaba pagado, así que sobran {money(leftOver).primary}.</li>
               ) : own >= context.pendingOfFiado - TOLERANCE ? (
