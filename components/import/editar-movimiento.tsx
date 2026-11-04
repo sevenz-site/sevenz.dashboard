@@ -63,7 +63,7 @@ export function EditarMovimiento({
     currency: LedgerCurrency | null;
     date: string | null;
   }>({
-    type: fila.type,
+    type: fila.type as "charge" | "payment",
     amount: fila.amount,
     description: fila.description,
     currency: fila.currency,

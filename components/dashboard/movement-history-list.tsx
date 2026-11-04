@@ -586,14 +586,18 @@ export function MovementHistoryList({
                 : m.description
                   ? [m.description]
                   : []
-              : [];
+              : m.devolucion
+                ? [m.devolucion.product_name]
+                : [];
           return (
             <HistoryCard
               key={m.id}
-              kind={m.type === "charge" ? "fiado" : "abono"}
+              kind={m.type === "charge" ? "fiado" : m.type === "return" ? "devolucion" : "abono"}
               productos={productos}
               createdAt={m.created_at}
-              amount={Number(m.amount)}
+              // A return prints the VALUE of what came back: its ledger lines
+              // leave out what was handed back in cash, and can be zero.
+              amount={Number(m.devolucion?.amount ?? m.amount)}
               currency={m.currency}
               ledger={ledger}
               // Cada fila abre su propia ficha (2026-10-23). La de un reparto

@@ -17,6 +17,7 @@ import { formatPlazoDias } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
+import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
@@ -68,6 +69,12 @@ export type DatosDelDetalle = {
   // every fiado typed before the sale flow has no sale either.
   deudaAntigua?: boolean;
   productos?: SaleLineRow[];
+  // THE «⋮» OF EACH PRODUCT (migration 185). Only the owner's page passes it,
+  // and only for a fiado that came from a sale.
+  devolucion?: ReturnMenuContext | null;
+  // The part of a sale settled with saldo a favor: nothing is owed on it, and
+  // the row says why.
+  pagadoConSaldo?: boolean;
   createdAt: string;
   // «TOTAL POR COBRAR»: what the BOOK owed in this currency right AFTER this
   // transaction -- its `running_balance`, the same figure as the «Por cobrar»
@@ -174,6 +181,8 @@ export function DetalleDeTransaccion({
   cuotas,
   deudaAntigua = false,
   productos = [],
+  devolucion = null,
+  pagadoConSaldo = false,
   createdAt,
   runningBalance,
   balanceLabel = "Total por cobrar",
@@ -423,6 +432,7 @@ export function DetalleDeTransaccion({
           <ProductosDelMovimiento
             productos={productos}
             formatearMonto={(n) => formatLedgerAmount(n, currency, ledger).primary}
+            devolucion={devolucion}
           />
         ) : null}
 
@@ -486,6 +496,10 @@ export function DetalleDeTransaccion({
             debt are not listed here. They still count -- in «Total» (and,
             since 2026-11-03, in the book's «Total por cobrar») and in the
             «Estado» column of the cuotas table below. */}
+        {pagadoConSaldo ? (
+          <p className="py-1 text-xs leading-4 text-muted-foreground">Pagado con saldo a favor</p>
+        ) : null}
+
         {deudaAntigua ? null : type === "charge" ? (
           <div className="flex flex-col gap-2 border-t pt-2">
             {/* «Abonos relacionados», EN 14 REGULAR — frame `1510:9784`, nodo

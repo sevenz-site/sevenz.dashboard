@@ -121,7 +121,7 @@ export function NotificationList({
                           comentario en `app/(app)/actions.ts` lo cuenta-- y se
                           arregló la FICHA que se abre al pulsar «Ver», pero no
                           esta línea, que es la que se lee sin abrir nada. */}
-                      {n.type === "charge" ? "Fiado" : "Abono"} ·{" "}
+                      {n.type === "charge" ? "Fiado" : n.type === "return" ? "Devolución" : "Abono"} ·{" "}
                       {n.currency ? formatDisplayCurrency(n.amount, n.currency) : formatCurrency(n.amount)} ·{" "}
                       <Fecha iso={n.occurredAt} formato="hora" />
                     </p>

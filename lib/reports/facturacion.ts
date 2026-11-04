@@ -3,6 +3,7 @@ import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
+import { cargarDevoluciones } from "@/lib/reports/devoluciones";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ClientStatus, ClientSummary } from "@/lib/types";
@@ -46,7 +47,7 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //                 historial. Los pedidos del catálogo entran solos: se
 //                 registran creando una venta normal.
 //       abono   = nº de `movements` con type='payment'.
-//       fiado   = nº de `movements` que no son 'payment'.
+//       fiado   = nº de `movements` con type='charge'.
 //
 //   Transacciones por catálogo en X
 //     Σ cantidad × precio de las `sale_lines` de las ventas que vienen de un
@@ -60,7 +61,8 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //     movimiento de abono. Disjunto de «Ventas» por construcción.
 //
 //   Fiados en X
-//     Σ `movements.amount` de los que NO son type='payment', en el rango.
+//     Σ `movements.amount` con type='charge', en el rango, menos lo que una
+//     devolución le quitó a su fiado (`lib/reports/devoluciones.ts`).
 //
 //   Pedidos por atender / Dinero por atender
 //     `countUnregisteredOrders` y `pendingOrdersMoney`, las MISMAS que
@@ -393,7 +395,7 @@ export async function cargarFacturacion({
   const qMov = idsDeCliente.length
     ? supabase
         .from("movements")
-        .select("type, amount, currency, created_at, client_id")
+        .select("type, amount, currency, created_at, client_id, paid_with_credit")
         .in("client_id", idsDeCliente)
         .is("deleted_at", null)
         .gte("created_at", desdeIso)
@@ -453,7 +455,7 @@ export async function cargarFacturacion({
         // segundo convertiría un fiado en una venta de contado.
         supabase
           .from("movements")
-          .select("sale_id, currency, type")
+          .select("sale_id, currency, type, paid_with_credit")
           .in("sale_id", idsDeVenta)
           .is("deleted_at", null),
       ])
@@ -470,7 +472,8 @@ export async function cargarFacturacion({
   // dependiera de algo que ya no existe.
   const librosFiados = new Set(
     (cargosDeVenta ?? [])
-      .filter((m) => m.type !== "payment")
+      // Settled with saldo a favor (migration 185): nothing was lent.
+      .filter((m) => m.type === "charge" && !m.paid_with_credit)
       .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
   );
 
@@ -620,10 +623,23 @@ export async function cargarFacturacion({
     if (m.type === "payment") {
       serieTransacciones[i].abono += 1;
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
-    } else {
+    } else if (m.type === "charge" && !m.paid_with_credit) {
+      // `else if` AND NOT `else`: since migration 185 not being a payment no
+      // longer means being a fiado, and a return here would add to the lending.
       serieTransacciones[i].fiado += 1;
       fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) + monto;
     }
+  }
+
+  // ── LO QUE VOLVIÓ, EL DÍA QUE VOLVIÓ ───────────────────────────────────
+  //
+  // Which card moves and why is at the top of `lib/reports/devoluciones.ts`.
+  for (const d of await cargarDevoluciones(supabase, { ownerId, desdeIso, hastaIso, clientId })) {
+    const libro = d.currency as Libro;
+    if (!libros.includes(libro) || cuboDe(cs, d.createdAt) < 0) continue;
+    abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
+    fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) - d.toOwn;
+    if (d.fromCatalog) catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) - d.amount;
   }
 
   // ── PLAZOS DE PAGO ─────────────────────────────────────────────────

@@ -257,6 +257,10 @@ export function NuevaVenta({
 
   const delElegido = clienteId && datos?.clienteId === clienteId ? datos.valores : null;
   const saldoDelElegido = delElegido?.saldo ?? {};
+  // WHICH CURRENCIES THE SHOPKEEPER CHOSE TO PAY WITH SALDO A FAVOR. Keyed by
+  // currency and read against the chosen client's saldo, so changing client
+  // leaves it at zero with nothing to reset.
+  const [conSaldo, setConSaldo] = useState<Partial<Record<PriceCurrency, boolean>>>({});
 
   // LO COBRADO, LO FIADO Y LO QUE QUEDA SUELTO, por moneda. Se calcula en el
   // render y no se guarda aparte: un total derivado que vive por su cuenta es
@@ -264,14 +268,20 @@ export function NuevaVenta({
   const cuentas = total.map((t) => {
     const r = registros[t.currency] ?? null;
     const cobrado = r?.amount ?? 0;
+    const disponible = delElegido?.saldoAFavor?.[t.currency] ?? 0;
+    const saldoUsado = conSaldo[t.currency]
+      ? Math.round(Math.min(disponible, Math.max(0, t.amount - cobrado)) * 100) / 100
+      : 0;
     return {
       ...t,
       registro: r,
       cobrado,
+      saldoDisponible: disponible,
+      saldoUsado,
       // LO QUE QUEDA DEBIENDO, calculado. Sin registro es la venta entera: una
       // moneda que el tendero no toca queda fiada completa, que es lo que el
       // paso 3 dice con «Finalizar».
-      debe: Math.round((t.amount - cobrado) * 100) / 100,
+      debe: Math.round((t.amount - cobrado - saldoUsado) * 100) / 100,
     };
   });
 
@@ -316,7 +326,10 @@ export function NuevaVenta({
   // pulsar «Finalizar». Era una decisión tomada por la app sobre el dinero de
   // alguien, en silencio y por omisión — exactamente lo contrario de lo que
   // debería hacer la pantalla donde se cobra.
-  const sinRegistrar = cuentas.filter((c) => c.registro == null);
+  //
+  // PAID ENTIRELY WITH SALDO A FAVOR COUNTS AS REGISTERED: there is nothing to
+  // open the pay sheet for.
+  const sinRegistrar = cuentas.filter((c) => c.registro == null && c.debe > 0.005);
 
   // `destinoForzado` LLEGA DEL PASO 4 cuando acaba de crear al cliente. Sin
   // él, `guardar` leería `cliente` del cierre del render anterior —todavía
@@ -384,6 +397,9 @@ export function NuevaVenta({
           photoPath: c.registro?.photoPath ?? null,
           description: c.registro?.description ?? "",
         })),
+      saldoAFavor: cuentas
+        .filter((c) => c.saldoUsado > 0)
+        .map((c) => ({ currency: c.currency, amount: c.saldoUsado })),
       // EL CRÉDITO VA POR MONEDA Y NO POR REGISTRO: el servidor calcula el
       // resto él mismo —total menos pagos— y de aquí solo toma los TÉRMINOS.
       // Por eso lo pactado y lo que quedó suelto se mandan en una sola fila:
@@ -562,6 +578,8 @@ export function NuevaVenta({
           registros={registros}
           setRegistros={setRegistros}
           saldoDelElegido={saldoDelElegido}
+          conSaldo={conSaldo}
+          setConSaldo={setConSaldo}
           sinRegistrar={sinRegistrar.map((c) => c.currency)}
           cuentas={cuentas}
           guardando={guardando}
@@ -1345,6 +1363,8 @@ function PasoPago({
   registros,
   setRegistros,
   saldoDelElegido,
+  conSaldo,
+  setConSaldo,
   sinRegistrar,
   cuentas,
   guardando,
@@ -1361,6 +1381,8 @@ function PasoPago({
   registros: Partial<Record<PriceCurrency, Registro>>;
   setRegistros: Dispatch<SetStateAction<Partial<Record<PriceCurrency, Registro>>>>;
   saldoDelElegido: Partial<Record<PriceCurrency, number>>;
+  conSaldo: Partial<Record<PriceCurrency, boolean>>;
+  setConSaldo: Dispatch<SetStateAction<Partial<Record<PriceCurrency, boolean>>>>;
   // LAS MONEDAS QUE TODAVÍA NO SE HAN REGISTRADO. Se calcula arriba, donde
   // vive `cuentas`, para que el paso 4 pueda leerlo también sin recalcularlo.
   sinRegistrar: PriceCurrency[];
@@ -1370,6 +1392,8 @@ function PasoPago({
     registro: Registro | null;
     cobrado: number;
     debe: number;
+    saldoDisponible: number;
+    saldoUsado: number;
   }[];
   guardando: boolean;
   error: string | null;
@@ -1474,7 +1498,7 @@ function PasoPago({
                   una vez hay cifras debajo lo que se ofrece es volver a
                   abrirlas. Dejar «Pagar» sobre una tarjeta que ya enseña un
                   cobro haría dudar de si se va a cobrar dos veces. */}
-              {registrado ? (
+              {c.debe <= 0.005 && !registrado ? null : registrado ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -1495,6 +1519,26 @@ function PasoPago({
                 </Button>
               )}
             </div>
+
+            {/* ── SALDO A FAVOR, CUANDO EL CLIENTE LO TIENE ─────────────────
+                Owner's decision of 2026-11-03: the exchange of a returned
+                product has to work in a cash sale too. It lowers what is left
+                to pay, and the pay sheet opens for that remainder. */}
+            {c.saldoDisponible > 0.005 ? (
+              <label className="flex items-center justify-between gap-2 border-t py-2 text-xs">
+                <span className="flex items-center gap-2">
+                  <Checkbox
+                    checked={conSaldo[c.currency] === true}
+                    onCheckedChange={(v) => setConSaldo((xs) => ({ ...xs, [c.currency]: v === true }))}
+                    aria-label={`Usar saldo a favor en ${NOMBRE[c.currency] ?? c.currency}`}
+                  />
+                  Usar saldo a favor
+                </span>
+                <span className="tabular-nums">
+                  {formatPriceAmount(c.saldoUsado > 0 ? c.saldoUsado : c.saldoDisponible, c.currency)}
+                </span>
+              </label>
+            ) : null}
 
             {/* ── LO COBRADO ─────────────────────────────────────────────
                 «Pago de contado» cuando la venta queda saldada, «Abonó en X»
@@ -1688,7 +1732,12 @@ function PasoPago({
           onOpenChange={(abierto: boolean) => !abierto && setCobrando(null)}
           moneda={cobrando}
           ownerId={ownerId}
-          total={cuentas.find((c) => c.currency === cobrando)?.amount ?? 0}
+          // WHAT IS LEFT TO PAY, not the whole sale: the saldo already covered
+          // its part.
+          total={(() => {
+            const c = cuentas.find((x) => x.currency === cobrando);
+            return c ? Math.round((c.amount - c.saldoUsado) * 100) / 100 : 0;
+          })()}
           rates={rates}
           prevista={prevista}
           inicial={registros[cobrando] ?? null}

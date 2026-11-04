@@ -133,7 +133,11 @@ export function MovementDeletionDialog({
             <Fila nombre="Fecha"><Fecha iso={notification.movementCreatedAt} formato="hora" /></Fila>
             <Fila nombre="Tipo">
               <span className="inline-flex items-center gap-1.5">
-                {notification.type === "charge" ? "Cargo (fía)" : "Abono (paga)"}
+                {notification.type === "charge"
+                  ? "Cargo (fía)"
+                  : notification.type === "return"
+                    ? "Devolución"
+                    : "Abono (paga)"}
                 {notification.type === "charge" ? (
                   <IconoDeFiado className="size-3.5 text-destructive" aria-hidden />
                 ) : (

@@ -51,6 +51,8 @@
     "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
     "qa:avisos-inventario": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/avisos-inventario.mjs",
     "qa:categorias": "node qa/categorias.mjs",
+    "qa:devoluciones": "node qa/devoluciones.mjs",
+    "qa:puntaje-devoluciones": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/puntaje-devoluciones.mjs",
     "qa:pedido-registro": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedido-registro.mjs",
     "qa:cuotas": "node qa/cuotas.mjs",
     "qa:abono-dirigido": "node qa/abono-dirigido.mjs",

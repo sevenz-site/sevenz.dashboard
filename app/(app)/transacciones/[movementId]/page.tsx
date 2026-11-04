@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
+import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
+import { returnedByLine, withReturns } from "@/lib/returns/read";
+import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -61,15 +64,28 @@ async function lineasDe(
   if (!saleId) return [];
   const { data } = await supabase
     .from("sale_lines")
-    .select("name, quantity, unit_price, currency")
+    // `id` AND THE SHELF, for the «⋮» of each product (migration 185).
+    .select("id, name, quantity, unit_price, currency, products(stock_opening)")
     .eq("sale_id", saleId);
-  return (data ?? [])
-    .filter((l) => (l.currency ?? null) === moneda)
-    .map((l) => ({
-      name: l.name as string,
-      quantity: Number(l.quantity),
-      unitPrice: Number(l.unit_price),
-    }));
+  // NORMALISED: `sale_lines` spells the Colombian book 'COP' and `movements`
+  // spells it NULL, so comparing the raw columns found no line at all for a
+  // Colombian fiado, which the «⋮» depends on.
+  const lineas = (data ?? []).filter(
+    (l) => ((l.currency as string | null) === "COP" ? null : (l.currency ?? null)) === moneda,
+  );
+  const devueltas = await returnedByLine(
+    supabase,
+    lineas.map((l) => l.id as string),
+  );
+  return lineas.map((l) => ({
+    id: l.id as string,
+    name: l.name as string,
+    quantity: Number(l.quantity),
+    unitPrice: Number(l.unit_price),
+    devuelto: devueltas.get(l.id as string) ?? 0,
+    stockCounted:
+      (l.products as unknown as { stock_opening: number | null } | null)?.stock_opening != null,
+  }));
 }
 
 export default async function TransaccionPage({
@@ -79,7 +95,9 @@ export default async function TransaccionPage({
   params: Promise<{ movementId: string }>;
   // `?abono=<id>` — cuál de las tarjetas de abono se vino a ver. Lo manda la
   // fila del historial desde el 2026-10-22, porque esa fila abre el FIADO.
-  searchParams: Promise<{ abono?: string }>;
+  // `?registrada=1` — recién registrada una devolución: la ficha es su pantalla
+  // de éxito, y solo cambia el título.
+  searchParams: Promise<{ abono?: string; registrada?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -88,7 +106,7 @@ export default async function TransaccionPage({
   // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
   // sigue aceptando en la URL —hay enlaces compartidos con él— y se
   // ignora, que es lo que hace que no rompan.
-  await searchParams;
+  const { registrada } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -202,14 +220,40 @@ export default async function TransaccionPage({
   let abonoInicialBs: number | null = null;
   let pendienteDelFiado: number | null = null;
   let abonosRecibidos: AbonoDirigido[] | undefined;
+  let contextoDeDevolucion: ReturnMenuContext | null = null;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
       p_client_id: cliente.id,
     });
-    const abierto = ((abiertos ?? []) as { movement_id: string; pending: number }[]).find(
-      (c) => c.movement_id === m.id,
-    );
+    const filasAbiertas = (abiertos ?? []) as {
+      movement_id: string;
+      pending: number;
+      charge_at: string;
+      currency: LedgerCurrency | null;
+      description: string | null;
+    }[];
+    const abierto = filasAbiertas.find((c) => c.movement_id === m.id);
     puedePagar = abierto != null && Number(abierto.pending) > 0.005;
+
+    // WHAT THE RETURN MODAL NEEDS. Only a fiado that came from a sale has
+    // products, and an old debt has no purchase. `otherFiados` is the SAME
+    // CURRENCY only: see the table in `lib/returns/options.ts`.
+    if (m.sale_id && m.is_old_debt !== true && productos.length > 0) {
+      contextoDeDevolucion = {
+        movementId: m.id,
+        pendingOfFiado: abierto == null ? 0 : Number(abierto.pending),
+        otherFiados: filasAbiertas
+          .filter((c) => c.movement_id !== m.id && (c.currency ?? null) === (m.currency ?? null))
+          .map((c) => ({
+            id: c.movement_id,
+            pending: Number(c.pending),
+            chargeAt: c.charge_at,
+            title: c.description || "Fiado",
+          })),
+        currency: m.currency,
+        ledger,
+      };
+    }
 
     // ── «TOTAL POR COBRAR» DE UN FIADO ES LO QUE ESE FIADO DEBE ─────────
     //
@@ -302,14 +346,18 @@ export default async function TransaccionPage({
     // últimamente», y el último abono es el que se viene a comprobar.
     const { data: pagos } = await supabase
       .from("movements")
-      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
+      .select("id, type, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
       .eq("client_id", cliente.id)
       .eq("applies_to_movement_id", m.id)
-      .eq("type", "payment")
+      // A return that reached this fiado is listed here too, under its own
+      // name. `gt` because its line can be zero (migration 185).
+      .in("type", ["payment", "return"])
+      .gt("amount", 0)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     abonosRecibidos = (pagos ?? []).map((p) => ({
+      esDevolucion: p.type === "return",
       movementId: p.id as string,
       fecha: p.created_at as string,
       currency: p.currency as AbonoDirigido["currency"],
@@ -435,6 +483,91 @@ export default async function TransaccionPage({
     enlace: { de: "dueño", clientId: cliente.id },
   };
 
+  // ── UNA DEVOLUCIÓN TIENE SU PROPIA FICHA ───────────────────────────────
+  //
+  // All her ledger lines, to know where the money went: they share
+  // `payment_group_id`, which is the id of the event (migration 185).
+  if (m.type === "return") {
+    const { data: filas } = await supabase
+      .from("movements")
+      .select("id, type, amount, running_balance, applies_to_movement_id, payment_group_id")
+      .eq("client_id", cliente.id)
+      .eq("type", "return")
+      .eq("payment_group_id", m.payment_group_id as string)
+      .is("deleted_at", null);
+    const lineas = await withReturns(supabase, filas ?? []);
+    const devolucion = lineas[0]?.devolucion;
+    if (!devolucion) notFound();
+
+    const aOtros = lineas.filter(
+      (l) =>
+        l.applies_to_movement_id &&
+        l.applies_to_movement_id !== devolucion.charge_movement_id &&
+        Number(l.amount) > 0,
+    );
+    const { data: fiadosDestino } = aOtros.length
+      ? await supabase
+          .from("movements")
+          .select("id, transaction_code")
+          .in("id", aOtros.map((l) => l.applies_to_movement_id as string))
+          .eq("client_id", cliente.id)
+          .is("deleted_at", null)
+      : { data: [] };
+    const codigos = new Map((fiadosDestino ?? []).map((f) => [f.id as string, f.transaction_code as string]));
+
+    const aviso = [
+      "Se elimina la devolución: la deuda vuelve a como estaba y las unidades salen otra vez del inventario.",
+      devolucion.to_credit > 0
+        ? "Si el saldo a favor ya se usó, esa parte vuelve a deberse en el fiado donde se aplicó."
+        : null,
+      devolucion.to_cash > 0 ? "El efectivo devuelto deja de restarse en Reportes." : null,
+      "Podrás restaurarla desde Notificaciones.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between border-b bg-background px-4 py-2">
+          <Button variant="ghost" size="icon" asChild className="-ml-2">
+            <Link href={`/clients/${cliente.id}`} aria-label={`Volver a ${cliente.name}`}>
+              <IconoVolver className="text-primary" />
+            </Link>
+          </Button>
+          <DetalleAcciones
+            movementId={m.id}
+            clientId={cliente.id}
+            compartir={compartir}
+            puedePagar={false}
+            avisoDeBorrado={aviso}
+          />
+        </div>
+
+        <ScreenTitle>{registrada ? "Devolución registrada" : "Detalle de transacción"}</ScreenTitle>
+        <CodigoDeTransaccion codigo={(m.transaction_code as string | null) ?? null} />
+
+        <DetalleDeDevolucion
+          createdAt={m.created_at}
+          devolucion={devolucion}
+          currency={m.currency}
+          ledger={ledger}
+          runningBalance={Math.min(...lineas.map((l) => Number(l.running_balance)))}
+          fiadoHref={`/transacciones/${devolucion.charge_movement_id}`}
+          otherFiados={aOtros.map((l) => ({
+            movementId: l.id,
+            amount: Number(l.amount),
+            title: `fiado ${codigos.get(l.applies_to_movement_id as string) ?? ""}`.trim(),
+            href: codigos.has(l.applies_to_movement_id as string)
+              ? `/transacciones/${l.applies_to_movement_id}`
+              : null,
+          }))}
+        />
+
+        <DetalleBotones movementId={m.id} compartir={compartir} puedePagar={false} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LA BARRA DE ARRIBA DEL FRAME: flecha a la izquierda, «⋮» a la derecha.
@@ -461,7 +594,7 @@ export default async function TransaccionPage({
           // diálogo de confirmación pregunta qué hacer con ellos. Ya está
           // calculado arriba para la propia ficha, así que no cuesta otra
           // consulta; `?? []` cubre el caso de un abono, donde no se pide.
-          abonosDirigidos={(abonosRecibidos ?? []).length}
+          abonosDirigidos={(abonosRecibidos ?? []).filter((a) => !a.esDevolucion).length}
           // CUÁNTAS LÍNEAS SE VAN SI SE BORRA ESTE ABONO: un reparto se borra
           // entero (decisión del dueño el 2026-10-30), y el diálogo lo dice.
           lineasDelReparto={lineasDelReparto}
@@ -485,6 +618,8 @@ export default async function TransaccionPage({
         // draws an ordinary fiado instead of guessing.
         deudaAntigua={m.is_old_debt === true}
         productos={productos}
+        devolucion={contextoDeDevolucion}
+        pagadoConSaldo={m.paid_with_credit === true}
         createdAt={m.created_at}
         runningBalance={saldoTrasElAbono ?? Number(m.running_balance)}
         pendienteDelFiado={m.type === "charge" ? pendienteDelFiado : null}

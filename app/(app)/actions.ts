@@ -107,7 +107,7 @@ export type NotificationItem =
       occurredAt: string;
       movementId: string;
       clientName: string;
-      type: "charge" | "payment";
+      type: "charge" | "payment" | "return";
       amount: number;
       // En que libro vive este movimiento. Null en un negocio colombiano.
       // Sin este dato la ficha no puede formatear el monto y lo daba por
@@ -235,7 +235,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         // currency y el rastro de bolivares no estaban aqui, y esa ausencia era el
         // fallo: sin currency, la ficha formateaba TODO como pesos colombianos y
         // un movimiento de 45 euros se leia "$ 45,00".
-        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, amount, currency, description, plazo_dias, cuotas, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used, transaction_code, deleted_at)",
+        "id, client_id, deleted_at, restored_at, read_at, movements(id, type, payment_group_id, amount, currency, description, plazo_dias, cuotas, photo_path, running_balance, created_at, entry_currency, entry_amount, exchange_rate_used, transaction_code, deleted_at)",
       )
       .eq("owner_id", user.id)
       .order("deleted_at", { ascending: false })
@@ -328,7 +328,8 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     read_at: string | null;
     movements: {
       id: string;
-      type: "charge" | "payment";
+      type: "charge" | "payment" | "return";
+      payment_group_id: string | null;
       amount: number;
       currency: LedgerCurrency | null;
       description: string | null;
@@ -405,6 +406,20 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       cruzaLibros,
     };
   };
+
+  // A RETURN'S NOTICE SAYS ITS VALUE, not its ledger line: that line leaves out
+  // what was handed back in cash, and can be zero (migration 185).
+  const idsDeDevolucion = deletionRows
+    .filter((r) => r.movements?.type === "return" && r.movements.payment_group_id)
+    .map((r) => r.movements!.payment_group_id as string);
+  const valorDeDevolucion = new Map<string, number>();
+  if (idsDeDevolucion.length > 0) {
+    const { data: devoluciones } = await supabase
+      .from("sale_returns")
+      .select("id, amount")
+      .in("id", idsDeDevolucion);
+    for (const d of devoluciones ?? []) valorDeDevolucion.set(d.id as string, Number(d.amount));
+  }
 
   // Mismo casteo que `deletionRows` y por el mismo motivo: sin tipos generados
   // supabase-js infiere todo embed como array, y `product_id` es una FK simple
@@ -565,7 +580,9 @@ export async function getNotifications(): Promise<NotificationItem[]> {
           movementId: movement.id,
           clientName: client?.name ?? "Cliente",
           type: movement.type,
-          amount: reparto ? reparto.amount : movement.amount,
+          amount: reparto
+            ? reparto.amount
+            : (valorDeDevolucion.get(movement.payment_group_id ?? "") ?? movement.amount),
           currency: movement.currency,
           entryCurrency: reparto ? reparto.entryCurrency : movement.entry_currency,
           entryAmount: reparto ? reparto.entryAmount : movement.entry_amount,

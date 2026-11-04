@@ -424,7 +424,7 @@ export async function exportarMovimientos({
         supabase.from("sale_payments").select("sale_id, amount, currency").in("sale_id", idsV),
         supabase
           .from("movements")
-          .select("sale_id, currency, type")
+          .select("sale_id, currency, type, paid_with_credit")
           .in("sale_id", idsV)
           .is("deleted_at", null),
       ])
@@ -432,7 +432,8 @@ export async function exportarMovimientos({
 
   const librosFiados = new Set(
     (cargosV ?? [])
-      .filter((m) => m.type !== "payment")
+      // Settled with saldo a favor (migration 185): nothing was lent.
+      .filter((m) => m.type === "charge" && !m.paid_with_credit)
       .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
   );
 
@@ -609,7 +610,7 @@ export async function exportarMovimientos({
           f.clients?.document_id ?? "",
           // `Fiado` / `Abono` Y NO `charge` / `payment`: el fichero lo abre un
           // tendero, y esas dos palabras no son su vocabulario.
-          esFiado ? "Fiado" : "Abono",
+          esFiado ? "Fiado" : f.type === "return" ? "Devolución" : "Abono",
           libro,
           null,
           esFiado ? importe(Number(f.amount)) : null,

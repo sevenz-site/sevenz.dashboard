@@ -195,6 +195,7 @@ export const MANIFEST = {
     product_hides: { via: "owner" },
     // 184: one per product; the composite key keeps a product off another owner's
     product_categories: { via: "owner" },
+    sale_returns: { via: "owner" },
     // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
     stock_alerts: { via: "owner" },
     product_price_overrides: { via: "product" },
@@ -315,6 +316,9 @@ export const MANIFEST = {
     refresh_stock_alerts: "owner",
     record_owner_declared_whatsapp_consent: "owner",
     registrar_abono_repartido: "owner",
+    registrar_devolucion: "owner",
+    eliminar_devolucion: "owner",
+    restaurar_devolucion: "owner",
     revoke_owner_declared_whatsapp_consent: "owner",
     whatsapp_consent_for_phone: "owner",
     // the public catalogue; the price comes from the product (qa:orden)
@@ -372,6 +376,7 @@ export const MANIFEST = {
     "app/(app)/productos/actions.ts#buscarProductos": "atacada",
     "app/(app)/productos/actions.ts#createProduct": "atacada",
     // 184: takes only a name and writes it for auth.uid(); no id of anyone's travels
+    "app/(app)/devoluciones/actions.ts#registrarDevolucion": "cubierta: qa:devoluciones, la función comprueba el dueño y rechaza fiados, líneas y clientes ajenos",
     "app/(app)/productos/actions.ts#crearCategoria": "cubierta: qa:categorias, el dueño solo crea en su negocio y el nombre repetido se rechaza",
     "app/(app)/productos/actions.ts#eliminarCategoria": "atacada",
     "app/(app)/productos/actions.ts#renombrarCategoria": "atacada",

@@ -1,3 +1,4 @@
+import { cargarDevoluciones, lineasDevueltas } from "@/lib/reports/devoluciones";
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
 import type { BolivarRates } from "@/lib/products/price";
@@ -506,6 +507,19 @@ export async function cargarInventario({
   // seguiría listando el catálogo entero bajo un rótulo que promete uno.
   const esDelFiltro = (id: string) => !productId || id === productId;
 
+  // WHAT CAME BACK IN THE RANGE counts as sold lines with a negative quantity:
+  // see `lib/reports/devoluciones.ts`. Outside the `if`, because a range can
+  // hold returns of sales made before it.
+  const devueltas = lineasDevueltas(
+    await cargarDevoluciones(supabase, {
+      ownerId,
+      desdeIso: rango.desde.toISOString(),
+      hastaIso: rango.hasta.toISOString(),
+      productId,
+    }),
+  );
+  vendidas.push(...devueltas);
+
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")
@@ -514,6 +528,7 @@ export async function cargarInventario({
     if (error) throw new Error(`inventario: líneas: ${error.message}`);
 
     const porProducto: Record<string, number> = {};
+    for (const d of devueltas) porProducto[d.productId] = (porProducto[d.productId] ?? 0) + d.quantity;
     for (const l of lineas ?? []) {
       if (l.product_id && esDelFiltro(l.product_id as string)) {
         vendidas.push({

@@ -12,7 +12,7 @@ const WEEKDAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 export type WeeklyLendingPoint = { day: string; fiado: number; abono: number };
 
-type MovementInput = { type: "charge" | "payment"; amount: number; created_at: string };
+type MovementInput = { type: "charge" | "payment" | "return"; amount: number; created_at: string };
 
 // Built once, at module load, and reused for every movement. Constructing an
 // Intl.DateTimeFormat is expensive — it resolves a locale and a timezone
@@ -88,7 +88,8 @@ export function computeMonthlyFiadoAbono(
       const ms = new Date(`${bogotaDateKey(m.created_at)}T00:00:00Z`).getTime();
       if (ms < startMs || ms > endMs) continue;
       if (m.type === "charge") fiado += m.amount;
-      else abono += m.amount;
+      // A return is not an abono: no money came in (migration 185).
+      else if (m.type === "payment") abono += m.amount;
     }
     const d = new Date(startMs);
     points.push({
@@ -117,6 +118,7 @@ export function computeWeeklyFiadoAbono(
   const abonoByDate = new Map<string, number>();
   for (const m of movements) {
     const key = bogotaDateKey(m.created_at);
+    if (m.type === "return") continue;
     const byDate = m.type === "charge" ? fiadoByDate : abonoByDate;
     byDate.set(key, (byDate.get(key) ?? 0) + m.amount);
   }

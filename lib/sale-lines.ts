@@ -60,4 +60,10 @@ export type SaleLineRow = {
   name: string;
   quantity: number;
   unitPrice: number;
+  // Migration 185. `id` only where a return can be registered: the owner's
+  // detail of a fiado. `devuelto` is how many units came back, on both faces.
+  // `stockCounted` says whether the shelf moves, so the modal can tell.
+  id?: string;
+  devuelto?: number;
+  stockCounted?: boolean;
 };

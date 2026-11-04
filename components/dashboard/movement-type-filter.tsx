@@ -27,6 +27,7 @@ const TIPOS = [
   { value: "todos", label: "Todas" },
   { value: "charge", label: "Fiado" },
   { value: "payment", label: "Abono" },
+  { value: "return", label: "Devolución" },
   { value: "cash", label: "De contado" },
 ] as const;
 
@@ -377,7 +378,9 @@ export function tituloDeListaVacia({
       ? "fiados"
       : tipo === "payment"
         ? "abonos"
-        : tipo === "cash"
+        : tipo === "return"
+          ? "devoluciones"
+          : tipo === "cash"
           ? "ventas de contado"
           : "transacciones";
 

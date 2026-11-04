@@ -29,6 +29,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
+import { withReturns } from "@/lib/returns/read";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   clientStatusLabel,
@@ -609,7 +610,8 @@ async function MovementHistory({
   // compartida: las líneas de un reparto empatan en `created_at` y sin
   // desempate cada pantalla las ordenaba a su manera. Ver
   // `lib/orden-del-historial.ts`.
-  const movementRows = ordenarHistorial((movements ?? []) as Movement[]);
+  // `withReturns`: a return's row prints its product and its value (migration 185).
+  const movementRows = ordenarHistorial(await withReturns(supabase, (movements ?? []) as Movement[]));
 
   // AQUÍ SE LEÍA EL SALDO DE CADA LIBRO, para que la fila del abono suelto
   // tuviera pie. Se fue el 2026-10-23: desde ese día el pie de TODAS las

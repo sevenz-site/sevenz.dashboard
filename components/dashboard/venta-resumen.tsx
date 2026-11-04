@@ -288,6 +288,10 @@ function TarjetaDeMoneda({ bloque, rates }: { bloque: BloqueDelResumen; rates: B
         />
       ) : null}
 
+      {bloque.saldoUsado > 0.005 ? (
+        <Fila etiqueta="Saldo a favor" valor={formatPriceAmount(bloque.saldoUsado, bloque.currency)} />
+      ) : null}
+
       {hayDeuda ? (
         <div className="flex flex-col gap-2 border-t pt-3">
           <div className="flex items-center justify-between gap-1 text-xs">
@@ -376,6 +380,9 @@ function textoDelResumen(
       lineas.push(
         `${b.debe > 0.005 ? `Abonó en ${nombre}` : "Pago de contado"}: ${formatPriceAmount(b.cobrado, b.currency)}`,
       );
+    }
+    if (b.saldoUsado > 0.005) {
+      lineas.push(`Saldo a favor: ${formatPriceAmount(b.saldoUsado, b.currency)}`);
     }
     if (b.debe > 0.005) {
       lineas.push(`Debe (esta venta): ${formatPriceAmount(b.debe, b.currency)}`);

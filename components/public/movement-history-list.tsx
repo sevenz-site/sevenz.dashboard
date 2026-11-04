@@ -30,10 +30,13 @@ import { formatBs } from "@/lib/exchange-rate/format";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { foldForSearch } from "@/lib/search/fold";
+import type { ReturnSummary } from "@/lib/returns/read";
 
 type SharedMovement = {
   id: string;
-  type: "charge" | "payment";
+  type: "charge" | "payment" | "return";
+  // Migration 185: what came back. Built by `get_shared_balance`.
+  devolucion?: ReturnSummary | null;
   // El código de su transacción — migración 148, para el buscador.
   transaction_code?: string | null;
   amount: number;
@@ -457,14 +460,18 @@ export function MovementHistoryList({
                 : m.description
                   ? [m.description]
                   : []
-              : [];
+              : m.devolucion
+                ? [m.devolucion.product_name]
+                : [];
           return (
             <HistoryCard
               key={m.id}
-              kind={m.type === "charge" ? "fiado" : "abono"}
+              kind={m.type === "charge" ? "fiado" : m.type === "return" ? "devolucion" : "abono"}
               productos={productos}
               createdAt={m.created_at}
-              amount={Number(m.amount)}
+              // A return prints the VALUE of what came back: its ledger lines
+              // leave out what was handed back in cash, and can be zero.
+              amount={Number(m.devolucion?.amount ?? m.amount)}
               currency={m.currency}
               ledger={ledger}
               href={`/s/${token}/t/${m.id}`}

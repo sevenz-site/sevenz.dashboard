@@ -16,6 +16,7 @@ const KIND: Record<TransactionSearchResult["kind"], string> = {
   fiado: "Fiado",
   abono: "Abono",
   venta: "Venta de contado",
+  devolucion: "Devolución",
 };
 
 export function TransactionResultList({

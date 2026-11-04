@@ -139,6 +139,29 @@ export async function deleteMovement(
     return { error: "No encontramos esa transacción." };
   }
 
+  // A RETURN GOES THROUGH ITS OWN FUNCTION (migration 185): its ledger lines,
+  // the event and the shelf have to move together.
+  if (movement.type === "return") {
+    const { data, error } = await supabase.rpc("eliminar_devolucion", { p_movement_id: movementId });
+    if (error) return { error: mensajeDeError("eliminar la devolución", error, "deleteMovement") };
+    if (!(data as { ok: boolean }).ok) return { error: "No pudimos eliminar la devolución." };
+    revalidatePath("/dashboard");
+    revalidatePath(`/clients/${movement.client_id}`);
+    return { error: null };
+  }
+
+  // A FIADO WITH A LIVE RETURN STAYS until the return goes. Deleting the sale
+  // behind it would put the same units on the shelf twice: see migration 185.
+  // The database refuses too; this is the sentence.
+  if (movement.type === "charge") {
+    const { count } = await supabase
+      .from("sale_returns")
+      .select("id", { count: "exact", head: true })
+      .eq("charge_movement_id", movementId)
+      .is("deleted_at", null);
+    if ((count ?? 0) > 0) return { error: "Este fiado tiene devoluciones. Elimínalas primero." };
+  }
+
   const borradoEn = new Date().toISOString();
 
   // LOS ABONOS PRIMERO, y el fiado después. Si el borrado de los abonos falla,
@@ -258,6 +281,29 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
 
   if (fetchError || !movement) {
     return { error: "No encontramos esa transacción eliminada." };
+  }
+
+  // A RETURN COMES BACK THROUGH ITS OWN FUNCTION, and it can refuse: the same
+  // units may have been returned again in the meantime.
+  if (movement.type === "return") {
+    const { data, error } = await supabase.rpc("restaurar_devolucion", { p_movement_id: movementId });
+    if (error) return { error: mensajeDeError("restaurar la devolución", error, "restoreMovement") };
+    const result = data as { ok: boolean; code?: string };
+    if (!result.ok) {
+      return {
+        error:
+          result.code === "ya_devuelto"
+            ? "Esas unidades ya se devolvieron otra vez, así que esta devolución no se puede restaurar."
+            : result.code === "fiado_eliminado"
+              ? "Su fiado ya no existe, así que esta devolución no se puede restaurar."
+              : result.code === "ya_no_cabe"
+                ? "Sus fiados ya no deben eso, así que esta devolución no se puede restaurar. Regístrala de nuevo."
+                : "No pudimos restaurar la devolución.",
+      };
+    }
+    revalidatePath("/dashboard");
+    revalidatePath(`/clients/${movement.client_id}`);
+    return { error: null };
   }
 
   // LA VENTA DE LA QUE NACIÓ VUELVE CON ÉL, si también estaba borrada.

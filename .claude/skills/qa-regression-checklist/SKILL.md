@@ -191,6 +191,19 @@ client's reminder, each through a different function. They already drifted apart
 once, on 2026-10-16, between `118` and the two WhatsApp functions; migration
 `119` is that fix, and `qa:cuotas` check 10 is what would catch it next time.
 
+## 2a. Las devoluciones — desde la migración `185`
+
+**`npm run qa:devoluciones`** (53 controles, corre como el dueño) y
+**`npm run qa:puntaje-devoluciones`** (sin base de datos). **Las dos son parada
+dura en cada lanzamiento que toque `movements`, `sale_lines` o el reparto de
+deudas.** La primera recorre fila por fila la tabla de `lib/returns/options.ts`
+—por moneda, si sobra dinero y qué se ofrece— y la segunda vigila que el puntaje
+no se separe de `get_open_charges_for_client`, que es lo que costó `CT-124`.
+
+Lo que ninguna suite ve, y va en el navegador: que una devolución en efectivo
+reste de «Abonos» en Reportes, y que la casilla «Usar saldo a favor» cierre una
+venta de contado sin plazo.
+
 ## 2b. LA VENTA — la mitad del dinero que esta lista no conocía
 
 Desde el lanzamiento del 2026-10-21 (migración `124`). **Toda la sección 2

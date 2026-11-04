@@ -106,7 +106,7 @@ export async function ventasDelPeriodo({
       // en una venta de contado.
       supabase
         .from("movements")
-        .select("sale_id, currency, type")
+        .select("sale_id, currency, type, paid_with_credit")
         .in("sale_id", ids)
         .is("deleted_at", null),
     ]);
@@ -115,7 +115,8 @@ export async function ventasDelPeriodo({
 
   const librosFiados = new Set(
     (cargos ?? [])
-      .filter((m) => m.type !== "payment")
+      // Settled with saldo a favor (migration 185): nothing was lent.
+      .filter((m) => m.type === "charge" && !m.paid_with_credit)
       .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
   );
 

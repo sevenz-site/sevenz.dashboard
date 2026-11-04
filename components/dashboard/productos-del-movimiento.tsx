@@ -1,4 +1,5 @@
 import type { SaleLineRow } from "@/lib/sale-lines";
+import { ProductoMasMenu, type ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 
 // QUÉ SE LLEVÓ EL CLIENTE, en la ficha de un movimiento ya guardado.
 //
@@ -20,9 +21,13 @@ import type { SaleLineRow } from "@/lib/sale-lines";
 export function ProductosDelMovimiento({
   productos,
   formatearMonto,
+  devolucion = null,
 }: {
   productos: SaleLineRow[];
   formatearMonto: (monto: number) => string;
+  // Only the owner's detail of a fiado passes it, and only then is the «⋮»
+  // drawn. The client's face marks the line and offers nothing.
+  devolucion?: ReturnMenuContext | null;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -37,17 +42,29 @@ export function ProductosDelMovimiento({
           se encarga la frase de abajo. */}
       <ul className="flex flex-col gap-0.5">
         {productos.map((p, i) => (
-          <li key={`${p.name}-${i}`} className="flex items-baseline justify-between gap-4 py-1">
+          <li key={`${p.name}-${i}`} className="flex items-center justify-between gap-4 py-1">
             {/* EL NOMBRE ES EL RÓTULO Y LA CANTIDAD EL VALOR, en ese peso y no
                 al revés: en el frame `<nombre de producto>` va en 12 y gris
                 —como «Plazo de pago» o «Descripción»— y `00 x $00.00` en 14 y
                 negro, a la derecha. Es la misma anatomía que el resto de filas
                 de la ficha, y por eso la lista se lee como parte de ella. */}
-            <span className="min-w-0 break-words text-xs leading-4 text-muted-foreground">
-              {p.name}
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="break-words text-xs leading-4 text-muted-foreground">{p.name}</span>
+              {/* THE LINE STAYS AS IT WAS SOLD (migration 180, rule 6): what came
+                  back is said beside it, and «Total» below is what moved. */}
+              {(p.devuelto ?? 0) > 0 ? (
+                <span className="text-xs leading-4">
+                  {(p.devuelto ?? 0) >= p.quantity ? "Devuelto" : `Devueltos: ${p.devuelto}`}
+                </span>
+              ) : null}
             </span>
-            <span className="shrink-0 text-sm leading-5 tabular-nums">
-              {p.quantity} × {formatearMonto(p.unitPrice)}
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="text-sm leading-5 tabular-nums">
+                {p.quantity} × {formatearMonto(p.unitPrice)}
+              </span>
+              {devolucion && p.id && (p.devuelto ?? 0) < p.quantity ? (
+                <ProductoMasMenu line={p} context={devolucion} />
+              ) : null}
             </span>
           </li>
         ))}

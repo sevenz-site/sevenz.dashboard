@@ -68,6 +68,8 @@ export type ChargeLedgerEntry = {
   plazoDias: number | null;
   remaining: number;
   closedAt: string | null;
+  // Settled by a return and not by a payment (migration 185). Not judged.
+  closedByReturn?: boolean;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -137,7 +139,14 @@ export function buildChargeLedger(movements: MovementInput[]): ChargeLedgerEntry
     // `created_at`, because inside a transaction `now()` is the transaction's
     // timestamp. Sorting by date alone leaves their order to however the rows
     // arrived, so the same client could score differently on two page loads.
+    //
+    // A SALDO A FAVOR GOES LAST, exactly as in `get_open_charges_for_client`
+    // (migration 185): it is written before the fiado it pays, so in date order
+    // it would find nothing to settle. Two copies of this queue drifting apart
+    // is what `CT-124` cost.
+    const aFavorRow = (m: MovementInput) => m.type === "return" && !m.applies_to_movement_id;
     const enOrden = [...delLibro].sort((a, b) => {
+      if (aFavorRow(a) !== aFavorRow(b)) return aFavorRow(a) ? 1 : -1;
       const d = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       if (d !== 0) return d;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
@@ -176,6 +185,7 @@ export function buildChargeLedger(movements: MovementInput[]): ChargeLedgerEntry
           // turn a punctual payment into a late one.
           if (destino.remaining <= 0 && destino.closedAt === null) {
             destino.closedAt = m.created_at;
+            destino.closedByReturn = m.type === "return";
           }
           dirigido = true;
         }
@@ -195,6 +205,7 @@ export function buildChargeLedger(movements: MovementInput[]): ChargeLedgerEntry
         resto = round2(resto - aplicado);
         if (charge.remaining <= 0 && charge.closedAt === null) {
           charge.closedAt = m.created_at;
+          charge.closedByReturn = m.type === "return";
         }
       }
     }
@@ -213,6 +224,10 @@ function evaluateCharges(charges: ChargeLedgerEntry[], now: Date): ChargeEval[] 
   const evals: ChargeEval[] = [];
 
   for (const c of charges) {
+    // CLOSED BY A RETURN IS NOT PAID ON TIME. The client paid nothing that day:
+    // a fiado settled by bringing the product back says nothing about whether
+    // he pays, so it is not judged at all (owner's review of 2026-11-03).
+    if (c.closedByReturn) continue;
     const dueAt = new Date(c.createdAt).getTime() + (c.plazoDias ?? DEFAULT_GRACE_DAYS) * DAY_MS;
 
     if (c.closedAt) {
@@ -321,7 +336,7 @@ export function computeCreditScore(params: {
   });
   const standingScore = STANDING_SCORE[status];
 
-  const cyclesCompleted = charges.filter((c) => c.closedAt !== null).length;
+  const cyclesCompleted = charges.filter((c) => c.closedAt !== null && !c.closedByReturn).length;
   const tenureScore =
     100 *
     (0.5 * Math.min(1, monthsActive / TENURE_MONTHS_CAP) + 0.5 * Math.min(1, cyclesCompleted / TENURE_CYCLES_CAP));

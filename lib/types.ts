@@ -1,4 +1,6 @@
-export type MovementType = "charge" | "payment";
+import type { ReturnSummary } from "@/lib/returns/read";
+
+export type MovementType = "charge" | "payment" | "return";
 export type MovementSource = "photo_import" | "manual";
 
 export type ExchangeRateMode = "BCV_AUTO" | "CUSTOM";
@@ -47,6 +49,13 @@ export type Movement = {
   // normal es que un cargo del formulario SÍ la tenga: es donde viven las
   // líneas de qué se llevó el cliente.
   sale_id: string | null;
+  // Migration 185. A return's ledger lines share `payment_group_id`, which is
+  // the id of its `sale_returns` row, and `devolucion` is that row, attached
+  // by `withReturns`. `paid_with_credit`: the part of a sale settled with saldo
+  // a favor.
+  payment_group_id?: string | null;
+  devolucion?: ReturnSummary;
+  paid_with_credit?: boolean;
   // A QUÉ FIADO SE DIRIGIÓ ESTE ABONO (migración `126`). null en un cargo
   // siempre, y en los cientos de abonos anteriores al 2026-10-19, que la cola
   // FIFO repartió sobre el saldo total y por eso dicen «Repartidos al saldo
