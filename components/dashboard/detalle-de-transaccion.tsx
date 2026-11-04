@@ -201,9 +201,9 @@ export function DetalleDeTransaccion({
   hrefDeUnAbono = null,
   lineasDelAbono,
 }: DatosDelDetalle) {
-  // EL ABONO CON SU REPARTO, frame V9. Cuando es así, tres cosas de esta ficha
-  // no se dibujan: «Tipo» arriba (vive dentro del resumen), el resumen en caja,
-  // y el grupo de plazo y cuotas, que era el de UN fiado. Ver `PaymentSummary`.
+  // EL ABONO CON SU REPARTO, frame V9. Cuando es así, dos cosas de esta ficha
+  // no se dibujan: el resumen en caja y el grupo de plazo y cuotas, que era el
+  // de UN fiado. Ver `PaymentSummary`.
   const conReparto = type === "payment" && lineasDelAbono != null && lineasDelAbono.length > 0;
   const ledgerAmount = formatLedgerAmount(amount, currency, ledger);
 // ── UN SALDO A FAVOR NO SE ESCRIBE CON UN MENOS ────────────────────
@@ -354,7 +354,10 @@ export function DetalleDeTransaccion({
     <dl className="flex flex-col gap-4">
       <Grupo>
         <Fila nombre="Fecha"><Fecha iso={createdAt} /></Fila>
-        {conReparto ? null : (
+        {/* «TIPO» GOES UNDER «FECHA» ON EVERY TRANSACTION, owner's decision of
+            2026-11-04 (frame «Abono V10», `2013:22646`). Frame V9 had moved it
+            inside the abono's summary, so the abono read differently from the
+            fiado. */}
         <Fila nombre="Tipo">
           <span className="inline-flex items-center gap-1.5">
             {type === "payment" ? "Abono" : deudaAntigua ? "Deuda antigua" : "Fiado / Crédito"}
@@ -382,7 +385,6 @@ export function DetalleDeTransaccion({
             )}
           </span>
         </Fila>
-        )}
         {/* AQUÍ ESTUVO «Moneda registrada», retirada el 2026-10-20 a petición
             del dueño: *«Campo moneda registrada no va, eliminalo»*.
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { IconoDeAbono } from "@/components/dashboard/iconos-de-movimiento";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
@@ -22,8 +21,9 @@ import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 // It replaces the boxed summary of frame `1580:11677` for every abono, split or
 // not -- one layout, so a single abono is just a split with one row:
 //
-//   · NO BOX. The section is separated by a top border, its title is 16
-//     semibold, and «Tipo» moves INSIDE it, right under the title.
+//   · NO BOX. The section is separated by a top border and its title is 16
+//     semibold. «Tipo» lived inside it, under the title, until 2026-11-04: it
+//     went back under «Fecha», in `DetalleDeTransaccion` (frame «Abono V10»).
 //   · «Abonó a fiado» (one row with the fiado's products) becomes «Fiados a
 //     los que abonó», one row per fiado: the fiado's date, how this part of the
 //     payment arrived against that fiado's term, the part, and its bolivars.
@@ -144,12 +144,6 @@ export function PaymentSummary({
       <h2 className="py-2 text-base font-semibold">
         {`Resumen de abono${currency ? ` en ${NOMBRE_DE_MONEDA[currency]}` : ""}`}
       </h2>
-
-      <div className="flex items-center gap-1 py-2">
-        <span className="flex-1 text-xs leading-4 text-muted-foreground">Tipo</span>
-        <span className="text-sm">Abono</span>
-        <IconoDeAbono className="size-4 text-money-in" aria-hidden />
-      </div>
 
       <div className="flex items-center justify-between gap-4 border-y py-4">
         <span className="flex flex-col items-start gap-1">

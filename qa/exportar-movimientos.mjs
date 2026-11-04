@@ -240,10 +240,10 @@ check(
 
 check(
   "3d. una fila de contado NO trae saldo, y una de fiado SÍ",
-  // El saldo del libro es la columna 12 de 15. En una venta de contado va
+  // El saldo del libro es la columna 14 de 17. En una venta de contado va
   // vacía a propósito: no toca el saldo del cliente ni el del libro.
-  filasDeContado.every((l) => l.split(";")[11] === "") &&
-    filasDeMovimiento.every((l) => l.split(";")[11] !== ""),
+  filasDeContado.every((l) => l.split(";")[13] === "") &&
+    filasDeMovimiento.every((l) => l.split(";")[13] !== ""),
   `${filasDeContado.length} de contado sin saldo, ${filasDeMovimiento.length} de movimiento con saldo`,
 );
 
@@ -295,9 +295,10 @@ function saldoDelFichero(libro, cual) {
   // saldos -- un cero perfectamente creíble, que es por lo que falló en rojo
   // en vez de pasar en verde. Las columnas, por si vuelve a moverse:
   // 0 codigo · 1 fecha · 2 hora · 3 cliente · 4 documento · 5 tipo ·
-  // 6 moneda · 7 contado · 8 fiado · 9 abono · 10 saldo_del_cliente ·
-  // 11 saldo_del_libro · 12 descripcion · 13 nota · 14 id
-  return f ? cifra(f.split(";")[11]) : null;
+  // 6 moneda · 7 contado · 8 fiado · 9 abono · 10 devolucion ·
+  // 11 efectivo_devuelto · 12 saldo_del_cliente · 13 saldo_del_libro ·
+  // 14 descripcion · 15 nota · 16 id. Moved two on 2026-11-04 (finding B8).
+  return f ? cifra(f.split(";")[13]) : null;
 }
 
 for (const libro of ["USD", "EUR"]) {

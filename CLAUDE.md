@@ -940,20 +940,34 @@ lanzamiento a producción»*.
 1. **Figma**: un frame por caso, con el copy final. Tiene que coincidir con la app.
 2. **Drive de Sevenz**: un documento final, caso por caso, con la captura real de
    cada pantalla, cuándo sale y qué pasa. El modelo es el de las modales de
-   devolución: `Modales-de-devolucion-final.pdf`.
-3. **Su ticket de Trello**, con los dos enlaces en la descripción: `Documento:` el
-   de Drive, y `Figma:` el del frame. Pedido por él el mismo día, con la captura del
-   ticket «Product return/warranty»: *«todo debe quedar documentado en el ticket de
-   trello (drive con link archivo de documentación y link de figma)»*.
+   devolución: `Modales-de-devolucion-final.pdf`. Desde el 2026-11-04 abre además
+   con **su fecha de modificación** y una **descripción breve de la solución, en
+   dos partes: el problema planteado y la solución, con la interfaz final**. Pedido
+   por el dueño ese día: *«El documento debe incluir fecha de modificación y una
+   breve descripción de la solución dividida por el problema planteado y la solución
+   con la interfaz final»*. Vale para los documentos nuevos; los cinco generados
+   antes de esa frase se quedan como están, decisión suya.
+3. **El ticket de Trello de su liberación**: UNO por liberación, no uno por
+   interfaz, con la versión en el nombre y dentro todos los enlaces de Drive y de
+   Figma que se trabajaron. Pedido por él el 2026-11-04, y desplaza al ticket por
+   interfaz que había pedido ese mismo día: *«como en una liberación podemos lanzar
+   inumerables ajustes y por ende implicaría crear inumerables tickets, vamos a
+   trabajar con un mismo ticket por liberación, el ticket tendrá la versión de la
+   liberación y dentro todo los archivos drive y figma que se trabajaron»*.
+
+**El nombre del ticket es `Liberación vX.Y.Z · <de qué trata>`.** La versión sube el
+número del medio en una liberación con funciones nuevas y el último en una de
+arreglos. Una liberación cubre el dashboard y `Web/` juntos. La primera con este
+nombre es la `v0.2.0`, porque `package.json` dice `0.1.0` y nunca se había usado.
 
 **Es una parada dura del `qa-regression-checklist`** (sección 4g). Si falta uno de
 los tres, no se lanza esa interfaz, y no se decide a solas que este cambio no lo
 necesita: se le pregunta al dueño.
 
 **El registro vive en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con el enlace de cada
-documento y el nombre de su ticket, porque este repo es público. Sin fila en ese
+documento y la versión de su liberación, porque este repo es público. Sin fila en ese
 registro, el documento no existe para el checklist. El ticket lo mantiene el dueño:
-desde aquí no hay acceso a Trello, así que se le pasan los dos enlaces listos.
+desde aquí no hay acceso a Trello, así que se le pasa su contenido listo para pegar.
 
 **La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
 genera con capturas de la app, después del último cambio de copy. El 2026-11-04 se
@@ -1763,8 +1777,8 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 - Before merging `dev` into `main`, or making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, and
   wait for the user's explicit confirmation before actually launching. An
-  interface with no Figma, no Drive document or no Trello ticket carrying both
-  links blocks the launch (section 4g).
+  interface with no Figma, no Drive document, or missing from the release's
+  Trello ticket blocks the launch (section 4g).
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.

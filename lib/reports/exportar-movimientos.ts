@@ -170,6 +170,7 @@ type FilaCruda = {
   currency: string | null;
   description: string | null;
   running_balance: number | null;
+  payment_group_id: string | null;
   clients: { name: string; document_id: string | null; trashed_at: string | null } | null;
 };
 
@@ -261,7 +262,7 @@ export async function exportarMovimientos({
   };
 
   const COLUMNAS_EN_RANGO =
-    "id, transaction_code, created_at, type, amount, currency, description, running_balance, clients!inner(name, document_id, trashed_at, owner_id)";
+    "id, transaction_code, created_at, type, amount, currency, description, running_balance, payment_group_id, clients!inner(name, document_id, trashed_at, owner_id)";
   // La ventana ANTERIOR solo necesita tres columnas: con el historial entero
   // de un negocio detrás, pedir la descripción de cada fila es tráfico por
   // nada. Ver el techo declarado al final de este archivo.
@@ -453,6 +454,28 @@ export async function exportarMovimientos({
   }
   const contado = [...contadoPorClave.values()];
 
+  // THE CASH OF EACH RETURN. It never touches the ledger, so its movement says 0
+  // and only `sale_returns` knows the figure. A return can write several rows,
+  // one per fiado it reached: the cash goes on the first one that shows up, or
+  // the column would count it once per row.
+  const idsDeDevolucion = [
+    ...new Set(
+      filasEnRango
+        .filter((f) => f.type === "return" && f.payment_group_id)
+        .map((f) => f.payment_group_id as string),
+    ),
+  ];
+  const { data: devolucionesDelRango, error: errorDevoluciones } = idsDeDevolucion.length
+    ? await supabase.from("sale_returns").select("id, to_cash").eq("owner_id", ownerId).in("id", idsDeDevolucion)
+    : { data: [], error: null };
+  if (errorDevoluciones) {
+    console.error("[exportar-movimientos] devoluciones", errorDevoluciones);
+    return { motivo: "lectura" };
+  }
+  const efectivoPendiente = new Map(
+    (devolucionesDelRango ?? []).map((r) => [r.id as string, Number(r.to_cash)]),
+  );
+
   const lineas: string[] = [
     fila(["Sevenz — Facturación"]),
     fila(["Negocio", nombreDelNegocio]),
@@ -477,7 +500,11 @@ export async function exportarMovimientos({
     // nada. Desde el 2026-10-29 trae las tres, por encargo del dueño.
     fila([
       "Contenido",
-      "Las tres transacciones del libro: de contado, fiado y abono.",
+      "Las transacciones del libro: de contado, fiado, abono y devolución.",
+    ]),
+    fila([
+      "Devoluciones",
+      "«devolucion» es lo que bajó el saldo. «efectivo_devuelto» es lo que salió de la caja y no toca el saldo. Las dos suman el valor devuelto.",
     ]),
     fila([
       "Saldo en las filas de contado",
@@ -513,6 +540,12 @@ export async function exportarMovimientos({
     "contado",
     "fiado",
     "abono",
+    // OWN COLUMNS SINCE 2026-11-04, finding B8 of the audit, at the owner's
+    // request: a return sat under `abono` and a cash one showed 0, so the
+    // autosum of `abono` counted money nobody paid. `devolucion` keeps the
+    // balance arithmetic; `efectivo_devuelto` is the part that left the till.
+    "devolucion",
+    "efectivo_devuelto",
     "saldo_del_cliente",
     "saldo_del_libro",
     "descripcion",
@@ -541,6 +574,8 @@ export async function exportarMovimientos({
         // LA COLUMNA `contado` VA VACÍA en las filas de saldo: una venta
         // pagada entera no entra en el saldo del libro, así que la apertura y
         // el cierre no la cuentan.
+        null,
+        null,
         null,
         null,
         null,
@@ -586,6 +621,8 @@ export async function exportarMovimientos({
             importe(monto),
             null,
             null,
+            null,
+            null,
             // LOS DOS SALDOS VAN VACÍOS, no en cero: una venta pagada entera
             // no toca el saldo del cliente ni el del libro. Un 0 aquí se
             // leería como «su deuda quedó en cero», que es otra cosa.
@@ -600,6 +637,9 @@ export async function exportarMovimientos({
       }
       const f = ev.mov;
       const esFiado = f.type === "charge";
+      const esDevolucion = f.type === "return";
+      const efectivo = (f.payment_group_id && efectivoPendiente.get(f.payment_group_id)) || 0;
+      if (esDevolucion && f.payment_group_id) efectivoPendiente.delete(f.payment_group_id);
       corriente += esFiado ? Number(f.amount) : -Number(f.amount);
       lineas.push(
         fila([
@@ -610,11 +650,15 @@ export async function exportarMovimientos({
           f.clients?.document_id ?? "",
           // `Fiado` / `Abono` Y NO `charge` / `payment`: el fichero lo abre un
           // tendero, y esas dos palabras no son su vocabulario.
-          esFiado ? "Fiado" : f.type === "return" ? "Devolución" : "Abono",
+          esFiado ? "Fiado" : esDevolucion ? "Devolución" : "Abono",
           libro,
           null,
           esFiado ? importe(Number(f.amount)) : null,
-          esFiado ? null : importe(Number(f.amount)),
+          esFiado || esDevolucion ? null : importe(Number(f.amount)),
+          // A row that only handed cash back has 0 here, and an empty cell says
+          // that better than a figure that looks like a return of nothing.
+          esDevolucion && Number(f.amount) > 0 ? importe(Number(f.amount)) : null,
+          esDevolucion && efectivo > 0 ? importe(efectivo) : null,
           // DOS COLUMNAS DE DINERO Y NO UNA CON SIGNO: es la forma de la
           // libreta de papel, y la autosuma de Excel sobre `fiado` contesta
           // «cuánto fié» sin escribir una fórmula.
@@ -624,7 +668,13 @@ export async function exportarMovimientos({
           // fichero es comprobable por dentro.
           importe(corriente),
           f.description ?? "",
-          f.clients?.trashed_at ? "cliente en la papelera" : null,
+          // Every return writes a row for its own fiado, even at 0 when the whole
+          // value went elsewhere. The row stays, because the count above checks it.
+          f.clients?.trashed_at
+            ? "cliente en la papelera"
+            : esDevolucion && Number(f.amount) === 0 && efectivo === 0
+              ? "sin importe: el valor va en otra fila de esta devolución"
+              : null,
           f.id,
         ]),
       );
@@ -642,6 +692,8 @@ export async function exportarMovimientos({
         // LA COLUMNA `contado` VA VACÍA en las filas de saldo: una venta
         // pagada entera no entra en el saldo del libro, así que la apertura y
         // el cierre no la cuentan.
+        null,
+        null,
         null,
         null,
         null,

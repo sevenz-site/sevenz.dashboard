@@ -288,7 +288,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id)")
+    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id, trashed_at, deleted_at)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
@@ -296,6 +296,23 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
 
   if (fetchError || !movement) {
     return { error: "No encontramos esa transacción eliminada." };
+  }
+
+  // NOTHING OF A CLIENT IN THE TRASH COMES BACK ON ITS OWN, finding B6 of the
+  // 2026-11-04 audit, fixed at the owner's request that day, first for returns
+  // and then for fiados and abonos too. It came back without a word, moving
+  // money in a ledger nobody can see, and units onto the shelf.
+  //
+  // HERE AND NOT IN `restaurar_devolucion`: nothing in the books goes wrong, the
+  // balance stays right. What it breaks is the shopkeeper's view, and only this
+  // screen has one, so it costs no migration.
+  const dueno = movement.clients as unknown as { trashed_at: string | null; deleted_at: string | null };
+  const queEs = movement.type === "return" ? "devolución" : "transacción";
+  if (dueno.deleted_at) {
+    return { error: `Ese cliente se eliminó, así que esta ${queEs} no se puede restaurar.` };
+  }
+  if (dueno.trashed_at) {
+    return { error: `Este cliente está en la papelera. Restáuralo primero y vuelve a restaurar esta ${queEs}.` };
   }
 
   // A RETURN COMES BACK THROUGH ITS OWN FUNCTION, and it can refuse: the same

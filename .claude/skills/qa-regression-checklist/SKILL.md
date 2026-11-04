@@ -978,13 +978,17 @@ lanza».
 1. **Sale del alcance de la sección 1**: todo archivo tocado en `app/(app)/**`,
    `app/s/**`, `app/c/**` y `components/**` que cambie lo que se ve.
 2. **Tiene fila en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con su frame, su enlace
-   de Drive y su ticket de Trello.
+   de Drive y la versión de su liberación.
 3. **Su Figma coincide con la app.** Leer los textos de los frames y compararlos con
    la pantalla, no suponerlo.
 4. **El documento es posterior al último cambio de copy.** Si no, hay que generarlo
-   de nuevo.
-5. **Su ticket de Trello lleva los dos enlaces.** Desde aquí no hay acceso a Trello:
-   lo confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
+   de nuevo. Los generados después del 2026-11-04 abren con su fecha de modificación
+   y con la descripción dividida en problema planteado y solución, con la interfaz
+   final; sin eso no cuentan como documento final.
+5. **El ticket de la liberación la incluye.** Hay UN ticket por liberación,
+   `Liberación vX.Y.Z · <de qué trata>`, con todos los enlaces de Drive y de Figma
+   dentro (decisión del dueño del 2026-11-04). Desde aquí no hay acceso a Trello: lo
+   confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
 
 **Si falta algo, esa interfaz no se lanza.** Se le dice al dueño cuál falta y qué
 falta. **Quitarla del lanzamiento o darla por exenta es decisión suya.**
@@ -1375,7 +1379,8 @@ table" rule) — one row per section above, not prose alone:
 |---------|-----------------|--------|
 
 **The 4g row is never skipped either**: it lists each interface in the release
-with its Figma, its Drive document and its Trello ticket, or says which is missing. A missing
+with its Figma and its Drive document, says whether the release's Trello ticket
+carries them, or says which is missing. A missing
 document is a stop, not a note.
 
 **The 4f row is never skipped either**: it carries the `help-center-sync`

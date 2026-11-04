@@ -241,15 +241,7 @@ export default async function VentaDeContadoPage({
       <dl className="flex flex-col gap-4">
         <Grupo>
           <Fila nombre="Fecha"><Fecha iso={venta.created_at as string} /></Fila>
-        </Grupo>
-
-        {/* LA TARJETA SE SEPARA CON UNA LÍNEA, no con un recuadro — frame
-            `1487:9948`. Y su título va en 16 semibold. */}
-        <div className="flex flex-col gap-1.5 border-t py-2.5">
-          <p className="py-2 text-base leading-6 font-semibold">
-            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
-          </p>
-
+          {/* Under «Fecha», as in every transaction: owner's decision of 2026-11-04. */}
           <Fila nombre="Tipo">
             <span className="inline-flex items-center gap-1.5">
               De contado
@@ -260,6 +252,14 @@ export default async function VentaDeContadoPage({
               <Check className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
             </span>
           </Fila>
+        </Grupo>
+
+        {/* LA TARJETA SE SEPARA CON UNA LÍNEA, no con un recuadro — frame
+            `1487:9948`. Y su título va en 16 semibold. */}
+        <div className="flex flex-col gap-1.5 border-t py-2.5">
+          <p className="py-2 text-base leading-6 font-semibold">
+            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
+          </p>
 
           {lineas.length > 0 ? (
             <ProductosDelMovimiento
