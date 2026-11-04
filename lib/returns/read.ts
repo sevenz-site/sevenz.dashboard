@@ -23,6 +23,21 @@ export type ReturnSummary = {
   sale_id: string;
 };
 
+/** The book as the «Por cobrar» card reads it, signed: below zero is in favour. */
+export async function bookBalance(
+  supabase: SupabaseClient,
+  clientId: string,
+  currency: LedgerCurrency | null,
+): Promise<number> {
+  const { data } = await supabase
+    .from("client_summary_all")
+    .select("balance, balance_usd, balance_eur")
+    .eq("client_id", clientId)
+    .maybeSingle();
+  const value = currency === "USD" ? data?.balance_usd : currency === "EUR" ? data?.balance_eur : data?.balance;
+  return Number(value ?? 0);
+}
+
 /** The open fiados of one book, as the return popups read them. */
 export function otherFiadosOf(
   open: { movement_id: string; pending: number; charge_at: string; currency: LedgerCurrency | null; description: string | null }[],

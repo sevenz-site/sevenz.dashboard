@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { cargarFacturacion } from "../lib/reports/facturacion.ts";
 import { ventasDelPeriodo } from "../lib/reports/ventas-del-periodo.ts";
 import { rangoDe } from "../lib/reports/rango.ts";
+import { bookAfter } from "../lib/returns/options.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -329,7 +330,41 @@ try {
     check("23c. y su saldo a favor", igual(s?.balance_usd, -10), s?.balance_usd);
   }
 
-  // ── 7. A COLOMBIAN BOOK ──────────────────────────────────────────────────
+  // ── 7. WHAT THE YELLOW NOTICE PROMISES ───────────────────────────────────
+  //
+  // `bookAfter` writes the figures of the notice. Each one is checked against
+  // what the card reads once the return is really registered.
+  {
+    const promesa = async (nombre, { deuda, favor = 0, elige, esperado }) => {
+      const c = await clienteNuevo();
+      const v = await contado(c, { qty: 1 });
+      let f = null;
+      if (deuda) f = await fiado(c, deuda);
+      if (favor) {
+        const previa = await contado(c, { qty: 1, price: favor });
+        await devolver(previa, 1, { aFavor: favor });
+      }
+      const antes = await libro(c);
+      const promete = bookAfter(antes, 0, 10, deuda ?? 0);
+      const r = elige === "efectivo"
+        ? await devolver(v, 1, { efectivo: 10 })
+        : elige === "favor"
+          ? await devolver(v, 1, { aFavor: 10 })
+          : await devolver(v, 1, { fiados: [{ fiado_id: f, amount: Math.min(10, deuda) }], efectivo: Math.max(0, 10 - deuda) });
+      const prometido = elige === "efectivo" ? promete.afterOwn : elige === "favor" ? promete.afterCredit : promete.afterAbono;
+      const despues = await libro(c);
+      check(nombre, r.data?.ok === true && igual(prometido, esperado) && igual(despues, esperado), `prometió ${prometido}, la tarjeta dice ${despues}`);
+    };
+    await promesa("25a. sin deuda, dinero: sigue en $0", { elige: "efectivo", esperado: 0 });
+    await promesa("25b. sin deuda, a favor: $10 a favor", { elige: "favor", esperado: -10 });
+    await promesa("25c. con saldo previo, dinero: sigue a favor, no en $0", { favor: 3, elige: "efectivo", esperado: -3 });
+    await promesa("25d. con saldo previo, a favor: se suman", { favor: 3, elige: "favor", esperado: -13 });
+    await promesa("25e. debe $25, abono: baja a $15", { deuda: 25, elige: "abono", esperado: 15 });
+    await promesa("25f. debe $25, dinero: sigue en $25", { deuda: 25, elige: "efectivo", esperado: 25 });
+    await promesa("25g. debe $4, abono: baja a $0 y el resto se devuelve", { deuda: 4, elige: "abono", esperado: 0 });
+  }
+
+  // ── 8. A COLOMBIAN BOOK ──────────────────────────────────────────────────
   {
     const { data: co } = await admin.from("owners").select("id").eq("country", "CO").limit(1).maybeSingle();
     const { data: u } = co ? await admin.auth.admin.getUserById(co.id) : { data: null };

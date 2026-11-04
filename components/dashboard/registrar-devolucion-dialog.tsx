@@ -12,7 +12,7 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { TOLERANCE, choicesFor, splitOfReturn, spreadOverFiados, type OtherFiado } from "@/lib/returns/options";
+import { TOLERANCE, bookAfter, choicesFor, splitOfReturn, spreadOverFiados, type OtherFiado } from "@/lib/returns/options";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency } from "@/lib/types";
 
@@ -55,6 +55,8 @@ export type ReturnContext = {
   source: { kind: "fiado"; movementId: string } | { kind: "contado"; saleId: string; walkIn: boolean };
   // What this fiado still owes. 0 in a sale paid in full.
   pendingOfFiado: number;
+  // The «Por cobrar» of this book today, signed: below zero is in favour.
+  bookBalance: number;
   // The other open fiados OF THE SAME CURRENCY. A debt in the other book does
   // not appear here on purpose: it changes nothing in the table.
   otherFiados: OtherFiado[];
@@ -109,6 +111,20 @@ export function RegistrarDevolucionDialog({
   const { source } = context;
   const isCash = source.kind === "contado";
   const walkIn = source.kind === "contado" && source.walkIn;
+
+  // THE NOTICE SAYS WHERE THE VALUE GOES AND WHAT «POR COBRAR» WILL READ, in the
+  // owner's words of 2026-11-04: *«qué pasa con el valor devuelto? cómo afecta el
+  // saldo "Por cobrar"? explícalo en la alerta amarilla»*. It speaks of the book
+  // and not of this fiado, because that is the figure on the card. Worded after
+  // each answer of the second popup, in the same order as its buttons, since
+  // nothing is decided yet here. A debt in the other currency is left out on
+  // purpose: that card does not move.
+  const label = `«Por cobrar»${currency ? ` en ${currency === "USD" ? "dólares" : "euros"}` : ""}`;
+  const book = (n: number) =>
+    n < -TOLERANCE ? `${money(-n).primary} a favor` : money(Math.max(n, 0)).primary;
+  const otherDebt = round2(context.otherFiados.reduce((sum, f) => sum + f.pending, 0));
+  const { afterOwn, afterAbono, afterCredit } = bookAfter(context.bookBalance, own, leftOver, otherDebt);
+  const now = book(context.bookBalance);
 
   async function register(fiados: FiadoLine[], aFavor: number, efectivo: number) {
     if (guardia() || !line.id) return;
@@ -227,24 +243,45 @@ export function RegistrarDevolucionDialog({
                 `--brand-report` measures above the 4,5:1 floor. */}
             <ul className="flex list-disc flex-col rounded-lg border border-[#ffe586] bg-[#fffbeb] py-2.5 pr-2.5 pl-6 text-xs leading-4 font-semibold text-brand-report">
               {isCash ? (
-                <li>Esta compra ya estaba pagada.</li>
+                <li>Esta compra ya estaba pagada, así que sobran {money(leftOver).primary}.</li>
               ) : context.pendingOfFiado <= TOLERANCE ? (
-                <li>Este fiado ya estaba pagado.</li>
+                <li>Este fiado ya estaba pagado, así que sobran {money(leftOver).primary}.</li>
               ) : own >= context.pendingOfFiado - TOLERANCE ? (
-                <li>Este fiado queda pagado.</li>
+                <li>
+                  Este fiado queda pagado{leftOver > 0 ? ` y sobran ${money(leftOver).primary}` : ""}.
+                </li>
               ) : (
                 <li>Este fiado baja a {money(round2(context.pendingOfFiado - own)).primary}.</li>
+              )}
+              {walkIn ? (
+                <li>Es una venta sin cliente: el dinero se devuelve y no hay «Por cobrar» que cambie.</li>
+              ) : leftOver === 0 ? (
+                <li>
+                  {label} baja de {now} a {book(afterOwn)}.
+                </li>
+              ) : (
+                <>
+                  {afterAbono != null ? (
+                    <li>
+                      Si lo abonas a otros fiados, {label} baja de {now} a {book(afterAbono)}.
+                    </li>
+                  ) : (
+                    <li>
+                      Si lo dejas a favor, {label} queda en {book(afterCredit as number)}.
+                    </li>
+                  )}
+                  <li>
+                    Si devuelves el dinero, {label}{" "}
+                    {own > 0 ? `baja de ${now} a ${book(afterOwn)}` : `sigue en ${now}`}.
+                  </li>
+                </>
               )}
               <li>
                 {line.stockCounted
                   ? `${quantity === 1 ? "1 Unidad vuelve" : `${quantity} Unidades vuelven`} al inventario.`
                   : "Este producto no lleva cantidad, así que el inventario no cambia."}
               </li>
-              {walkIn ? (
-                <li>Es una venta sin cliente, así que el dinero se devuelve.</li>
-              ) : (
-                <li>No cuenta como abono o ingreso de dinero.</li>
-              )}
+              {walkIn ? null : <li>No cuenta como abono o ingreso de dinero.</li>}
               <li>Puedes revertir la devolución desde el historial.</li>
             </ul>
 

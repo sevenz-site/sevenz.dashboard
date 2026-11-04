@@ -16,7 +16,7 @@ import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { lineasDe, otherFiadosOf } from "@/lib/returns/read";
+import { bookBalance, lineasDe, otherFiadosOf } from "@/lib/returns/read";
 import { libroDeVenta } from "@/lib/ventas-de-contado";
 import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -204,6 +204,7 @@ export default async function VentaDeContadoPage({
     contextoDeDevolucion = {
       source: { kind: "contado", saleId, walkIn: cliente.is_walk_in },
       pendingOfFiado: 0,
+      bookBalance: await bookBalance(supabase, cliente.id, moneda),
       otherFiados: otherFiadosOf(abiertos ?? [], moneda, null),
       currency: moneda,
       ledger,

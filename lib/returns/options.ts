@@ -80,6 +80,29 @@ export function splitOfReturn(value: number, pendingOfFiado: number) {
   return leftOver < TOLERANCE ? { own: round2(value), leftOver: 0 } : { own, leftOver };
 }
 
+/**
+ * WHAT «POR COBRAR» WILL SAY AFTER EACH ANSWER, for the yellow notice. Owner's
+ * request of 2026-11-04: the notice has to say what happens to the value and to
+ * «Por cobrar», on a fiado and on a cash sale.
+ *
+ * `balance` is signed and comes from `client_summary`, the same figure as the
+ * card: a client who already has money in favour is below zero, and counting
+ * from the debts alone would promise a «$0,00» the card will not show.
+ *
+ * `afterOwn` is what is left with nothing more done: the end of the story when
+ * nothing is left over, and what handing the money back leaves when something
+ * is. The other two exist only where the table above offers them.
+ */
+export function bookAfter(balance: number, own: number, leftOver: number, otherDebt: number) {
+  const afterOwn = round2(balance - own);
+  const owes = otherDebt > TOLERANCE;
+  return {
+    afterOwn,
+    afterAbono: owes ? round2(afterOwn - Math.min(leftOver, otherDebt)) : null,
+    afterCredit: owes ? null : round2(afterOwn - leftOver),
+  };
+}
+
 /** What is offered for a left-over, given the fiados still open in this book. */
 export function choicesFor(leftOver: number, otherDebt: number): ReturnChoice[] {
   if (leftOver < TOLERANCE) return [];

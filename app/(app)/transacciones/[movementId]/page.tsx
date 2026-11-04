@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
-import { bookSegment, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
+import { bookBalance, bookSegment, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
 import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -208,6 +208,7 @@ export default async function TransaccionPage({
       contextoDeDevolucion = {
         source: { kind: "fiado", movementId: m.id },
         pendingOfFiado: abierto == null ? 0 : Number(abierto.pending),
+        bookBalance: await bookBalance(supabase, cliente.id, m.currency),
         otherFiados: otherFiadosOf(filasAbiertas, m.currency, m.id),
         currency: m.currency,
         ledger,
