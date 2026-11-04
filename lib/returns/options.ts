@@ -47,6 +47,12 @@
 //     same with one column less to think about. Compare with `===` on the
 //     ledger's own spelling, never against 'COP'.
 
+// HOW IT REACHES THE SCREEN (sitemap `1976:16103`): with nothing left over, one
+// popup. With something left over, a second popup asks, and its first button
+// depends on this table: «Abonar a otros fiados» with other fiados owing in that
+// currency, «Registrar como saldo a favor» without them. «Devolver dinero» is the
+// cash, always there. See `components/dashboard/registrar-devolucion-dialog.tsx`.
+
 export type ReturnChoice = "fiados" | "a_favor" | "efectivo";
 
 export type OtherFiado = {

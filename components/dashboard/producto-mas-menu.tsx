@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RegistrarDevolucionDialog, type ReturnContext } from "@/components/dashboard/registrar-devolucion-dialog";
-import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
+import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency } from "@/lib/types";
 
@@ -43,7 +43,7 @@ export function ProductoMasMenu({ line, context }: { line: SaleLineRow; context:
             className="-my-1 -mr-1 shrink-0"
             aria-label={`Más opciones de ${line.name}`}
           >
-            <MoreVertical className="size-4" aria-hidden="true" />
+            <MoreVertical className="size-5 text-muted-foreground" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -54,12 +54,13 @@ export function ProductoMasMenu({ line, context }: { line: SaleLineRow; context:
           }}
         >
           <DropdownMenuItem
+            className="text-xs"
             onSelect={() => {
               opensDialog.current = true;
               setOpen(true);
             }}
           >
-            <Undo2 className="size-4" aria-hidden="true" />
+            <Undo2 className="size-5" aria-hidden="true" />
             Registrar devolución
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -73,7 +74,8 @@ export function ProductoMasMenu({ line, context }: { line: SaleLineRow; context:
           onOpenChange={setOpen}
           line={line}
           context={context}
-          formatAmount={(n) => formatLedgerAmount(n, context.currency, context.ledger).primary}
+          currency={context.currency}
+          ledger={context.ledger}
         />
       ) : null}
     </>
