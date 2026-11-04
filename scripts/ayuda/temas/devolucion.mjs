@@ -44,9 +44,9 @@ try {
   await pick("Registrar devolución");
   await sleep(1200);
   await shot(S, 3, "js:document.querySelector('[data-slot=dialog-content]')", { crop: 0, pad: 0, blur: false });
-  await click(DIALOG_BTN("Continuar"), { wait: 800 });
-  await shot(S, 4, "js:document.querySelector('[data-slot=dialog-content]')", { crop: 0, pad: 0, blur: false });
-  await click(DIALOG_BTN("Registrar como saldo a favor"), { wait: 1000 });
+  // One popup since 2026-11-04: the step is its buttons, not a second screen.
+  await shot(S, 4, "js:document.querySelector('[data-slot=dialog-content] button[data-variant=default], [data-slot=dialog-content] .flex.flex-col.gap-4')", { pad: 6, blur: false });
+  await click(DIALOG_BTN("Registrar saldo a favor"), { wait: 1000 });
   await waitFor("location.search.includes('registrada=1')", 40000);
   await sleep(2500);
   await shot(S, 5, null, { crop: 0 });
