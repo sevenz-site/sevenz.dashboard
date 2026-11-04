@@ -61,7 +61,9 @@ export function VentaAcciones({
   // después llega por la notificación del movimiento. Sin fiado no hay
   // movimiento, así que no hay notificación y no hay vuelta atrás desde la
   // app. Las dos cosas hay que decirlas antes, no después.
-  const hayFiado = loQueSeLleva.some((l) => l.toLowerCase().startsWith("fiado"));
+  const hayFiado = loQueSeLleva.some(
+    (l) => l.toLowerCase().startsWith("fiado") || l.startsWith("Pagado con saldo a favor"),
+  );
 
   async function borrar() {
     if (guardia()) return;

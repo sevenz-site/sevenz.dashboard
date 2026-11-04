@@ -193,6 +193,7 @@ once, on 2026-10-16, between `118` and the two WhatsApp functions; migration
 
 ## 2a. Las devoluciones — desde la migración `185`
 
+**`npm run qa:consola-devoluciones`** (ataques por consola a las devoluciones, con las reglas de la `180` encendidas Y observando, y por eso no se puede quitar mientras `PL-21` siga abierta; apaga y vuelve a encender el interruptor en dev, así que no se corre a la vez que `qa:attack`), **`npm run qa:devoluciones-contado`** y
 **`npm run qa:devoluciones`** (53 controles, corre como el dueño) y
 **`npm run qa:puntaje-devoluciones`** (sin base de datos). **Las dos son parada
 dura en cada lanzamiento que toque `movements`, `sale_lines` o el reparto de

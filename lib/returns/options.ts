@@ -74,6 +74,27 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // Half a cent, the tolerance the abonos use.
 export const TOLERANCE = 0.005;
 
+// Exact on halves, unlike `round2`: 3 x 3,335 is 10,004999… as a float and has to
+// land where Postgres puts it, or the screen and the ledger part by a cent.
+const roundHalfUp = (n: number) => Number(`${Math.round(Number(`${n.toFixed(6)}e2`))}e-2`);
+
+/**
+ * WHAT THE UNITS BEING RETURNED ARE WORTH (migration 188). The same arithmetic as
+ * both `registrar_devolucion` functions, which are the ones that decide: the
+ * line's running total less what already came back, never above what is left of
+ * the sale. So the last of 3 at $4,50 charged at $13 is worth $4,00.
+ */
+export function returnValue(
+  quantity: number,
+  unitPrice: number,
+  returnedQuantity: number,
+  returnedValue: number,
+  ceiling: number,
+) {
+  const value = round2(roundHalfUp((returnedQuantity + quantity) * unitPrice) - returnedValue);
+  return Math.max(0, Math.min(value, round2(ceiling)));
+}
+
 export function splitOfReturn(value: number, pendingOfFiado: number) {
   const own = round2(Math.min(value, pendingOfFiado));
   const leftOver = round2(value - own);

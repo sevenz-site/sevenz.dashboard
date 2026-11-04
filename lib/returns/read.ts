@@ -23,6 +23,26 @@ export type ReturnSummary = {
   sale_id: string;
 };
 
+/**
+ * What is left of this book of a sale: what was charged and collected, less what
+ * already came back. The same sum as the functions, which check it again.
+ */
+export async function ceilingOfBook(
+  supabase: SupabaseClient,
+  saleId: string,
+  currency: LedgerCurrency | null,
+  chargeAmount: number,
+): Promise<number> {
+  const [{ data: payments }, { data: returns }] = await Promise.all([
+    supabase.from("sale_payments").select("amount, currency").eq("sale_id", saleId),
+    supabase.from("sale_returns").select("amount, currency").eq("sale_id", saleId).is("deleted_at", null),
+  ]);
+  const inBook = (c: string | null) => (c === "USD" || c === "EUR" ? c : null) === currency;
+  const sum = (rows: { amount: unknown; currency: string | null }[] | null) =>
+    (rows ?? []).filter((r) => inBook(r.currency)).reduce((total, r) => total + Number(r.amount), 0);
+  return chargeAmount + sum(payments) - sum(returns);
+}
+
 /** The book as the «Por cobrar» card reads it, signed: below zero is in favour. */
 export async function bookBalance(
   supabase: SupabaseClient,
@@ -109,17 +129,18 @@ export const bookSegment = (currency: string | null) => currency?.toLowerCase() 
 export async function returnedByLine(
   supabase: SupabaseClient,
   lineIds: string[],
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+): Promise<Map<string, { quantity: number; value: number }>> {
+  const out = new Map<string, { quantity: number; value: number }>();
   if (lineIds.length === 0) return out;
   const { data } = await supabase
     .from("sale_returns")
-    .select("sale_line_id, quantity")
+    .select("sale_line_id, quantity, amount")
     .in("sale_line_id", lineIds)
     .is("deleted_at", null);
   for (const r of data ?? []) {
     const id = r.sale_line_id as string;
-    out.set(id, (out.get(id) ?? 0) + Number(r.quantity));
+    const line = out.get(id) ?? { quantity: 0, value: 0 };
+    out.set(id, { quantity: line.quantity + Number(r.quantity), value: line.value + Number(r.amount) });
   }
   return out;
 }
@@ -151,7 +172,8 @@ export async function lineasDe(
     name: l.name as string,
     quantity: Number(l.quantity),
     unitPrice: Number(l.unit_price),
-    devuelto: devueltas.get(l.id as string) ?? 0,
+    devuelto: devueltas.get(l.id as string)?.quantity ?? 0,
+    devueltoValor: devueltas.get(l.id as string)?.value ?? 0,
     stockCounted:
       (l.products as unknown as { stock_opening: number | null } | null)?.stock_opening != null,
   }));

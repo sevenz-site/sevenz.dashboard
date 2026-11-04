@@ -317,6 +317,25 @@ try {
     rec("http · cabeceras", "contra clickjacking y sniffing", faltan.length ? "VULN" : "BLOQUEADO", faltan.length ? `faltan ${faltan.join(", ")}` : "");
   }
 
+  // ── 9b. A row of A pointing at something of B (migration 187) ────────────
+  //
+  // RLS checks the row being written and a foreign key that the target exists,
+  // so neither sees this. The leak is read back through A's own client link.
+  {
+    const r1 = await A.db.from("movements").insert({ client_id: cA.id, created_by: A.id, type: "charge", amount: 1, currency: "USD", sale_id: sB.id, source: "manual" }).select("id");
+    const tokA = `zzattack${Math.random().toString(16).slice(2, 14)}`;
+    await svc.from("share_links").insert({ client_id: cA.id, token: tokA });
+    const { data: enlaceA } = await anon.rpc("get_shared_balance", { p_token: tokA });
+    rec("referencias", "un cargo de A apunta a la venta de B", r1.error ? "BLOQUEADO" : "VULN", r1.error?.code ?? "");
+    rec("referencias", "el enlace de A no enseña las líneas de B", filtra(enlaceA) ? "VULN" : "BLOQUEADO", filtra(enlaceA) ?? "");
+    const r2 = await A.db.from("sales").insert({ owner_id: A.id, client_id: cB.id, created_by: A.id }).select("id");
+    rec("referencias", "una venta de A sobre el cliente de B", r2.error ? "BLOQUEADO" : "VULN", r2.error?.code ?? "");
+    const r3 = await A.db.from("movements").insert({ client_id: cA.id, created_by: A.id, type: "payment", amount: 1, currency: "USD", applies_to_movement_id: mB.id, source: "manual" }).select("id");
+    rec("referencias", "un abono de A dirigido al fiado de B", r3.error ? "BLOQUEADO" : "VULN", r3.error?.code ?? "");
+    const r4 = await A.db.from("sale_lines").insert({ sale_id: sA.id, product_id: pB.id, name: "x", quantity: 1, unit_price: 1, currency: "USD", tier: "retail" }).select("id");
+    rec("referencias", "una línea de A sobre el producto de B", r4.error ? "BLOQUEADO" : "VULN", r4.error?.code ?? "");
+  }
+
   // ── 10. After everything: B is exactly as it was ────────────────────
   const [{ data: bm }, { data: bp }, { data: bo }, { data: bs }, { count: deMas }] = await Promise.all([
     svc.from("movements").select("deleted_at, amount").eq("id", mB.id).single(),

@@ -144,7 +144,16 @@ export async function deleteMovement(
   if (movement.type === "return") {
     const { data, error } = await supabase.rpc("eliminar_devolucion", { p_movement_id: movementId });
     if (error) return { error: mensajeDeError("eliminar la devolución", error, "deleteMovement") };
-    if (!(data as { ok: boolean }).ok) return { error: "No pudimos eliminar la devolución." };
+    if (!(data as { ok: boolean }).ok) {
+      // The page already says this with its button; this is for a saldo spent
+      // after the page was opened.
+      return {
+        error:
+          (data as { code?: string }).code === "saldo_usado"
+            ? "Este saldo a favor ya se usó. Elimina primero la venta que lo gastó."
+            : "No pudimos eliminar la devolución.",
+      };
+    }
     revalidatePath("/dashboard");
     revalidatePath(`/clients/${movement.client_id}`);
     return { error: null };
@@ -153,11 +162,17 @@ export async function deleteMovement(
   // A FIADO WITH A LIVE RETURN STAYS until the return goes. Deleting the sale
   // behind it would put the same units on the shelf twice: see migration 185.
   // The database refuses too; this is the sentence.
+  //
+  // BY THE LEDGER AND NOT BY `sale_returns` since 188: a fiado that received
+  // money from another return has to stay too, or that money ends as a saldo no
+  // sale can spend. Its own return always writes a line, even at zero.
   if (movement.type === "charge") {
     const { count } = await supabase
-      .from("sale_returns")
+      .from("movements")
       .select("id", { count: "exact", head: true })
-      .eq("charge_movement_id", movementId)
+      .eq("applies_to_movement_id", movementId)
+      .eq("client_id", movement.client_id)
+      .eq("type", "return")
       .is("deleted_at", null);
     if ((count ?? 0) > 0) return { error: "Este fiado tiene devoluciones. Elimínalas primero." };
   }

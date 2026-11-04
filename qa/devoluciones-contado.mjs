@@ -298,8 +298,9 @@ try {
 
     const bajada = await contado(c, { qty: 2, pagado: 15 });
     const { data: uno } = await devolver(bajada, 1, { efectivo: 10 });
-    const { data: dos } = await devolver(bajada, 1, { efectivo: 10 });
-    check("20. no se devuelve más de lo que se cobró", uno?.ok === true && dos?.code === "excede_la_venta", dos?.code);
+    const { data: mucho } = await devolver(bajada, 1, { efectivo: 10 });
+    const { data: dos } = await devolver(bajada, 1, { efectivo: 5 });
+    check("20. no se devuelve más de lo que se cobró: la última vale $5", uno?.ok === true && mucho?.code === "reparto_no_cuadra" && dos?.ok === true && Number(dos?.amount) === 5, JSON.stringify(dos));
 
     const { data: sinSesion, error: eN } = await anon().rpc("registrar_devolucion_contado", {
       p_sale_id: v.saleId, p_line_id: v.lineId, p_quantity: 1, p_fiados: [], p_a_favor: 0, p_efectivo: 10,

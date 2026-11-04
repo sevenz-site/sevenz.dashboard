@@ -1849,6 +1849,26 @@ export async function eliminarVenta(
     return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
   }
 
+  // AND ITS FIADOS, which may have received money from another return (188). The
+  // database refuses that too, with no sentence to show.
+  const { data: susCargos } = await supabase
+    .from("movements")
+    .select("id")
+    .eq("sale_id", saleId)
+    .eq("type", "charge")
+    .is("deleted_at", null);
+  if ((susCargos ?? []).length > 0) {
+    const { count: recibidas } = await supabase
+      .from("movements")
+      .select("id", { count: "exact", head: true })
+      .in("applies_to_movement_id", (susCargos ?? []).map((c) => c.id as string))
+      .eq("type", "return")
+      .is("deleted_at", null);
+    if ((recibidas ?? 0) > 0) {
+      return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
+    }
+  }
+
   // Los movimientos que nacieron de ella, para borrarlos con ella y para
   // dejar su rastro restaurable.
   const { data: movimientos } = await supabase

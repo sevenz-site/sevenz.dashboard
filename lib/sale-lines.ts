@@ -65,5 +65,7 @@ export type SaleLineRow = {
   // `stockCounted` says whether the shelf moves, so the modal can tell.
   id?: string;
   devuelto?: number;
+  // What those units were worth. The next return is worked out from it.
+  devueltoValor?: number;
   stockCounted?: boolean;
 };

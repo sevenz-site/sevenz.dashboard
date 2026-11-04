@@ -9,8 +9,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
+import { VentaAcciones } from "@/components/dashboard/venta-acciones";
+import { libroDeVenta } from "@/lib/ventas-de-contado";
+import { formatLedgerAmount } from "@/lib/exchange-rate/movement-display";
 import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
-import { bookBalance, bookSegment, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
+import { bookBalance, bookSegment, ceilingOfBook, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
 import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -209,6 +212,7 @@ export default async function TransaccionPage({
         source: { kind: "fiado", movementId: m.id },
         pendingOfFiado: abierto == null ? 0 : Number(abierto.pending),
         bookBalance: await bookBalance(supabase, cliente.id, m.currency),
+        ceiling: await ceilingOfBook(supabase, m.sale_id, m.currency, Number(m.amount)),
         otherFiados: otherFiadosOf(filasAbiertas, m.currency, m.id),
         currency: m.currency,
         ledger,
@@ -479,9 +483,7 @@ export default async function TransaccionPage({
       devolucion.charge_movement_id
         ? "Se elimina la devolución: la deuda vuelve a como estaba y las unidades salen otra vez del inventario."
         : "Se elimina la devolución: las unidades salen otra vez del inventario.",
-      devolucion.to_credit > 0
-        ? "Si el saldo a favor ya se usó, esa parte vuelve a deberse en el fiado donde se aplicó."
-        : null,
+      devolucion.to_credit > 0 ? "El saldo a favor que dejó desaparece." : null,
       devolucion.to_cash > 0 ? "El efectivo devuelto deja de restarse en Reportes." : null,
       "Podrás restaurarla desde Notificaciones.",
     ]
@@ -490,6 +492,29 @@ export default async function TransaccionPage({
 
     // THE MOSTRADOR HAS NO LINK TO SEND: nobody is behind it.
     const compartirDevolucion = cliente.is_walk_in ? null : compartir;
+
+    // ITS SALDO ALREADY PAID FOR SOMETHING: migration 189 refuses, and this is
+    // the way out. A charge marked as paid with saldo is a sale; a plain charge
+    // may be a fiado typed by hand.
+    const { data: gastadoEn } = await supabase.rpc("return_credit_spent_on", {
+      p_return_id: m.payment_group_id,
+    });
+    const { data: cargoQueLoGasto } = gastadoEn
+      ? await supabase
+          .from("movements")
+          .select("sale_id")
+          .eq("id", gastadoEn as string)
+          .eq("client_id", cliente.id)
+          .maybeSingle()
+      : { data: null };
+    const destino = cargoQueLoGasto?.sale_id ? "venta" : "fiado";
+    const bloqueo = gastadoEn
+      ? {
+          texto: `Este saldo a favor ya se usó. Elimina primero ${destino === "venta" ? "la venta" : "el fiado"} que lo gastó y después podrás eliminar esta devolución.`,
+          href: `/transacciones/${gastadoEn as string}`,
+          boton: `Ir ${destino === "venta" ? "a la venta" : "al fiado"}`,
+        }
+      : null;
 
     return (
       <div className="flex flex-1 flex-col gap-4">
@@ -505,6 +530,7 @@ export default async function TransaccionPage({
             compartir={compartirDevolucion}
             puedePagar={false}
             avisoDeBorrado={aviso}
+            bloqueoDeBorrado={bloqueo}
           />
         </div>
 
@@ -538,6 +564,33 @@ export default async function TransaccionPage({
     );
   }
 
+
+  // A SALE PAID WITH SALDO A FAVOR IS DELETED WHOLE (migration 189). The return
+  // that left that saldo sends the shopkeeper here, and taking out the charge
+  // alone would leave the sale alive and its units off the shelf.
+  let ventaPagadaConSaldo: string[] | null = null;
+  if (m.paid_with_credit === true && m.sale_id) {
+    const [{ data: pagos }, { data: cargos }] = await Promise.all([
+      supabase.from("sale_payments").select("amount, currency").eq("sale_id", m.sale_id),
+      supabase
+        .from("movements")
+        .select("amount, currency, paid_with_credit")
+        .eq("sale_id", m.sale_id)
+        .eq("type", "charge")
+        .is("deleted_at", null),
+    ]);
+    const cifra = (n: unknown, c: unknown) =>
+      formatLedgerAmount(Number(n), libroDeVenta(c as string), ledger).primary;
+    ventaPagadaConSaldo = [
+      ...(pagos ?? []).map((p) => `Cobro de contado de ${cifra(p.amount, p.currency)}`),
+      ...(cargos ?? []).map((c) =>
+        c.paid_with_credit
+          ? `Pagado con saldo a favor: ${cifra(c.amount, c.currency)}`
+          : `Fiado de ${cifra(c.amount, c.currency)}`,
+      ),
+    ];
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LA BARRA DE ARRIBA DEL FRAME: flecha a la izquierda, «⋮» a la derecha.
@@ -555,6 +608,9 @@ export default async function TransaccionPage({
             <IconoVolver className="text-primary" />
           </Link>
         </Button>
+        {ventaPagadaConSaldo ? (
+          <VentaAcciones saleId={m.sale_id as string} clientId={cliente.id} loQueSeLleva={ventaPagadaConSaldo} />
+        ) : (
         <DetalleAcciones
           movementId={m.id}
           clientId={cliente.id}
@@ -569,6 +625,7 @@ export default async function TransaccionPage({
           // entero (decisión del dueño el 2026-10-30), y el diálogo lo dice.
           lineasDelReparto={lineasDelReparto}
         />
+        )}
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>

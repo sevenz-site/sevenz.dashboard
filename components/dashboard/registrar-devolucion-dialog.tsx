@@ -12,7 +12,15 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import { TOLERANCE, bookAfter, choicesFor, splitOfReturn, spreadOverFiados, type OtherFiado } from "@/lib/returns/options";
+import {
+  TOLERANCE,
+  bookAfter,
+  choicesFor,
+  returnValue,
+  splitOfReturn,
+  spreadOverFiados,
+  type OtherFiado,
+} from "@/lib/returns/options";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency } from "@/lib/types";
 
@@ -57,6 +65,8 @@ export type ReturnContext = {
   pendingOfFiado: number;
   // The «Por cobrar» of this book today, signed: below zero is in favour.
   bookBalance: number;
+  // What is left of this book of the sale to give back (migration 188).
+  ceiling: number;
   // The other open fiados OF THE SAME CURRENCY. A debt in the other book does
   // not appear here on purpose: it changes nothing in the table.
   otherFiados: OtherFiado[];
@@ -94,7 +104,11 @@ export function RegistrarDevolucionDialog({
   const [error, setError] = useState<string | null>(null);
 
   const money = (n: number) => formatLedgerAmount(n, currency, ledger);
-  const value = round2(quantity * line.unitPrice);
+  const value = returnValue(quantity, line.unitPrice, line.devuelto ?? 0, line.devueltoValor ?? 0, context.ceiling);
+  // A sale charged below its lines: the units are worth what is left of it, and
+  // the notice says so before anything is pressed. Owner's rule of checking the
+  // worst case: being refused here sent him back to writing a false abono.
+  const capped = value < round2(quantity * line.unitPrice) - TOLERANCE;
   const { own, leftOver } = splitOfReturn(value, context.pendingOfFiado);
 
   const toFiados = round2(assigned.reduce((sum, l) => sum + l.amount, 0));
@@ -242,6 +256,13 @@ export function RegistrarDevolucionDialog({
             {/* THE FRAME'S TWO AMBERS, as drawn, and on this fill
                 `--brand-report` measures above the 4,5:1 floor. */}
             <ul className="flex list-disc flex-col rounded-lg border border-[#ffe586] bg-[#fffbeb] py-2.5 pr-2.5 pl-6 text-xs leading-4 font-semibold text-brand-report">
+              {capped ? (
+                <li>
+                  {value > 0
+                    ? `De esta venta solo quedan ${money(value).primary} por devolver.`
+                    : "De esta venta ya se devolvió todo lo que se cobró."}
+                </li>
+              ) : null}
               {isCash ? (
                 <li>Esta compra ya estaba pagada, así que sobran {money(leftOver).primary}.</li>
               ) : context.pendingOfFiado <= TOLERANCE ? (
@@ -289,6 +310,7 @@ export function RegistrarDevolucionDialog({
               <Button
                 type="button"
                 className="h-10 w-full text-base font-semibold"
+                disabled={value <= 0}
                 onClick={() => {
                   setAssigned([]);
                   setError(null);
@@ -302,7 +324,7 @@ export function RegistrarDevolucionDialog({
                 <Button
                   type="button"
                   className="h-10 w-full text-base font-semibold"
-                  disabled={saving}
+                  disabled={saving || value <= 0}
                   onClick={() => void register([], 0, walkIn ? value : 0)}
                 >
                   {saving ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
