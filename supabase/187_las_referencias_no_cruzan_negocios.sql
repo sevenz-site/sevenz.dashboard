@@ -34,6 +34,15 @@
 -- owner worried about on 2026-11-02, a rule that stops every shop from selling,
 -- would need a sale whose client belongs to someone else.
 --
+-- `SECURITY DEFINER`, AND THE DEV BRANCH WOULD NOT HAVE SHOWN WHY. These triggers
+-- read `sales`, `clients` and `movements` on every write. As plain functions they
+-- read with the writer's rights, and production revokes `SELECT` on the customer
+-- tables from `service_role` while the dev branch does not (CLAUDE.md, the
+-- 2026-09-05 outage). A server write would have died in production with
+-- `permission denied` and passed every suite here. Found by the release
+-- checklist on 2026-11-04, before running it there. A trigger function cannot
+-- be called on its own, and execute is revoked anyway.
+--
 -- PRODUCTION: before running this there, run the read-only count at the bottom.
 -- ===========================================================================
 
@@ -42,6 +51,8 @@ begin;
 create or replace function public.movements_guard_references()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   if new.sale_id is not null and (tg_op = 'INSERT' or new.sale_id is distinct from old.sale_id) then
@@ -71,6 +82,8 @@ begin
 end;
 $$;
 
+revoke execute on function public.movements_guard_references() from public, anon, authenticated;
+
 drop trigger if exists movements_guard_references on public.movements;
 create trigger movements_guard_references
   before insert or update on public.movements
@@ -79,6 +92,8 @@ create trigger movements_guard_references
 create or replace function public.sales_guard_client()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   if new.client_id is not null
@@ -94,6 +109,8 @@ begin
   return new;
 end;
 $$;
+
+revoke execute on function public.sales_guard_client() from public, anon, authenticated;
 
 drop trigger if exists sales_guard_client on public.sales;
 create trigger sales_guard_client
