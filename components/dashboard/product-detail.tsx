@@ -301,9 +301,10 @@ export function ProductDetail({
         </Button>
       </div>
 
-      {/* MISMO TEXTO QUE EL DEL FLUJO DE EDICIÓN, a propósito: es la misma
-          acción, y dos avisos distintos para lo mismo harían dudar de si son
-          lo mismo.
+      {/* DELETING ASKS FIRST, owner's request of 2026-10-10: the button used to
+          delete on the first tap, a badly placed finger away. This is the only
+          door since 2026-11-03, when the edit flow lost its own «Eliminar
+          producto» at the owner's request.
 
           NO DICE «esta acción no se puede deshacer», porque sí se puede: el
           producto va a la papelera y la notificación trae su botón de
