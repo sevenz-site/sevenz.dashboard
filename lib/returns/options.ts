@@ -82,9 +82,37 @@
 // One row more: a sale with no client (Mostrador) has nobody to hold a saldo a
 // favor, so the money goes back and there is nothing to ask.
 
-// HOW IT REACHES THE SCREEN (sitemap `1976:16103`): with nothing left over, one
-// popup. With something left over, a second popup offers «Registrar como saldo a
-// favor» or «Devolver dinero». See `components/dashboard/registrar-devolucion-dialog.tsx`.
+// HOW IT REACHES THE SCREEN: ONE POPUP, owner's decision of 2026-11-04 (section
+// `1988:16553` and frames `1988:16505`, `1988:17547`): *«sinteticemos todo a una
+// modal»*. Until that day a left-over opened a second popup. The options are now
+// buttons of the first one, and each says what it does in the notice above it.
+//
+//   Cash sale, nothing owed        | Saldo a favor, or cash
+//   Cash sale, owes less than value| Abonar y devolver, abonar y dejar, or all cash
+//   Cash sale, owes value or more  | Abonar, or all cash
+//   Mostrador                      | Cash
+//   Fiado, nothing left over       | One button: «Devolver», the fiados go down
+//   Fiado, something left over     | Saldo a favor, or that left-over in cash
+//
+// A FIADO NEVER HANDS BACK MORE THAN WAS HANDED OVER, owner's rule of 2026-11-04:
+// *«al cliente no se le puede devolver más dinero de lo que entregó porque el dueño
+// estaría perdiendo plata»*. The left-over is what guarantees it, measured in
+// `qa:devoluciones-contado`: the value is capped at `charge + payments at the sale
+// - returned` (188) and the fiado owes `charge - abonos - returned`, so value less
+// debt is at most what was paid. A fiado nobody paid leaves nothing over: its last
+// units are worth what is left of it.
+//
+// THE CASH BUTTON WAS OUT FOR A FEW HOURS THE SAME DAY. His note on frame
+// `1988:17547` read *«Devolver dinero no debería aplicar (...) porque fué un fiado,
+// el cliente nunca entregó dinero»*. Shown the measurement he decided: *«Ofrecer
+// devolver el efectivo que sobre en un fiado»*. What it cost to leave out: a client
+// who paid $30 in abonos could only hold a saldo, and cash handed over outside the
+// app would leave that saldo alive to be spent.
+//
+// «WHAT IS LEFT OVER» IS AFTER ALL THE DEBTS, unlike a cash sale: a fiado already
+// paid, with another owing $25, abona solo. Owner's decision of 2026-11-04, asked
+// by name: that client paid real money too, but still owes more than comes back,
+// and cash would leave the till for someone in debt.
 
 export type OtherFiado = {
   id: string;
@@ -151,4 +179,42 @@ export function planOfReturn(value: number, pendingOfFiado: number, otherFiados:
   const { own, leftOver } = splitOfReturn(value, pendingOfFiado);
   const { lines, rest } = spreadOverFiados(leftOver, otherFiados);
   return { own, lines, toFiados: round2(lines.reduce((sum, l) => sum + l.amount, 0)), rest };
+}
+
+export type ReturnChoice = {
+  kind: "a_favor" | "devolver" | "devolver_sobrante" | "abonar" | "abonar_y_devolver" | "abonar_y_dejar";
+  fiados: { fiado_id: string; amount: number }[];
+  aFavor: number;
+  efectivo: number;
+};
+
+/**
+ * THE BUTTONS OF A CASH SALE WITH A CLIENT, in the order the frames draw them. All
+ * the money really was paid, so handing it back whole is always one of them, even
+ * to a client who owes: owner's frames of 2026-11-04 (`1988:16384`, `1987:16273`).
+ */
+export function choicesOfCashSale(value: number, otherFiados: OtherFiado[]): ReturnChoice[] {
+  const { lines, toFiados, rest } = planOfReturn(value, 0, otherFiados);
+  const allInCash: ReturnChoice = { kind: "devolver", fiados: [], aFavor: 0, efectivo: value };
+  if (toFiados <= 0) return [{ kind: "a_favor", fiados: [], aFavor: value, efectivo: 0 }, allInCash];
+  if (rest <= 0) return [{ kind: "abonar", fiados: lines, aFavor: 0, efectivo: 0 }, allInCash];
+  return [
+    { kind: "abonar_y_devolver", fiados: lines, aFavor: 0, efectivo: rest },
+    { kind: "abonar_y_dejar", fiados: lines, aFavor: rest, efectivo: 0 },
+    allInCash,
+  ];
+}
+
+/**
+ * THE BUTTONS OF A FIADO: one when nothing is left over, as frame `1988:16505` draws
+ * it, and with a left-over the saldo or that same left-over in cash. `efectivo` can
+ * only ever be `rest`: see the rule at the top of this file.
+ */
+export function choicesOfFiado(value: number, pendingOfFiado: number, otherFiados: OtherFiado[]): ReturnChoice[] {
+  const { lines, rest } = planOfReturn(value, pendingOfFiado, otherFiados);
+  if (rest <= 0) return [{ kind: "devolver", fiados: lines, aFavor: 0, efectivo: 0 }];
+  return [
+    { kind: "a_favor", fiados: lines, aFavor: rest, efectivo: 0 },
+    { kind: "devolver_sobrante", fiados: lines, aFavor: 0, efectivo: rest },
+  ];
 }

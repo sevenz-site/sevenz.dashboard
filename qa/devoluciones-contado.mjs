@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { cargarFacturacion } from "../lib/reports/facturacion.ts";
 import { ventasDelPeriodo } from "../lib/reports/ventas-del-periodo.ts";
 import { rangoDe } from "../lib/reports/rango.ts";
-import { planOfReturn } from "../lib/returns/options.ts";
+import { choicesOfCashSale, choicesOfFiado, planOfReturn } from "../lib/returns/options.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -165,6 +165,42 @@ const credito = async (clientId) => {
   const { data } = await A.db.rpc("get_client_credit", { p_client_id: clientId });
   return Number((data ?? []).find((c) => c.currency === "USD")?.credit ?? 0);
 };
+// A fiado born from a sale: `cargo` below the lines is a sale typed down, and
+// `pagado` the money handed over at the till. Written with the service key because
+// these are fixtures, and the return itself goes through the owner's session.
+async function fiadoDeVenta(clientId, { qty = 1, price = 10, cargo = null, pagado = 0, abono = 0 } = {}) {
+  const { data: venta } = await admin.from("sales").insert({ owner_id: A.id, client_id: clientId, created_by: A.id }).select("id").single();
+  const { data: linea } = await admin
+    .from("sale_lines")
+    .insert({ sale_id: venta.id, name: `${MARCA} fiado`, quantity: qty, unit_price: price, currency: "USD", tier: "retail" })
+    .select("id")
+    .single();
+  if (pagado) {
+    await admin.from("sale_payments").insert({ sale_id: venta.id, currency: "USD", amount: pagado, entry_currency: "USD", entry_amount: pagado });
+  }
+  const { data: cargoRow, error } = await admin
+    .from("movements")
+    .insert({ client_id: clientId, created_by: A.id, type: "charge", amount: cargo ?? qty * price - pagado, currency: "USD", sale_id: venta.id, source: "manual" })
+    .select("id")
+    .single();
+  if (error) throw new Error(`fiado de venta: ${error.message}`);
+  if (abono) {
+    await admin.from("movements").insert({ client_id: clientId, created_by: A.id, type: "payment", amount: abono, currency: "USD", applies_to_movement_id: cargoRow.id, source: "manual" });
+  }
+  await admin.rpc("recalc_client_running_balance", { p_client_id: clientId });
+  return { chargeId: cargoRow.id, lineId: linea.id };
+}
+
+const devolverFiado = (f, qty, resto = {}) =>
+  A.db.rpc("registrar_devolucion", {
+    p_movement_id: f.chargeId,
+    p_line_id: f.lineId,
+    p_quantity: qty,
+    p_fiados: resto.fiados ?? [],
+    p_a_favor: resto.aFavor ?? 0,
+    p_efectivo: resto.efectivo ?? 0,
+  });
+
 const reporte = (clientId) =>
   cargarFacturacion({ supabase: A.db, ownerId: A.id, rango: rangoDe({}), dosLibros: true, clientId });
 
@@ -373,6 +409,120 @@ try {
     check("25j. debe $4: «Devolver los $10», y sigue debiendo $4", entero?.ok === true && igual(await libro(cEntero), 4), await libro(cEntero));
     const fEntero = await reporte(cEntero);
     check("25k. y «Ventas» baja los $10 enteros", igual(fEntero.ventas.USD ?? 0, 0), fEntero.ventas.USD);
+  }
+
+  // ── 7b. EVERY BUTTON OF THE ONE POPUP ────────────────────────────────────
+  //
+  // Owner's decision of 2026-11-04: *«sinteticemos todo a una modal»*. Each button
+  // the popup can draw on a cash sale, sent as the screen sends it, and read back
+  // from the card and from what left the till.
+  {
+    const boton = async (nombre, deudas, indice, tipo, esperado, caja) => {
+      const c = await clienteNuevo();
+      const v = await contado(c, { qty: 1 });
+      const abiertos = [];
+      for (const d of deudas) abiertos.push({ id: await fiado(c, d), pending: d, chargeAt: new Date().toISOString(), title: "x" });
+      const elegido = choicesOfCashSale(10, abiertos)[indice];
+      const { data: r } = await devolver(v, 1, elegido);
+      const { data: ev } = r?.ok ? await A.db.from("sale_returns").select("to_cash").eq("id", r.return_id).single() : { data: null };
+      const despues = await libro(c);
+      check(nombre, elegido.kind === tipo && r?.ok === true && igual(despues, esperado) && igual(ev?.to_cash, caja), `${elegido.kind}: tarjeta ${despues}, caja ${ev?.to_cash}`);
+    };
+    await boton("26a. no debe, «Registrar saldo a favor»", [], 0, "a_favor", -10, 0);
+    await boton("26b. no debe, «Devolver»", [], 1, "devolver", 0, 10);
+    await boton("26c. debe $5, «Abonar y devolver»", [5], 0, "abonar_y_devolver", 0, 5);
+    await boton("26d. debe $5, «Abonar y dejar a favor»", [5], 1, "abonar_y_dejar", -5, 0);
+    await boton("26e. debe $5, «Devolver $10»", [5], 2, "devolver", 5, 10);
+    await boton("26f. debe $25, «Abonar a deuda»", [25], 0, "abonar", 15, 0);
+    await boton("26g. debe $25, «Devolver $10»", [25], 1, "devolver", 25, 10);
+    await boton("26h. debe $10 exactos, «Abonar a deuda»", [10], 0, "abonar", 0, 0);
+    await boton("26i. debe $10 exactos, «Devolver $10»", [10], 1, "devolver", 10, 10);
+  }
+
+  // ── 7c. ON A FIADO NO MONEY LEAVES THAT WAS NEVER HANDED OVER ────────────
+  //
+  // Owner's rule of 2026-11-04: *«al cliente no se le puede devolver más dinero de
+  // lo que entregó porque el dueño estaría perdiendo plata»*. The left-over is the
+  // only thing that could go out, so these checks are about what it can be.
+  {
+    const fiadoCon = async (nombre, fixture, { otros = [], valor = 10, tipo, esperado, favor, propio = 0 }) => {
+      const c = await clienteNuevo();
+      const f = await fiadoDeVenta(c, fixture);
+      const abiertos = [];
+      for (const d of otros) abiertos.push({ id: await fiado(c, d), pending: d, chargeAt: new Date().toISOString(), title: "x" });
+      const elegido = choicesOfFiado(valor, await pendiente(c, f.chargeId), abiertos)[0];
+      const { data: r } = await devolverFiado(f, 1, elegido);
+      const { data: ev } = r?.ok ? await A.db.from("sale_returns").select("to_cash, to_credit, amount").eq("id", r.return_id).single() : { data: null };
+      const despues = await libro(c);
+      const queda = await pendiente(c, f.chargeId);
+      check(
+        nombre,
+        elegido.kind === tipo && r?.ok === true && igual(despues, esperado) && igual(ev?.to_credit, favor) && igual(ev?.to_cash, 0) && igual(queda, propio),
+        `${elegido.kind}: tarjeta ${despues}, fiado ${queda}, a favor ${ev?.to_credit}, caja ${ev?.to_cash}`,
+      );
+    };
+    await fiadoCon("27a. frame: fiado $30, otro $10, por cobrar $40", { qty: 3 }, { otros: [10], tipo: "devolver", esperado: 30, favor: 0, propio: 20 });
+    await fiadoCon("27b. frame: fiado $5 de $10 con $5 abonados", { abono: 5 }, { tipo: "a_favor", esperado: -5, favor: 5 });
+    await fiadoCon("27c. lo mismo con los $5 pagados en la venta", { pagado: 5 }, { tipo: "a_favor", esperado: -5, favor: 5 });
+    await fiadoCon("27d. fiado $5, otro $20: el resto baja el otro", { abono: 5 }, { otros: [20], tipo: "devolver", esperado: 15, favor: 0 });
+    await fiadoCon("27e. fiado $5, otro $2: sobran $3", { abono: 5 }, { otros: [2], tipo: "a_favor", esperado: -3, favor: 3 });
+    await fiadoCon("27f. fiado pagado, nada más: $10 a favor", { abono: 10 }, { tipo: "a_favor", esperado: -10, favor: 10 });
+    await fiadoCon("27g. fiado pagado, otro debe $25", { abono: 10 }, { otros: [25], tipo: "devolver", esperado: 15, favor: 0 });
+    await fiadoCon("27h. debe exactamente lo devuelto", {}, { tipo: "devolver", esperado: 0, favor: 0 });
+
+    // THE CASE OF HIS NOTE: a line of $10 on a fiado of $5, and nobody paid a cent.
+    const cNada = await clienteNuevo();
+    const fNada = await fiadoDeVenta(cNada, { cargo: 5 });
+    const { data: nada } = await devolverFiado(fNada, 1, {});
+    const { data: evNada } = nada?.ok ? await A.db.from("sale_returns").select("amount, to_own, to_credit, to_cash").eq("id", nada.return_id).single() : { data: null };
+    check(
+      "27i. nadie pagó: vale $5, no $10, y no sobra nada",
+      nada?.ok === true && igual(evNada?.amount, 5) && igual(evNada?.to_own, 5) && igual(evNada?.to_credit, 0) && igual(evNada?.to_cash, 0) && igual(await libro(cNada), 0),
+      JSON.stringify(evNada),
+    );
+
+    // And by console: with nothing left over, cash is refused whatever is asked.
+    const cRobo = await clienteNuevo();
+    const fRobo = await fiadoDeVenta(cRobo, {});
+    const { data: robo } = await devolverFiado(fRobo, 1, { efectivo: 10 });
+    check("27j. consola: efectivo de un fiado que nadie pagó, rechazado", robo?.ok === false && robo?.code === "reparto_no_cuadra" && igual(await libro(cRobo), 10), JSON.stringify(robo));
+
+    // THE PROOF, over a grid: whatever was paid and however the three units come
+    // back, what is left over adds up to what was paid, never to a cent more.
+    for (const [pagado, abono] of [[0, 0], [5, 0], [0, 5], [10, 0], [5, 20], [0, 25], [29, 0], [10, 19]]) {
+      const c = await clienteNuevo();
+      const f = await fiadoDeVenta(c, { qty: 3, pagado, abono });
+      let sobra = 0;
+      let peor = 0;
+      let bien = true;
+      for (let i = 1; i <= 3; i += 1) {
+        // The cash button whenever there is one: the worst the screen can do.
+        const opciones = choicesOfFiado(10, await pendiente(c, f.chargeId), []);
+        const elegido = opciones[opciones.length - 1];
+        const { data: r } = await devolverFiado(f, 1, elegido);
+        bien = bien && r?.ok === true;
+        sobra += elegido.efectivo;
+        peor = Math.max(peor, sobra);
+      }
+      check(`27k. pagó $${pagado + abono} de $30: salen $${sobra} en total, ni uno más`, bien && igual(sobra, pagado + abono) && peor <= pagado + abono + 0.006 && igual(await libro(c), 0), `tarjeta ${await libro(c)}`);
+    }
+
+    // THE CASH BUTTON, read back: the client gave $5, gets $5, and «Abonos» says so.
+    const cCaja = await clienteNuevo();
+    const fCaja = await fiadoDeVenta(cCaja, { abono: 5 });
+    const antes = await reporte(cCaja);
+    const opcion = choicesOfFiado(10, await pendiente(cCaja, fCaja.chargeId), [])[1];
+    const { data: rCaja } = await devolverFiado(fCaja, 1, opcion);
+    const { data: evCaja } = rCaja?.ok ? await A.db.from("sale_returns").select("to_own, to_cash, to_credit").eq("id", rCaja.return_id).single() : { data: null };
+    const tras = await reporte(cCaja);
+    check("27l. fiado $5 de $10: «Devolver ($5,00)»", opcion?.kind === "devolver_sobrante" && rCaja?.ok === true && igual(evCaja?.to_cash, 5) && igual(evCaja?.to_own, 5) && igual(await libro(cCaja), 0), JSON.stringify(evCaja));
+    check("27m. y «Abonos» baja esos $5", igual((antes.abonos.USD ?? 0) - (tras.abonos.USD ?? 0), 5), `${antes.abonos.USD} → ${tras.abonos.USD}`);
+
+    // With nothing left over there is no cash button, whatever was paid.
+    const sinBoton = choicesOfFiado(10, 30, []);
+    check("27n. debe más de lo devuelto: un solo botón, sin efectivo", sinBoton.length === 1 && sinBoton[0].efectivo === 0, JSON.stringify(sinBoton));
+    const otroDebe = choicesOfFiado(10, 0, [{ id: "x", pending: 25, chargeAt: "2026-01-01", title: "x" }]);
+    check("27o. pagado y otro debe $25: un botón, abona solo", otroDebe.length === 1 && otroDebe[0].efectivo === 0, JSON.stringify(otroDebe));
   }
 
   // ── 8. A COLOMBIAN BOOK ──────────────────────────────────────────────────
