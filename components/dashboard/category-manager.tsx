@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, Pencil, Trash2 } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { SearchField } from "@/components/dashboard/client-search-sheet";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { foldForSearch } from "@/lib/search/fold";
 import { crearCategoria, eliminarCategoria, renombrarCategoria } from "@/app/(app)/productos/actions";
 import {
   MAX_NOMBRE_DE_CATEGORIA,
@@ -24,19 +29,34 @@ import {
   type Categoria,
 } from "@/lib/products/categories";
 
-// THE CATEGORY SHEET: list, rename, delete, create. Two doors open it:
+// THE CATEGORY SHEET AND ITS POPUP — sitemap `1963:15912`, owner's request of
+// 2026-11-03. Frames: `1961:16107` (no categories), `1961:16584` (with them),
+// `1961:16357` (the popup). Two arrows lead here:
 //
-//   - the «Categoría (opcional)» field of the product flow, which also PICKS
-//     one for the product (`picker`);
-//   - the «Editar» of the catalogue's «Categorías» section, owner's request of
-//     2026-11-03 with frame `1958:16272` («al seleccionar botón "Editar"
-//     muestra en componente sheet todas las categorías. Desde el sheet se debe
-//     poder editar, eliminar y crear nuevas categorías»), which only manages.
+//   - «Categoría» in the product flow, which also PICKS one (`picker`);
+//   - «Editar» in the catalogue's «Categorías» section, which only manages.
+//     Owner's decision that day: no check and no tapping a row from there,
+//     because nothing is being chosen; filtering stays with the chips.
 //
-// ONE COMPONENT for both, so renaming or deleting cannot behave differently
-// depending on where the shopkeeper started (CLAUDE.md: a visual value shown
-// in two screens is born in a component). The frame draws the section, not
-// the sheet; the sheet is the one the product flow already had.
+// THE SITEMAP'S DIAMOND, «¿Hay categoría?», is simply `categorias.length`: one
+// sheet that draws either state, so creating the first category moves it from
+// the empty frame to the list on its own, which is where the «Crear» arrow
+// lands.
+//
+// WHAT THE FRAMES DO NOT DRAW, and was settled on 2026-11-03:
+//
+//   - The pencil has no arrow. It opens the same popup, «Editar categoría» and
+//     «Guardar» (owner's decision).
+//   - There is no «Sin categoría» row any more. Tapping the chosen row removes
+//     it (owner's decision), and the sheet closes either way.
+//   - The bin keeps its confirmation, which says how many products are left
+//     without a category. That is why `productos` stays in the type although
+//     the rows no longer print it.
+//   - A search with no match reuses the wording of the client's catalogue.
+//
+// A CATEGORY CREATED FROM THE PRODUCT FLOW COMES BACK CHOSEN, and the sheet
+// stays open: the «Crear» arrow returns to the list, and that is the row with
+// the check in frame `1961:16584`. Until 2026-11-03 creating closed the sheet.
 //
 // THE LIST BELONGS TO THE CALLER, which keeps it in state: creating, renaming
 // or deleting updates it at once, so neither the chips nor the field show a
@@ -44,72 +64,75 @@ import {
 
 export type CategoriaConConteo = Categoria & { productos: number };
 
+type Popup = { id: string | null; nombre: string };
+
 export function CategoryManagerSheet({
   open,
   onOpenChange,
   categorias,
   onCategoriasChange,
-  onDeleted,
   picker,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   categorias: CategoriaConConteo[];
   onCategoriasChange: (next: CategoriaConConteo[]) => void;
-  // Lets the caller drop a selection or a filter that pointed at it.
-  onDeleted?: (id: string) => void;
   // Present in the product flow only: rows become choices.
   picker?: { value: string | null; onPick: (id: string | null) => void };
 }) {
-  const [nueva, setNueva] = useState("");
-  const [editando, setEditando] = useState<{ id: string; nombre: string } | null>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [popup, setPopup] = useState<Popup | null>(null);
+  const [errorDelPopup, setErrorDelPopup] = useState<string | null>(null);
   const [borrando, setBorrando] = useState<CategoriaConConteo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendiente, startTransition] = useTransition();
+  const tecladoAbierto = useKeyboardOpen();
 
-  // Every opening starts clean: no error and no half-finished rename left
-  // over from the last time. Both doors open it by flipping `open` from
-  // outside, so the reset hangs off the prop, not off a click handler.
+  // Every opening starts clean: no error and no search left over from the
+  // last time. Both doors open it by flipping `open` from outside, so the
+  // reset hangs off the prop, not off a click handler.
   const [estabaAbierta, setEstabaAbierta] = useState(open);
   if (open !== estabaAbierta) {
     setEstabaAbierta(open);
     if (open) {
       setError(null);
-      setEditando(null);
+      setBusqueda("");
+      setPopup(null);
     }
   }
 
-  const ordenadas = ordenarCategorias(categorias) as CategoriaConConteo[];
+  const visibles = useMemo(() => {
+    const q = foldForSearch(busqueda.trim());
+    const ordenadas = ordenarCategorias(categorias) as CategoriaConConteo[];
+    return q ? ordenadas.filter((c) => foldForSearch(c.name).includes(q)) : ordenadas;
+  }, [categorias, busqueda]);
 
-  function crear() {
-    const aviso = errorDeNombreDeCategoria(nueva, categorias);
-    if (aviso) return setError(aviso);
+  function abrirPopup(categoria: CategoriaConConteo | null) {
     setError(null);
-    startTransition(async () => {
-      const r = await crearCategoria(nueva);
-      if ("error" in r) return setError(r.error);
-      onCategoriasChange([...categorias, { ...r.categoria, productos: 0 }]);
-      setNueva("");
-      // From the product flow, creating means «for this product»: it is
-      // chosen and the sheet closes. From the catalogue it stays open, since
-      // whoever is managing usually creates several in a row.
-      if (picker) {
-        picker.onPick(r.categoria.id);
-        onOpenChange(false);
-      }
-    });
+    setErrorDelPopup(null);
+    setPopup({ id: categoria?.id ?? null, nombre: categoria?.name ?? "" });
   }
 
-  function guardarNombre() {
-    if (!editando) return;
-    const aviso = errorDeNombreDeCategoria(editando.nombre, categorias, editando.id);
-    if (aviso) return setError(aviso);
-    setError(null);
+  function guardarPopup() {
+    if (!popup || pendiente) return;
+    const { id, nombre } = popup;
+    const aviso = errorDeNombreDeCategoria(nombre, categorias, id ?? undefined);
+    if (aviso) return setErrorDelPopup(aviso);
+    setErrorDelPopup(null);
     startTransition(async () => {
-      const r = await renombrarCategoria(editando.id, editando.nombre);
-      if ("error" in r) return setError(r.error);
-      onCategoriasChange(categorias.map((c) => (c.id === r.categoria.id ? { ...c, name: r.categoria.name } : c)));
-      setEditando(null);
+      if (id) {
+        const r = await renombrarCategoria(id, nombre);
+        if ("error" in r) return setErrorDelPopup(r.error);
+        onCategoriasChange(categorias.map((c) => (c.id === id ? { ...c, name: r.categoria.name } : c)));
+      } else {
+        const r = await crearCategoria(nombre);
+        if ("error" in r) return setErrorDelPopup(r.error);
+        onCategoriasChange([...categorias, { ...r.categoria, productos: 0 }]);
+        picker?.onPick(r.categoria.id);
+        // A leftover search could hide the row just created.
+        setBusqueda("");
+      }
+      setPopup(null);
     });
   }
 
@@ -125,161 +148,214 @@ export function CategoryManagerSheet({
       }
       onCategoriasChange(categorias.filter((c) => c.id !== id));
       if (picker?.value === id) picker.onPick(null);
-      onDeleted?.(id);
       setBorrando(null);
     });
   }
 
-  const nombreYConteo = (c: CategoriaConConteo) => (
-    <span className="flex min-w-0 flex-col">
-      <span className="truncate">{c.name}</span>
-      <span className="text-xs text-muted-foreground">
-        {c.productos === 1 ? "1 producto" : `${c.productos} productos`}
-      </span>
-    </span>
-  );
+  const creando = popup?.id === null;
 
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         {/* `dvh`, not `vh`: the same trap the «Registrar» sheet documents. */}
-        <SheetContent side="bottom" className="flex max-h-[90dvh] flex-col rounded-t-xl">
-          <SheetHeader>
-            <SheetTitle className="text-xl font-medium">{picker ? "Categoría" : "Categorías"}</SheetTitle>
-            <SheetDescription>
-              {picker ? "Elige una, o crea la que necesites." : "Crea, cambia el nombre o elimina tus categorías."}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-6">
-            {!picker && ordenadas.length === 0 ? (
-              // The empty-state copy of frame «Crear producto V4» (node
-              // `1955:15820`), the owner's own words for «no categories yet».
-              <div className="flex flex-col gap-1 rounded-lg border px-4 py-6 text-center">
-                <p className="font-semibold">Aún no tienes categorías registradas</p>
-                <p className="text-xs text-muted-foreground">Agrega una categoría para organizar tus productos.</p>
-              </div>
-            ) : (
-              <ul className="flex min-h-0 flex-1 flex-col divide-y overflow-y-auto rounded-lg border">
-                {picker ? (
-                  <li>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        picker.onPick(null);
-                        onOpenChange(false);
-                      }}
-                      className="flex min-h-12 w-full items-center justify-between gap-2 px-3 text-left text-sm active:bg-muted/60"
-                    >
-                      <span className="text-muted-foreground">Sin categoría</span>
-                      {picker.value === null ? <Check className="size-4 text-foreground" aria-hidden="true" /> : null}
-                    </button>
-                  </li>
-                ) : null}
-                {ordenadas.map((c) =>
-                  editando?.id === c.id ? (
-                    <li key={c.id} className="flex flex-col gap-2 p-3">
-                      <Input
-                        autoFocus
-                        value={editando.nombre}
-                        maxLength={MAX_NOMBRE_DE_CATEGORIA}
-                        onChange={(e) => setEditando({ id: c.id, nombre: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            guardarNombre();
-                          }
-                        }}
-                        aria-label={`Nuevo nombre de ${c.name}`}
-                        className="h-10"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setEditando(null)} disabled={pendiente}>
-                          Cancelar
-                        </Button>
-                        <Button type="button" size="sm" onClick={guardarNombre} disabled={pendiente}>
-                          Guardar
-                        </Button>
-                      </div>
-                    </li>
-                  ) : (
-                    <li key={c.id} className="flex items-center gap-1 pr-1">
-                      {picker ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            picker.onPick(c.id);
-                            onOpenChange(false);
-                          }}
-                          className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-2 px-3 text-left text-sm active:bg-muted/60"
-                        >
-                          {nombreYConteo(c)}
-                          {picker.value === c.id ? (
-                            <Check className="size-4 shrink-0 text-foreground" aria-hidden="true" />
-                          ) : null}
-                        </button>
-                      ) : (
-                        <div className="flex min-h-12 min-w-0 flex-1 items-center px-3 text-sm">{nombreYConteo(c)}</div>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Editar ${c.name}`}
-                        onClick={() => {
-                          setError(null);
-                          setEditando({ id: c.id, nombre: c.name });
-                        }}
-                        disabled={pendiente}
-                      >
-                        <Pencil className="size-4" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Eliminar ${c.name}`}
-                        onClick={() => {
-                          setError(null);
-                          setBorrando(c);
-                        }}
-                        disabled={pendiente}
-                      >
-                        <Trash2 className="size-4 text-destructive" aria-hidden="true" />
-                      </Button>
-                    </li>
-                  ),
-                )}
-              </ul>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="categoria_nueva">Nueva categoría</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="categoria_nueva"
-                  value={nueva}
-                  maxLength={MAX_NOMBRE_DE_CATEGORIA}
-                  onChange={(e) => setNueva(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      crear();
-                    }
-                  }}
-                  placeholder="Ej.: Bebidas"
-                  className="h-10 min-w-0 flex-1"
-                />
-                <Button type="button" className="h-10" onClick={crear} disabled={pendiente || !nueva.trim()}>
-                  Crear
-                </Button>
-              </div>
+        <SheetContent side="bottom" showCloseButton={false} className="flex max-h-[90dvh] flex-col gap-0 rounded-t-[16px]">
+          {/* The X comes first on purpose: Radix focuses the first control of
+              a sheet, and if that were the search field the keyboard would
+              rise over the list on every opening. */}
+          <div className="flex items-start justify-between gap-2.5 px-4 py-6">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <SheetTitle className="text-base leading-6 font-semibold text-primary">Categorías</SheetTitle>
+              <SheetDescription className="text-sm leading-5">
+                Gestiona las categorías para organizar tus productos en el catálogo.
+              </SheetDescription>
             </div>
-
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            <SheetClose asChild>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Cerrar categorías" className="shrink-0">
+                <X className="size-5" aria-hidden="true" />
+              </Button>
+            </SheetClose>
           </div>
+
+          {categorias.length === 0 ? (
+            <div className="px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
+              {/* «Crea una nueva categoría», singular: the frame reads «una
+                  nueva categorías», taken for a typo. */}
+              <EmptyState
+                title="Aún no tienes categorías creadas"
+                subtitle="Crea una nueva categoría para organizar tus productos en el catálogo."
+              >
+                <Button type="button" className="h-10 w-full gap-2 text-base font-semibold" onClick={() => abrirPopup(null)}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Crear categoría
+                </Button>
+              </EmptyState>
+            </div>
+          ) : (
+            <>
+              <div className="px-4 pt-2 pb-4">
+                <SearchField size="sheet" value={busqueda} onChange={setBusqueda} placeholder="Buscar categoría" />
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                {visibles.length === 0 ? (
+                  <EmptyState title={`No encontramos nada con «${busqueda.trim()}»`} subtitle="Prueba con otra palabra." />
+                ) : (
+                  <ul className="flex flex-col gap-3">
+                    {visibles.map((c) => {
+                      const elegida = picker?.value === c.id;
+                      return (
+                        <li
+                          key={c.id}
+                          // Both rows measure 50px in the frame. It draws the
+                          // chosen one without the 10px gap of the others,
+                          // which would shift its buttons sideways; all of
+                          // them take the gap.
+                          className={`flex h-[50px] items-center gap-2.5 rounded-[10px] border px-2.5 ${
+                            elegida ? "border-primary bg-accent" : "border-border"
+                          }`}
+                        >
+                          {picker ? (
+                            <button
+                              type="button"
+                              aria-pressed={elegida}
+                              onClick={() => {
+                                picker.onPick(elegida ? null : c.id);
+                                onOpenChange(false);
+                              }}
+                              className="flex h-full min-w-0 flex-1 items-center gap-1 text-left text-sm leading-5 text-primary outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                            >
+                              {elegida ? <Check className="size-4 shrink-0" aria-hidden="true" /> : null}
+                              <span className="truncate">{c.name}</span>
+                            </button>
+                          ) : (
+                            <span className="min-w-0 flex-1 truncate text-sm leading-5 text-primary">{c.name}</span>
+                          )}
+                          <div className="flex shrink-0 items-center gap-2.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Eliminar ${c.name}`}
+                              onClick={() => {
+                                setError(null);
+                                setBorrando(c);
+                              }}
+                              disabled={pendiente}
+                            >
+                              <Trash2 className="size-4 text-destructive" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Editar ${c.name}`}
+                              onClick={() => abrirPopup(c)}
+                              disabled={pendiente}
+                            >
+                              <Pencil className="size-4" aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              </div>
+
+              {/* CLAUDE.md: nothing stays stuck to the bottom edge with the
+                  keyboard up, and the search field raises it right here. */}
+              {tecladoAbierto ? null : (
+                <div className="flex flex-col gap-4 px-4 pt-6 pb-[calc(env(safe-area-inset-bottom)+2.5rem)]">
+                  <Button type="button" className="h-10 w-full gap-2 text-base font-semibold" onClick={() => abrirPopup(null)}>
+                    <Plus className="size-5" aria-hidden="true" />
+                    Crear categoría
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-full text-base font-semibold"
+                    onClick={() => onOpenChange(false)}
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={popup !== null}
+        onOpenChange={(o) => {
+          if (!o && !pendiente) setPopup(null);
+        }}
+      >
+        {/* HIGH ON A PHONE, not centred: at 812px tall a centred 262px popup
+            ends at 537, and the iPhone keyboard starts near 476, on top of
+            «Cancelar». At 12dvh it ends near 360. `grid-cols` is the
+            DESIGN-SYSTEM.md trap of a `DialogContent` that does not shrink. */}
+        <DialogContent
+          showCloseButton={false}
+          aria-describedby={undefined}
+          className="top-[12dvh] translate-y-0 grid-cols-[minmax(0,1fr)] gap-5 rounded-[16px] bg-background p-4 sm:top-1/2 sm:-translate-y-1/2"
+        >
+          <div className="flex items-center justify-between gap-2.5">
+            <DialogTitle className="text-xl leading-[26px] font-medium">
+              {creando ? "Crear categoría" : "Editar categoría"}
+            </DialogTitle>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Cerrar" className="shrink-0" disabled={pendiente}>
+                <X className="size-5" aria-hidden="true" />
+              </Button>
+            </DialogClose>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="categoria_nombre" className="text-sm leading-5 font-normal">
+              Nombre de categoría
+            </Label>
+            {/* Enter is handled here and the buttons are `type="button"`: this
+                popup is rendered from inside the product flow, and a React
+                submit would bubble through the portal to whatever form holds
+                it. */}
+            <Input
+              id="categoria_nombre"
+              autoFocus
+              value={popup?.nombre ?? ""}
+              maxLength={MAX_NOMBRE_DE_CATEGORIA}
+              onChange={(e) => setPopup((p) => (p ? { ...p, nombre: e.target.value } : p))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  guardarPopup();
+                }
+              }}
+              placeholder="Escribe nombre"
+              className="h-10 rounded-[12px] px-3"
+            />
+            {errorDelPopup ? <p className="text-sm text-destructive">{errorDelPopup}</p> : null}
+          </div>
+
+          <div className="flex flex-col gap-5">
+            <Button
+              type="button"
+              className="h-10 w-full gap-2 text-base font-semibold"
+              onClick={guardarPopup}
+              disabled={pendiente || !popup?.nombre.trim()}
+            >
+              {creando ? <Plus className="size-5" aria-hidden="true" /> : null}
+              {creando ? "Crear" : "Guardar"}
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" className="h-10 w-full text-base font-semibold" disabled={pendiente}>
+                Cancelar
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={borrando !== null} onOpenChange={(o) => (o ? null : setBorrando(null))}>
         <AlertDialogContent>

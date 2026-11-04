@@ -4,8 +4,8 @@
 //
 // Steps 5 and 6 are the category (migration 184): the field under
 // «Proveedor», then its sheet with «Lácteos» chosen. The demo business has
-// «Lácteos» since 2026-11-03; with no categories the sheet shows only
-// «Sin categoría» and «Nueva categoría».
+// «Lácteos» since 2026-11-03; with no categories the sheet shows its empty
+// state instead of the list, and this script stops there.
 import { go, click, type, shot, openMenu, escape, MENU, sleep, waitFor, DIALOG } from "../lib.mjs";
 import { INPUT, LASTBTN } from "./_m.mjs";
 const S = "crear-un-producto";
