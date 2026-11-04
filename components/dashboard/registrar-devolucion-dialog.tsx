@@ -7,21 +7,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { Fecha } from "@/components/fecha";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatCantidad } from "@/lib/products/cantidad";
-import {
-  TOLERANCE,
-  bookAfter,
-  choicesFor,
-  returnValue,
-  splitOfReturn,
-  spreadOverFiados,
-  type OtherFiado,
-} from "@/lib/returns/options";
+import { TOLERANCE, planOfReturn, returnValue, type OtherFiado } from "@/lib/returns/options";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency } from "@/lib/types";
 
@@ -43,21 +34,24 @@ import type { LedgerCurrency } from "@/lib/types";
 // closes without a trace. The buttons of the second popup register at once, as
 // drawn: no third confirmation, and the return can be deleted from its detail.
 //
-// NOT IN THE FRAMES, and the owner chose it on 2026-11-03:
+// THE LEFT-OVER IS «POR COBRAR» LESS THE VALUE, owner's decision of 2026-11-04:
+// the value pays the debts of that currency by itself, and the popups only ask
+// about what is still left. The second popup is therefore always the one drawn,
+// saldo a favor or cash. Until that day it offered «Abonar a otros fiados» with a
+// list to choose from, and cash with debts alive: the reasons, and why they went,
+// are in `lib/returns/options.ts`.
 //
-//   · WITH OTHER FIADOS OWING IN THAT CURRENCY the second popup offers «Abonar a
-//     otros fiados» instead of «Registrar como saldo a favor», which the book
-//     cannot hold next to a debt. «El cliente debe» is then what THIS fiado owes.
-//   · When more than one fiado owes, a list asks which. It is mine.
-//   · When the abono does not take it all, the same popup returns with the rest.
+// ON A CASH SALE THE WHOLE VALUE CAN STILL GO BACK, owner's request of the same
+// day: with a debt smaller than the value the second popup offers a third
+// button, and its first two say the amounts, because here they are what is being
+// chosen. Their wording is mine.
 //
 // A SALE PAID IN FULL, owner's request of 2026-11-04 (migration 186), has no
-// frame: the same popups with `pendingOfFiado` at 0, so all the value is left
-// over and the second one always comes. Mine, to be said in the report: its
-// first line and the second popup's sentence, which cannot speak of a fiado; the
-// reminder that a saldo a favor buys another product, which is how his cases 2
-// and 3 are done; and a sale with no client staying in one popup, because with a
-// single answer there is nothing to ask.
+// frame: the same popups with `pendingOfFiado` at 0. Mine, to be said in the
+// report: the second popup's sentence when nothing is owed, which cannot speak
+// of a fiado; the reminder that a saldo a favor buys another product, which is
+// how his cases 2 and 3 are done; and a sale with no client staying in one popup,
+// because with a single answer there is nothing to ask.
 
 export type ReturnContext = {
   // What it hangs from. `walkIn` is the Mostrador.
@@ -73,7 +67,7 @@ export type ReturnContext = {
   otherFiados: OtherFiado[];
 };
 
-type Step = "detalle" | "sobrante" | "fiados";
+type Step = "detalle" | "sobrante";
 type FiadoLine = { fiado_id: string; amount: number };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -98,9 +92,6 @@ export function RegistrarDevolucionDialog({
   const available = round2(line.quantity - (line.devuelto ?? 0));
   const [quantity, setQuantity] = useState(Math.min(1, available));
   const [step, setStep] = useState<Step>("detalle");
-  // What has already been aimed at other fiados. Only a partial abono leaves
-  // anything here: the rest comes back to the same popup.
-  const [assigned, setAssigned] = useState<FiadoLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,19 +101,7 @@ export function RegistrarDevolucionDialog({
   // the notice says so before anything is pressed. Owner's rule of checking the
   // worst case: being refused here sent him back to writing a false abono.
   const capped = value < round2(quantity * line.unitPrice) - TOLERANCE;
-  const { own, leftOver } = splitOfReturn(value, context.pendingOfFiado);
-
-  const toFiados = round2(assigned.reduce((sum, l) => sum + l.amount, 0));
-  const rest = round2(leftOver - toFiados);
-  // Each fiado with what is left of its debt after what was already aimed at it.
-  const remaining = context.otherFiados
-    .map((f) => ({
-      ...f,
-      pending: round2(f.pending - (assigned.find((l) => l.fiado_id === f.id)?.amount ?? 0)),
-    }))
-    .filter((f) => f.pending > TOLERANCE);
-  const remainingDebt = round2(remaining.reduce((sum, f) => sum + f.pending, 0));
-  const choices = choicesFor(rest, remainingDebt);
+  const { own, lines, toFiados, rest } = planOfReturn(value, context.pendingOfFiado, context.otherFiados);
   const { source } = context;
   const isCash = source.kind === "contado";
   const walkIn = source.kind === "contado" && source.walkIn;
@@ -130,16 +109,19 @@ export function RegistrarDevolucionDialog({
   // THE NOTICE SAYS WHERE THE VALUE GOES AND WHAT «POR COBRAR» WILL READ, in the
   // owner's words of 2026-11-04: *«qué pasa con el valor devuelto? cómo afecta el
   // saldo "Por cobrar"? explícalo en la alerta amarilla»*. It speaks of the book
-  // and not of this fiado, because that is the figure on the card. Worded after
-  // each answer of the second popup, in the same order as its buttons, since
-  // nothing is decided yet here. A debt in the other currency is left out on
+  // and not of this fiado, because that is the figure on the card. Only what is
+  // certain: the same day he took out the two lines that said «si abonas» and
+  // «si devuelves», so with nothing owed there is no line, because the book then
+  // depends on the second popup. A debt in the other currency is left out on
   // purpose: that card does not move.
   const label = `«Por cobrar»${currency ? ` en ${currency === "USD" ? "dólares" : "euros"}` : ""}`;
   const book = (n: number) =>
     n < -TOLERANCE ? `${money(-n).primary} a favor` : money(Math.max(n, 0)).primary;
-  const otherDebt = round2(context.otherFiados.reduce((sum, f) => sum + f.pending, 0));
-  const { afterOwn, afterAbono, afterCredit } = bookAfter(context.bookBalance, own, leftOver, otherDebt);
-  const now = book(context.bookBalance);
+  const debt = round2(context.pendingOfFiado + context.otherFiados.reduce((sum, f) => sum + f.pending, 0));
+  // A cash sale with a debt and something left over: the debt may stay, if the
+  // whole value goes back in the second popup. So the notice cannot promise it.
+  const canReturnWhole = isCash && toFiados > 0 && rest > 0;
+  const lowersDebt = own + toFiados > 0 && !canReturnWhole;
 
   async function register(fiados: FiadoLine[], aFavor: number, efectivo: number) {
     if (guardia() || !line.id) return;
@@ -159,30 +141,7 @@ export function RegistrarDevolucionDialog({
     router.push(`/transacciones/${result.movementId}?registrada=1`);
   }
 
-  // `onlyId` null spreads oldest first. If the fiados take it all it registers;
-  // if not, the second popup comes back with what is still left.
-  function abonar(onlyId: string | null) {
-    const { lines, rest: left } = spreadOverFiados(rest, remaining, onlyId);
-    const merged = [...assigned];
-    for (const l of lines) {
-      const i = merged.findIndex((x) => x.fiado_id === l.fiado_id);
-      if (i >= 0) merged[i] = { ...merged[i], amount: round2(merged[i].amount + l.amount) };
-      else merged.push(l);
-    }
-    if (left === 0) {
-      void register(merged, 0, 0);
-      return;
-    }
-    setAssigned(merged);
-    setStep("sobrante");
-  }
-
-  const title =
-    step === "detalle"
-      ? "Registrar devolución"
-      : step === "sobrante"
-        ? "¿Qué deseas hacer con el sobrante?"
-        : "¿A qué fiado abonas?";
+  const title = step === "detalle" ? "Registrar devolución" : "¿Qué deseas hacer con el sobrante?";
 
   const valor = money(value);
 
@@ -267,40 +226,38 @@ export function RegistrarDevolucionDialog({
                     : "De esta venta ya se devolvió todo lo que se cobró."}
                 </li>
               ) : null}
-              {isCash ? (
-                <li>Al devolver esta compra de contado sobrarán {money(leftOver).primary}.</li>
+              {value <= 0 ? null : isCash ? (
+                <li>
+                  {rest > 0
+                    ? `Al devolver esta compra de contado sobrarán ${money(rest).primary}.`
+                    : "Al devolver esta compra de contado no sobra dinero: se abona a sus fiados."}
+                </li>
               ) : context.pendingOfFiado <= TOLERANCE ? (
-                <li>Este fiado ya estaba pagado, así que sobran {money(leftOver).primary}.</li>
+                <li>
+                  {rest > 0
+                    ? `Este fiado ya estaba pagado, así que sobran ${money(rest).primary}.`
+                    : "Este fiado ya estaba pagado: el valor se abona a sus otros fiados."}
+                </li>
               ) : own >= context.pendingOfFiado - TOLERANCE ? (
                 <li>
-                  Este fiado queda pagado{leftOver > 0 ? ` y sobran ${money(leftOver).primary}` : ""}.
+                  Este fiado queda pagado
+                  {rest > 0
+                    ? ` y sobran ${money(rest).primary}`
+                    : toFiados > 0
+                      ? " y el resto se abona a sus otros fiados"
+                      : ""}
+                  .
                 </li>
               ) : (
                 <li>Este fiado baja a {money(round2(context.pendingOfFiado - own)).primary}.</li>
               )}
               {walkIn ? (
                 <li>Es una venta sin cliente: el dinero se devuelve y no hay «Por cobrar» que cambie.</li>
-              ) : leftOver === 0 ? (
+              ) : lowersDebt ? (
                 <li>
-                  {label} baja de {now} a {book(afterOwn)}.
+                  {label} baja de {book(context.bookBalance)} a {book(round2(context.bookBalance - own - toFiados))}.
                 </li>
-              ) : (
-                <>
-                  {afterAbono != null ? (
-                    <li>
-                      Si lo abonas a otros fiados, {label} baja de {now} a {book(afterAbono)}.
-                    </li>
-                  ) : (
-                    <li>
-                      Si lo dejas a favor, {label} queda en {book(afterCredit as number)}.
-                    </li>
-                  )}
-                  <li>
-                    Si devuelves el dinero, {label}{" "}
-                    {own > 0 ? `baja de ${now} a ${book(afterOwn)}` : `sigue en ${now}`}.
-                  </li>
-                </>
-              )}
+              ) : null}
               <li>
                 {line.stockCounted
                   ? `${quantity === 1 ? "1 Unidad vuelve" : `${quantity} Unidades vuelven`} al inventario.`
@@ -310,13 +267,12 @@ export function RegistrarDevolucionDialog({
               <li>Puedes revertir la devolución desde el historial.</li>
             </ul>
 
-            {leftOver > 0 && !walkIn ? (
+            {rest > 0 && !walkIn ? (
               <Button
                 type="button"
                 className="h-10 w-full text-base font-semibold"
                 disabled={value <= 0}
                 onClick={() => {
-                  setAssigned([]);
                   setError(null);
                   setStep("sobrante");
                 }}
@@ -329,7 +285,7 @@ export function RegistrarDevolucionDialog({
                   type="button"
                   className="h-10 w-full text-base font-semibold"
                   disabled={saving || value <= 0}
-                  onClick={() => void register([], 0, walkIn ? value : 0)}
+                  onClick={() => void register(lines, 0, walkIn ? rest : 0)}
                 >
                   {saving ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
                   {walkIn ? "Devolver dinero" : "Registrar devolución"}
@@ -352,19 +308,14 @@ export function RegistrarDevolucionDialog({
         {step === "sobrante" ? (
           <>
             <DialogDescription className="text-sm leading-5 text-primary">
-              {isCash && toFiados === 0 ? (
+              {isCash && debt <= TOLERANCE ? (
                 <>
                   Esta compra ya estaba pagada; Sobran{" "}
                   <strong className="tabular-nums">{money(rest).primary}</strong>
                 </>
-              ) : toFiados > 0 ? (
-                <>
-                  Abonaste <strong className="tabular-nums">{money(toFiados).primary}</strong> a otros fiados; Sobran{" "}
-                  <strong className="tabular-nums">{money(rest).primary}</strong>
-                </>
               ) : (
                 <>
-                  El cliente debe <strong className="tabular-nums">{money(context.pendingOfFiado).primary}</strong> menos{" "}
+                  El cliente debe <strong className="tabular-nums">{money(debt).primary}</strong> menos{" "}
                   <strong className="tabular-nums">{money(value).primary}</strong> por devolución; Sobran{" "}
                   <strong className="tabular-nums">{money(rest).primary}</strong>
                 </>
@@ -372,79 +323,61 @@ export function RegistrarDevolucionDialog({
             </DialogDescription>
 
             <div className="flex flex-col gap-4">
-              {choices.includes("fiados") ? (
-                <Button
-                  type="button"
-                  className="h-10 w-full text-base font-semibold"
-                  disabled={saving}
-                  onClick={() => (remaining.length === 1 ? abonar(remaining[0].id) : setStep("fiados"))}
-                >
-                  Abonar a otros fiados
-                </Button>
+              {canReturnWhole ? (
+                <>
+                  <Button
+                    type="button"
+                    className="h-auto min-h-10 w-full py-2 text-sm font-semibold whitespace-normal"
+                    disabled={saving}
+                    onClick={() => void register(lines, 0, rest)}
+                  >
+                    Abonar {money(toFiados).primary} y devolver {money(rest).primary}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-auto min-h-10 w-full py-2 text-sm font-semibold whitespace-normal"
+                    disabled={saving}
+                    onClick={() => void register(lines, rest, 0)}
+                  >
+                    Abonar {money(toFiados).primary} y dejar {money(rest).primary} a favor
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-auto min-h-10 w-full py-2 text-sm font-semibold whitespace-normal"
+                    disabled={saving}
+                    onClick={() => void register([], 0, value)}
+                  >
+                    Devolver los {money(value).primary}
+                  </Button>
+                </>
               ) : (
-                <Button
-                  type="button"
-                  className="h-10 w-full text-base font-semibold"
-                  disabled={saving}
-                  onClick={() => void register(assigned, rest, 0)}
-                >
-                  Registrar como saldo a favor
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    className="h-10 w-full text-base font-semibold"
+                    disabled={saving}
+                    onClick={() => void register(lines, rest, 0)}
+                  >
+                    Registrar como saldo a favor
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-full text-base font-semibold"
+                    disabled={saving}
+                    onClick={() => void register(lines, 0, rest)}
+                  >
+                    Devolver dinero
+                  </Button>
+                </>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full text-base font-semibold"
-                disabled={saving}
-                onClick={() => void register(assigned, 0, rest)}
-              >
-                Devolver dinero
-              </Button>
-              {remainingDebt > TOLERANCE ? (
-                <p className="-mt-2 text-xs leading-4 text-muted-foreground">
-                  Este cliente todavía debe {money(remainingDebt).primary} en esta moneda.
-                </p>
-              ) : isCash ? (
+              {isCash ? (
                 <p className="-mt-2 text-xs leading-4 text-muted-foreground">
                   Con el saldo a favor puede llevarse otro producto.
                 </p>
               ) : null}
-            </div>
-          </>
-        ) : null}
-
-        {step === "fiados" ? (
-          <>
-            <DialogDescription className="text-sm leading-5 text-primary">
-              Sobran <strong className="tabular-nums">{money(rest).primary}</strong>
-            </DialogDescription>
-            <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full text-sm"
-                disabled={saving}
-                onClick={() => abonar(null)}
-              >
-                Repartir, del más antiguo al más nuevo
-              </Button>
-              {remaining.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => abonar(f.id)}
-                  className="flex min-h-[50px] w-full items-center justify-between gap-2 rounded-[10px] border px-2.5 py-2 text-left text-sm leading-5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{f.title}</span>
-                    <span className="text-xs leading-4 text-muted-foreground">
-                      <Fecha iso={f.chargeAt} />
-                    </span>
-                  </span>
-                  <span className="shrink-0 tabular-nums">Debe {money(f.pending).primary}</span>
-                </button>
-              ))}
             </div>
           </>
         ) : null}

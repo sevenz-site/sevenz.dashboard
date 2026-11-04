@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { cargarFacturacion } from "../lib/reports/facturacion.ts";
 import { ventasDelPeriodo } from "../lib/reports/ventas-del-periodo.ts";
 import { rangoDe } from "../lib/reports/rango.ts";
-import { bookAfter } from "../lib/returns/options.ts";
+import { planOfReturn } from "../lib/returns/options.ts";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -331,38 +331,48 @@ try {
     check("23c. y su saldo a favor", igual(s?.balance_usd, -10), s?.balance_usd);
   }
 
-  // ── 7. WHAT THE YELLOW NOTICE PROMISES ───────────────────────────────────
+  // ── 7. WHAT THE POPUPS PROMISE ───────────────────────────────────────────
   //
-  // `bookAfter` writes the figures of the notice. Each one is checked against
-  // what the card reads once the return is really registered.
+  // `planOfReturn` writes the figures of both popups: «Por cobrar» less the
+  // value (owner's decision of 2026-11-04). Each one is registered for real, the
+  // way the screen sends it, and read back from the card.
   {
-    const promesa = async (nombre, { deuda, favor = 0, elige, esperado }) => {
+    const promesa = async (nombre, { deudas = [], favor = 0, elige = null, sobra, esperado }) => {
       const c = await clienteNuevo();
       const v = await contado(c, { qty: 1 });
-      let f = null;
-      if (deuda) f = await fiado(c, deuda);
+      const abiertos = [];
+      for (const d of deudas) abiertos.push({ id: await fiado(c, d), pending: d, chargeAt: new Date().toISOString(), title: "x" });
       if (favor) {
         const previa = await contado(c, { qty: 1, price: favor });
         await devolver(previa, 1, { aFavor: favor });
       }
-      const antes = await libro(c);
-      const promete = bookAfter(antes, 0, 10, deuda ?? 0);
-      const r = elige === "efectivo"
-        ? await devolver(v, 1, { efectivo: 10 })
-        : elige === "favor"
-          ? await devolver(v, 1, { aFavor: 10 })
-          : await devolver(v, 1, { fiados: [{ fiado_id: f, amount: Math.min(10, deuda) }], efectivo: Math.max(0, 10 - deuda) });
-      const prometido = elige === "efectivo" ? promete.afterOwn : elige === "favor" ? promete.afterCredit : promete.afterAbono;
+      const plan = planOfReturn(10, 0, abiertos);
+      const r = await devolver(v, 1, {
+        fiados: plan.lines,
+        aFavor: elige === "favor" ? plan.rest : 0,
+        efectivo: elige === "efectivo" ? plan.rest : 0,
+      });
       const despues = await libro(c);
-      check(nombre, r.data?.ok === true && igual(prometido, esperado) && igual(despues, esperado), `prometió ${prometido}, la tarjeta dice ${despues}`);
+      check(nombre, r.data?.ok === true && igual(plan.rest, sobra) && igual(despues, esperado), `sobran ${plan.rest}, la tarjeta dice ${despues}`);
     };
-    await promesa("25a. sin deuda, dinero: sigue en $0", { elige: "efectivo", esperado: 0 });
-    await promesa("25b. sin deuda, a favor: $10 a favor", { elige: "favor", esperado: -10 });
-    await promesa("25c. con saldo previo, dinero: sigue a favor, no en $0", { favor: 3, elige: "efectivo", esperado: -3 });
-    await promesa("25d. con saldo previo, a favor: se suman", { favor: 3, elige: "favor", esperado: -13 });
-    await promesa("25e. debe $25, abono: baja a $15", { deuda: 25, elige: "abono", esperado: 15 });
-    await promesa("25f. debe $25, dinero: sigue en $25", { deuda: 25, elige: "efectivo", esperado: 25 });
-    await promesa("25g. debe $4, abono: baja a $0 y el resto se devuelve", { deuda: 4, elige: "abono", esperado: 0 });
+    await promesa("25a. sin deuda, dinero: sobran $10, sigue en $0", { elige: "efectivo", sobra: 10, esperado: 0 });
+    await promesa("25b. sin deuda, a favor: $10 a favor", { elige: "favor", sobra: 10, esperado: -10 });
+    await promesa("25c. con saldo previo, dinero: sigue a favor", { favor: 3, elige: "efectivo", sobra: 10, esperado: -3 });
+    await promesa("25d. con saldo previo, a favor: se suman", { favor: 3, elige: "favor", sobra: 10, esperado: -13 });
+    await promesa("25e. debe $25: no sobra nada, baja a $15", { deudas: [25], sobra: 0, esperado: 15 });
+    await promesa("25f. debe exactamente $10: no sobra nada, queda en $0", { deudas: [10], sobra: 0, esperado: 0 });
+    await promesa("25g. debe $4: sobran $6, a favor", { deudas: [4], elige: "favor", sobra: 6, esperado: -6 });
+    await promesa("25h. debe $4: sobran $6, en dinero", { deudas: [4], elige: "efectivo", sobra: 6, esperado: 0 });
+    await promesa("25i. debe $3 y $4: los dos saldados, sobran $3", { deudas: [3, 4], elige: "efectivo", sobra: 3, esperado: 0 });
+
+    // The third button of a cash sale: the whole value, and the debt stays.
+    const cEntero = await clienteNuevo();
+    const vEntero = await contado(cEntero, { qty: 1 });
+    await fiado(cEntero, 4);
+    const { data: entero } = await devolver(vEntero, 1, { efectivo: 10 });
+    check("25j. debe $4: «Devolver los $10», y sigue debiendo $4", entero?.ok === true && igual(await libro(cEntero), 4), await libro(cEntero));
+    const fEntero = await reporte(cEntero);
+    check("25k. y «Ventas» baja los $10 enteros", igual(fEntero.ventas.USD ?? 0, 0), fEntero.ventas.USD);
   }
 
   // ── 8. A COLOMBIAN BOOK ──────────────────────────────────────────────────

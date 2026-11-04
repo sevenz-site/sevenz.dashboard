@@ -218,7 +218,7 @@ const declaradas = Number(
 // `movements` y `sales`-- y mezclarlas haría que esta comprobación comparara
 // 112 contra 84 y fallara sin que nada estuviera mal.
 const filasDeDatos = lineas.filter((l) => /;[0-9a-f-]{36}$/.test(l));
-const filasDeMovimiento = filasDeDatos.filter((l) => /;(Fiado|Abono);/.test(l));
+const filasDeMovimiento = filasDeDatos.filter((l) => /;(Fiado|Abono|Devolución);/.test(l));
 const filasDeContado = filasDeDatos.filter((l) => /;De contado;/.test(l));
 check(
   "3. las filas de MOVIMIENTO del fichero son las que cuenta la base",
