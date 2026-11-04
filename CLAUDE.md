@@ -927,6 +927,44 @@ dialogs mounted, duplicate tour markers).
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
 
+## Toda decisión de interfaz queda en Figma, Drive y Trello, o no se lanza
+
+**Pedido por el dueño el 2026-11-04**, al dejar respaldado el documento de las
+modales de devolución: *«de ahora en adelante debemos documentar de esta manera
+las decisiones de las interfaces. Agrégalo a tus Rules, Debe quedar figma y drive
+con documento final de caso por caso. Sin dichos documentos se bloquea el
+lanzamiento a producción»*.
+
+**Una interfaz nueva o cambiada lleva tres cosas antes de salir:**
+
+1. **Figma**: un frame por caso, con el copy final. Tiene que coincidir con la app.
+2. **Drive de Sevenz**: un documento final, caso por caso, con la captura real de
+   cada pantalla, cuándo sale y qué pasa. El modelo es el de las modales de
+   devolución: `Modales-de-devolucion-final.pdf`.
+3. **Su ticket de Trello**, con los dos enlaces en la descripción: `Documento:` el
+   de Drive, y `Figma:` el del frame. Pedido por él el mismo día, con la captura del
+   ticket «Product return/warranty»: *«todo debe quedar documentado en el ticket de
+   trello (drive con link archivo de documentación y link de figma)»*.
+
+**Es una parada dura del `qa-regression-checklist`** (sección 4g). Si falta uno de
+los tres, no se lanza esa interfaz, y no se decide a solas que este cambio no lo
+necesita: se le pregunta al dueño.
+
+**El registro vive en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con el enlace de cada
+documento y el nombre de su ticket, porque este repo es público. Sin fila en ese
+registro, el documento no existe para el checklist. El ticket lo mantiene el dueño:
+desde aquí no hay acceso a Trello, así que se le pasan los dos enlaces listos.
+
+**La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
+genera con capturas de la app, después del último cambio de copy. El 2026-11-04 se
+compararon los textos de los frames contra los de la app; si el copy cambia después
+de generarlo, hay que generarlo de nuevo.
+
+**Por qué merece regla propia**: ese día el mismo flujo pasó por tres versiones de
+copy en horas, y el dueño corrigió dos cifras de sus frames y una palabra que podía
+hacer perder dinero. Solo se vio porque estaban los casos uno al lado del otro. Sin
+ese documento, cada caso se revisa por separado y nadie compara los demás.
+
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
 **Un enlace a un frame de Figma es una instrucción de leerlo, no una
@@ -1724,7 +1762,9 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 
 - Before merging `dev` into `main`, or making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, and
-  wait for the user's explicit confirmation before actually launching.
+  wait for the user's explicit confirmation before actually launching. An
+  interface with no Figma, no Drive document or no Trello ticket carrying both
+  links blocks the launch (section 4g).
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.

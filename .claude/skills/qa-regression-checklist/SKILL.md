@@ -964,6 +964,35 @@ no la publica. Si el skill cambió algo, el informe lo dice y el lanzamiento de
 con la prueba —qué archivos visibles toca el diff y que ninguno de sus rótulos
 sale en `soporte.ts`—.
 
+## 4g. Figma, Drive y Trello, caso por caso — PARADA DURA
+
+Pedido por el dueño el 2026-11-04: *«Debe quedar figma y drive con documento final
+de caso por caso. Sin dichos documentos se bloquea el lanzamiento a producción»*.
+Y el mismo día: *«todo debe quedar documentado en el ticket de trello (drive con
+link archivo de documentación y link de figma)»*. La regla entera está en
+`CLAUDE.md`, «Toda decisión de interfaz queda en Figma, Drive y Trello, o no se
+lanza».
+
+**Por cada interfaz nueva o cambiada en este lanzamiento:**
+
+1. **Sale del alcance de la sección 1**: todo archivo tocado en `app/(app)/**`,
+   `app/s/**`, `app/c/**` y `components/**` que cambie lo que se ve.
+2. **Tiene fila en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con su frame, su enlace
+   de Drive y su ticket de Trello.
+3. **Su Figma coincide con la app.** Leer los textos de los frames y compararlos con
+   la pantalla, no suponerlo.
+4. **El documento es posterior al último cambio de copy.** Si no, hay que generarlo
+   de nuevo.
+5. **Su ticket de Trello lleva los dos enlaces.** Desde aquí no hay acceso a Trello:
+   lo confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
+
+**Si falta algo, esa interfaz no se lanza.** Se le dice al dueño cuál falta y qué
+falta. **Quitarla del lanzamiento o darla por exenta es decisión suya.**
+
+**El conector de Drive puede no ver el archivo**: el 2026-11-04 no encontró el
+documento de las modales con la cuenta conectada. Si no se puede abrir, la fila del
+informe dice «sin comprobar, lo confirma el dueño», nunca «pasa».
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
@@ -1344,6 +1373,10 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 4g row is never skipped either**: it lists each interface in the release
+with its Figma, its Drive document and its Trello ticket, or says which is missing. A missing
+document is a stop, not a note.
 
 **The 4f row is never skipped either**: it carries the `help-center-sync`
 result — which help topics this release changed, or «ninguno» with the

@@ -253,8 +253,9 @@ export function FiltrosDelHistorial({
   // pantalla y a nada más. Es la única herramienta que vuelve a juntarlas.
   codigo: string;
   setCodigo: (v: string) => void;
-  // Optional, unlike the rest: the client's list has no date filter. It arrives
-  // cut to 50 movements, so an older date would answer «no hay» where there are.
+  // Optional, unlike the rest: the client's list has no date filter, owner's
+  // decision of 2026-11-04 (*«no aplica en cliente»*). It arrives cut to 50
+  // movements, so an older date would answer «no hay» where there are.
   fecha?: FechaFiltro;
   setFecha?: (v: FechaFiltro) => void;
 }) {
@@ -287,7 +288,11 @@ export function FiltrosDelHistorial({
           className="h-10 pl-9"
         />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ONE ROW THAT SLIDES, owner's decision of 2026-11-04, as in Clientes and
+          the catalogue. Four chips measure 353px against the 343 a phone leaves
+          them, so with wrapping «Moneda» fell alone to a second line. Both lists
+          mount this; the client's three chips fit and it never slides there. */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <MovementTypeFilter tipo={tipo} setTipo={setTipo} />
         {setFecha ? <MovementDateFilter fecha={fecha} setFecha={setFecha} /> : null}
         <MovementStatusFilter estado={estado} setEstado={setEstado} />
