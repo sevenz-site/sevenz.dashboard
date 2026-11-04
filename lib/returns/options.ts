@@ -91,7 +91,7 @@
 //   Cash sale, owes less than value| Abonar y devolver, abonar y dejar, or all cash
 //   Cash sale, owes value or more  | Abonar, or all cash
 //   Mostrador                      | Cash
-//   Fiado, nothing left over       | One button: «Devolver», the fiados go down
+//   Fiado, nothing left over       | One button: «Descontar», the fiados go down
 //   Fiado, something left over     | Saldo a favor, or that left-over in cash
 //
 // A FIADO NEVER HANDS BACK MORE THAN WAS HANDED OVER, owner's rule of 2026-11-04:
@@ -108,6 +108,12 @@
 // devolver el efectivo que sobre en un fiado»*. What it cost to leave out: a client
 // who paid $30 in abonos could only hold a saldo, and cash handed over outside the
 // app would leave that saldo alive to be spent.
+//
+// «DEVOLVER» WITH A FIGURE MEANS CASH LEAVES THE TILL, everywhere: owner's decision
+// of 2026-11-04. His frames drew «Devolver $10,00» on a fiado where nothing leaves.
+// The worst case was a client who paid $10, owes $25 on another fiado and says
+// «dame mis $10»: the shopkeeper hands them over and the debt falls as well, $10
+// lost. So that button reads «Descontar», and the notice says no money goes out.
 //
 // «WHAT IS LEFT OVER» IS AFTER ALL THE DEBTS, unlike a cash sale: a fiado already
 // paid, with another owing $25, abona solo. Owner's decision of 2026-11-04, asked
@@ -182,7 +188,7 @@ export function planOfReturn(value: number, pendingOfFiado: number, otherFiados:
 }
 
 export type ReturnChoice = {
-  kind: "a_favor" | "devolver" | "devolver_sobrante" | "abonar" | "abonar_y_devolver" | "abonar_y_dejar";
+  kind: "a_favor" | "devolver" | "devolver_sobrante" | "descontar" | "abonar" | "abonar_y_devolver" | "abonar_y_dejar";
   fiados: { fiado_id: string; amount: number }[];
   aFavor: number;
   efectivo: number;
@@ -212,7 +218,7 @@ export function choicesOfCashSale(value: number, otherFiados: OtherFiado[]): Ret
  */
 export function choicesOfFiado(value: number, pendingOfFiado: number, otherFiados: OtherFiado[]): ReturnChoice[] {
   const { lines, rest } = planOfReturn(value, pendingOfFiado, otherFiados);
-  if (rest <= 0) return [{ kind: "devolver", fiados: lines, aFavor: 0, efectivo: 0 }];
+  if (rest <= 0) return [{ kind: "descontar", fiados: lines, aFavor: 0, efectivo: 0 }];
   return [
     { kind: "a_favor", fiados: lines, aFavor: rest, efectivo: 0 },
     { kind: "devolver_sobrante", fiados: lines, aFavor: 0, efectivo: rest },

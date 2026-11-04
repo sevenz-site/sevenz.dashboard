@@ -114,18 +114,19 @@ export function RegistrarDevolucionDialog({
   function buttonLabel(kind: ReturnChoice["kind"]) {
     switch (kind) {
       case "a_favor":
-        return `Registrar saldo a favor (${amount(rest)})`;
+        return `Registrar saldo a favor ${amount(rest)}`;
       case "abonar":
         return `Abonar ${worth} a deuda`;
       case "abonar_y_devolver":
         return `Abonar ${amount(toFiados)} y devolver ${amount(rest)}`;
       case "abonar_y_dejar":
         return `Abonar ${amount(toFiados)} y dejar a favor ${amount(rest)}`;
+      case "descontar":
+        return `Descontar ${worth} de la deuda`;
       case "devolver_sobrante":
-        return `Devolver (${amount(rest)})`;
+        return `Devolver ${amount(rest)}`;
       case "devolver":
-        // Only the first frame draws it in brackets, beside the one that does.
-        return isCash && !walkIn && toFiados <= 0 ? `Devolver (${worth})` : `Devolver ${worth}`;
+        return `Devolver ${worth}`;
     }
   }
 
@@ -135,7 +136,7 @@ export function RegistrarDevolucionDialog({
       const lines = [
         `Por cobrar ${book(balance)}`,
         `Total de este fiado ${amount(context.pendingOfFiado)}`,
-        `Devolver baja este fiado a ${amount(round2(context.pendingOfFiado - own))} y por cobrar a ${amount(Math.max(round2(balance - own - toFiados), 0))}`,
+        `Este fiado baja a ${amount(round2(context.pendingOfFiado - own))} y por cobrar a ${amount(Math.max(round2(balance - own - toFiados), 0))}`,
       ];
       // No frame had these two when the cash button came in: they are the cash
       // sale's, saying «abonos» because that is what falls on a fiado.
@@ -145,7 +146,7 @@ export function RegistrarDevolucionDialog({
             `Registrar como saldo a favor al cliente le queda disponible ${saldoAfter} para otra compra.`,
             `Devolver el sobrante se resta de abonos ${amount(rest)}`,
           ]
-        : lines;
+        : [...lines, "No le entregas dinero al cliente."];
     }
     const stays = `Devolver los ${worth} sigue debiendo ${book(balance)}.`;
     if (walkIn) {
@@ -252,7 +253,7 @@ export function RegistrarDevolucionDialog({
         </div>
 
         <div className="flex items-center justify-between gap-1 py-2">
-          <span className="text-base leading-6 font-semibold">Valor devuelto</span>
+          <span className="text-base leading-6 font-semibold">Valor a devolver</span>
           <span className="flex flex-col items-end">
             <span className="inline-flex items-center gap-1 text-base leading-6 font-semibold tabular-nums">
               {valor.primary}

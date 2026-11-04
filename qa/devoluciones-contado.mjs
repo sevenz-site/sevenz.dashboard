@@ -461,14 +461,14 @@ try {
         `${elegido.kind}: tarjeta ${despues}, fiado ${queda}, a favor ${ev?.to_credit}, caja ${ev?.to_cash}`,
       );
     };
-    await fiadoCon("27a. frame: fiado $30, otro $10, por cobrar $40", { qty: 3 }, { otros: [10], tipo: "devolver", esperado: 30, favor: 0, propio: 20 });
+    await fiadoCon("27a. frame: fiado $30, otro $10, por cobrar $40", { qty: 3 }, { otros: [10], tipo: "descontar", esperado: 30, favor: 0, propio: 20 });
     await fiadoCon("27b. frame: fiado $5 de $10 con $5 abonados", { abono: 5 }, { tipo: "a_favor", esperado: -5, favor: 5 });
     await fiadoCon("27c. lo mismo con los $5 pagados en la venta", { pagado: 5 }, { tipo: "a_favor", esperado: -5, favor: 5 });
-    await fiadoCon("27d. fiado $5, otro $20: el resto baja el otro", { abono: 5 }, { otros: [20], tipo: "devolver", esperado: 15, favor: 0 });
+    await fiadoCon("27d. fiado $5, otro $20: el resto baja el otro", { abono: 5 }, { otros: [20], tipo: "descontar", esperado: 15, favor: 0 });
     await fiadoCon("27e. fiado $5, otro $2: sobran $3", { abono: 5 }, { otros: [2], tipo: "a_favor", esperado: -3, favor: 3 });
     await fiadoCon("27f. fiado pagado, nada más: $10 a favor", { abono: 10 }, { tipo: "a_favor", esperado: -10, favor: 10 });
-    await fiadoCon("27g. fiado pagado, otro debe $25", { abono: 10 }, { otros: [25], tipo: "devolver", esperado: 15, favor: 0 });
-    await fiadoCon("27h. debe exactamente lo devuelto", {}, { tipo: "devolver", esperado: 0, favor: 0 });
+    await fiadoCon("27g. fiado pagado, otro debe $25", { abono: 10 }, { otros: [25], tipo: "descontar", esperado: 15, favor: 0 });
+    await fiadoCon("27h. debe exactamente lo devuelto", {}, { tipo: "descontar", esperado: 0, favor: 0 });
 
     // THE CASE OF HIS NOTE: a line of $10 on a fiado of $5, and nobody paid a cent.
     const cNada = await clienteNuevo();
