@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { FilterChip } from "@/components/dashboard/client-filters";
+import { FilterChip, FilterChipButton } from "@/components/dashboard/client-filters";
+import { FechaSheet } from "@/components/dashboard/fecha-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
+import { aISO, deISO, etiquetaDelRango, textoDelRango } from "@/lib/reports/rango";
 
 // THE HISTORY'S TYPE FILTER, asked for by the owner on 2026-10-16: "Todos",
 // "Fiado" and "Abono", to the right of the history's title.
@@ -224,6 +227,8 @@ export function FiltrosDelHistorial({
   monedas,
   codigo,
   setCodigo,
+  fecha = null,
+  setFecha,
 }: {
   tipo: TipoFiltro;
   setTipo: (v: TipoFiltro) => void;
@@ -248,6 +253,10 @@ export function FiltrosDelHistorial({
   // pantalla y a nada más. Es la única herramienta que vuelve a juntarlas.
   codigo: string;
   setCodigo: (v: string) => void;
+  // Optional, unlike the rest: the client's list has no date filter. It arrives
+  // cut to 50 movements, so an older date would answer «no hay» where there are.
+  fecha?: FechaFiltro;
+  setFecha?: (v: FechaFiltro) => void;
 }) {
   return (
     // SIN EL RÓTULO «Filtrar por», que se fue el 2026-10-23 por instrucción
@@ -280,12 +289,62 @@ export function FiltrosDelHistorial({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <MovementTypeFilter tipo={tipo} setTipo={setTipo} />
+        {setFecha ? <MovementDateFilter fecha={fecha} setFecha={setFecha} /> : null}
         <MovementStatusFilter estado={estado} setEstado={setEstado} />
         {monedas.length > 1 ? (
           <MovementCurrencyFilter moneda={moneda} setMoneda={setMoneda} monedas={monedas} />
         ) : null}
       </div>
     </div>
+  );
+}
+
+// ===========================================================================
+// THE DATE FILTER
+//
+// Owner's request of 2026-11-04: *«agrega filtro "Fecha" por defecto ninguna
+// fecha seleccionada, al abrirlo muestra mismo sheet que el filtro de fecha de
+// "Reportes"»*. Drawn between type and status, as his capture has it.
+//
+// TWO DAYS AS TEXT, NOT TWO `Date`: what is compared is the day each row prints,
+// `dayInZone`, so a plain `YYYY-MM-DD` on both sides has no zone left to get wrong.
+// `null` is no date chosen, and every row passes.
+//
+// «QUITAR FECHA» IS MINE AND IN NO FRAME: Reportes always has a range, so its sheet
+// has no way back to nothing, and here the date would stay on for good. The other
+// three chips have their «Todas» for the same reason.
+export type FechaFiltro = { desde: string; hasta: string } | null;
+
+const rangoDeFiltro = (f: NonNullable<FechaFiltro>) => ({ desde: deISO(f.desde)!, hasta: deISO(f.hasta)! });
+
+export function MovementDateFilter({
+  fecha,
+  setFecha,
+}: {
+  fecha: FechaFiltro;
+  setFecha: (v: FechaFiltro) => void;
+}) {
+  const [abierta, setAbierta] = useState(false);
+  const rango = fecha ? rangoDeFiltro(fecha) : null;
+  return (
+    <FechaSheet
+      abierta={abierta}
+      onAbiertaChange={setAbierta}
+      inicial={rango ? { from: rango.desde, to: rango.hasta } : undefined}
+      onElegir={({ desde, hasta }) => {
+        setFecha({ desde: aISO(desde), hasta: aISO(hasta) });
+        setAbierta(false);
+      }}
+      onQuitar={
+        fecha
+          ? () => {
+              setFecha(null);
+              setAbierta(false);
+            }
+          : undefined
+      }
+      trigger={<FilterChipButton label={rango ? etiquetaDelRango(rango) : "Fecha"} active={fecha !== null} />}
+    />
   );
 }
 
@@ -365,10 +424,12 @@ export function tituloDeListaVacia({
   estado,
   moneda,
   codigo = "",
+  fecha = null,
 }: {
   tipo: TipoFiltro;
   estado: EstadoFiltro;
   moneda: MonedaFiltro;
+  fecha?: FechaFiltro;
   // El código tecleado, si lo hay. Por defecto vacío para que una pantalla
   // que todavía no tenga buscador siga llamando a esto igual.
   codigo?: string;
@@ -394,6 +455,7 @@ export function tituloDeListaVacia({
   // productos: decirle «no hay transacciones con el código "agua"» a quien
   // buscó un producto es contarle un fallo que no cometió.
   if (codigo.trim() !== "") partes.push(`que digan «${codigo.trim()}»`);
+  if (fecha) partes.push(textoDelRango(rangoDeFiltro(fecha)));
   if (moneda !== "todas") partes.push(`en ${nombreDeMoneda(moneda).toLowerCase()}`);
   if (estado !== "todos") {
     const etiqueta = ESTADOS.find((e) => e.value === estado)?.label ?? estado;
