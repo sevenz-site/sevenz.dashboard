@@ -874,7 +874,7 @@ export function MobileNav() {
   return (
     <>
       <MobileNavBar onRegistrar={() => setRegistrar(true)} />
-      <RegisterSheet open={registrar} onOpenChange={setRegistrar} />
+      <RegisterSheet open={registrar} onOpenChange={setRegistrar} surface="fab" />
     </>
   );
 }

@@ -121,6 +121,7 @@ export function QuickProductSheet({
     setError(null);
     startTransition(async () => {
       const r = await createProduct({
+        analitica: { source: "quick_sheet" },
         name: nombre.trim(),
         unit: null,
         // UNA SOLA MONEDA, Y LA MISMA EN LOS DOS ESCALONES.

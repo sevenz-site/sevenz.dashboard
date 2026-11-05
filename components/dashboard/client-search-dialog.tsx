@@ -1,5 +1,8 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { pendingPayment, startPendingPayment } from "@/lib/analytics/flow-client";
+import type { EntryPoint } from "@/lib/analytics/events";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
@@ -69,10 +72,13 @@ type ClientOption = {
 export function ClientSearchDialog({
   clients,
   autoOpen,
+  entryPoint = "register",
 }: {
   clients: ClientOption[];
   // True cuando la navegación trae el marcador pidiendo esta hoja.
   autoOpen?: boolean;
+  // Where this payment started, for the funnels.
+  entryPoint?: EntryPoint;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -106,6 +112,14 @@ export function ClientSearchDialog({
   // Normalised once: the prop is optional, so undefined and false have to mean
   // the same thing to the comparison below.
   const wantsOpen = autoOpen === true;
+
+  // THE FIRST STEP OF THE PAYMENT FUNNEL. Nobody knows the client yet, so the flow
+  // waits under a shared key for the screen that does. Filed under the owner.
+  useEffect(() => {
+    if (!open) return;
+    const { flow, isNew } = startPendingPayment(entryPoint);
+    if (isNew) track("Payment Started", { flow_id: flow.id, entry_point: entryPoint, mode: "split" });
+  }, [open, entryPoint]);
   const abrirBloqueado = useGuardiaAlAbrir(wantsOpen);
   const guardia = useGuardiaDeCuentaPausada();
   const [prevAutoOpen, setPrevAutoOpen] = useState(false);
@@ -243,6 +257,8 @@ function ClientSearchDialogBody({
   }, [clients, query]);
 
   function selectExisting(id: string) {
+    const flow = pendingPayment();
+    if (flow) track("Payment Client Selected", { flow_id: flow.id, entry_point: flow.entry });
     onDone(true);
     // EL ABONO ENTRA EN SU PROPIO FLUJO. `/abonos/nuevo?cliente=<id>` es su
     // paso 1/3 —elegir qué fiado paga— y es el mismo sitio al que lleva

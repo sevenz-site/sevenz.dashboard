@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
@@ -242,6 +243,17 @@ export type FlagClientState = { error: string | null; success: boolean };
 
 // Marks a client "Mala paga" — always requires a reason, logged in
 // client_flags so the history survives even after the client is unflagged.
+// Whether the client owes anything, in any book. Only for analytics: a read that fails
+// reads as «no», and the action it rides on has already worked.
+async function owesMoney(supabase: Awaited<ReturnType<typeof createClient>>, clientId: string) {
+  const { data } = await supabase
+    .from("client_summary_all")
+    .select("balance, balance_usd, balance_eur")
+    .eq("client_id", clientId)
+    .maybeSingle();
+  return [data?.balance, data?.balance_usd, data?.balance_eur].some((v) => Number(v ?? 0) > 0);
+}
+
 export async function flagClient(
   _prevState: FlagClientState,
   formData: FormData,
@@ -280,6 +292,11 @@ export async function flagClient(
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/dashboard");
+
+  // HOW MANY CLIENTS GET MARKED. Owner's request of 2026-11-04: *«Marcas de mala
+  // paga»*. With `Mala Paga Warning Answered` it says whether the mark changes a
+  // decision. The reason written by the shopkeeper never travels. Filed under the owner.
+  trackServer("Client Flagged", user.id, { client_id: clientId }, user.email);
   return { error: null, success: true };
 }
 
@@ -315,6 +332,9 @@ export async function unflagClient(clientId: string): Promise<{ error: string | 
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/dashboard");
+
+  // DO MARKS COME OFF? If never, the list only grows and stops meaning anything.
+  trackServer("Client Unflagged", user.id, { client_id: clientId }, user.email);
   return { error: null };
 }
 
@@ -400,10 +420,17 @@ export async function trashClient(clientId: string): Promise<HideClientState> {
   if (hideError) console.error("trashClient: client_hides insert failed", hideError);
 
   revalidateClientSurfaces(clientId);
+  // HOW MANY CLIENTS GO TO THE BIN, AND OWING MONEY. Moved here from the browser on
+  // 2026-11-04: there it also counted a client who was already in the bin, and only
+  // when the tap's answer came back. The series steps at that date. Filed under the owner.
+  trackServer("Client Trashed", user.id, { client_id: clientId, owed_money: await owesMoney(supabase, clientId) }, user.email);
   return { error: null };
 }
 
-export async function restoreClient(clientId: string): Promise<HideClientState> {
+export async function restoreClient(
+  clientId: string,
+  source: "papelera" | "client_detail" | "notification" = "papelera",
+): Promise<HideClientState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -449,10 +476,17 @@ export async function restoreClient(clientId: string): Promise<HideClientState> 
   if (hideError) console.error("restoreClient: client_hides insert failed", hideError);
 
   revalidateClientSurfaces(clientId);
+  // DOES THE BIN GET USED, AND THROUGH WHICH DOOR? Moved from the browser on
+  // 2026-11-04, when `source` stopped being overwritten too. Before that the door from
+  // Notificaciones counted nothing. The series steps at that date. Filed under the owner.
+  trackServer("Client Restored", user.id, { client_id: clientId, source }, user.email);
   return { error: null };
 }
 
-export async function hideClientPermanently(clientId: string): Promise<HideClientState> {
+export async function hideClientPermanently(
+  clientId: string,
+  source: "papelera" | "client_detail" = "papelera",
+): Promise<HideClientState> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -498,6 +532,14 @@ export async function hideClientPermanently(clientId: string): Promise<HideClien
   if (hideError) console.error("hideClientPermanently: client_hides insert failed", hideError);
 
   revalidateClientSurfaces(clientId);
+  // HOW MANY CLIENTS ARE HIDDEN FOR GOOD. The two doors used to send different
+  // properties, so neither could be compared. Filed under the owner.
+  trackServer(
+    "Client Hidden Permanently",
+    user.id,
+    { client_id: clientId, owed_money: await owesMoney(supabase, clientId), source },
+    user.email,
+  );
   return { error: null };
 }
 
@@ -649,6 +691,8 @@ export async function setClientWhatsappNotices(
     };
   }
 
+  // HOW MANY CLIENTS GET NOTICES, AND WHO TURNS THEM OFF. Decides the work of `MS-41`.
+  trackServer("Client Notices Changed", user.id, { client_id: clientId, enabled: activar }, user.email);
   revalidatePath(`/clients/${clientId}`);
   return { error: null };
 }

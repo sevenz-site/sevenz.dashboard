@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import Link from "next/link";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { HideableBalance } from "@/components/dashboard/hideable-balance";
@@ -156,7 +157,12 @@ export function BalanceCard({
       <div className="flex shrink-0 flex-col items-end justify-between py-1">
         <button
           type="button"
-          onClick={toggleHidden}
+          onClick={() => {
+            // DO THEY HIDE THE AMOUNTS? If a lot, the app is used with people in front
+            // and the default should change. Filed under the owner.
+            track("Balance Visibility Toggled", { card: "balance", visible: hidden });
+            toggleHidden();
+          }}
           aria-label={hidden ? "Mostrar montos" : "Ocultar montos"}
           aria-pressed={!hidden}
           className="rounded text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
@@ -180,6 +186,7 @@ export function BalanceCard({
             naming the section it opens and the other naming the action. */}
         <Link
           href="/reportes"
+          onClick={() => track("Home Card Tapped", { card: "balance", destination: "/reportes" })}
           className="flex items-center gap-0.5 whitespace-nowrap text-xs text-foreground transition-colors hover:text-money-due"
         >
           Ver todo

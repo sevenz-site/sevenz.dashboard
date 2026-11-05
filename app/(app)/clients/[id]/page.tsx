@@ -294,7 +294,7 @@ export default async function ClientDetailPage({
             // mandó borrar ese diálogo ese día.
             <ClientActionsRow
               hrefAbono={`/abonos/nuevo?cliente=${client.id}&desde=cliente`}
-              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}`}
+              hrefVentaOFiado={`/ventas/nueva?cliente=${client.id}&desde=perfil`}
               puedeAbonar={
                 ownerCountry === "VE" ? balanceUsd > 0 || balanceEur > 0 : balance > 0
               }

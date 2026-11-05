@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { refreshStockAlerts } from "@/lib/stock-alerts";
@@ -36,6 +37,9 @@ import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 // is bounded by RLS and by migration 180's rules.
 export async function logout(scope?: string): Promise<{ error: string }> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const { error } = await supabase.auth.signOut({ scope: scope === "global" ? "global" : "local" });
   if (error) {
     console.error("logout: signOut failed", error);
@@ -46,6 +50,9 @@ export async function logout(scope?: string): Promise<{ error: string }> {
           : "No pudimos cerrar la sesión. Revisa tu conexión e intenta de nuevo.",
     };
   }
+  // HOW MANY CLOSE THE SESSION, AND EVERYWHERE. A rise in `global` can mean a shared
+  // account or a lost phone. Filed under the owner.
+  if (user) trackServer("Logout Completed", user.id, { scope: scope === "global" ? "global" : "local" }, user.email);
   redirect("/login");
 }
 

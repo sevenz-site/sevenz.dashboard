@@ -362,6 +362,7 @@ export function ClientTable({
                               </Link>
                             </Button>
                             <ShareActions
+                              screen={source}
                               clientId={row.client_id}
                               clientName={row.name}
                               whatsapp={row.whatsapp}

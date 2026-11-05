@@ -1,6 +1,7 @@
 "use client";
 
 
+import { track } from "@/lib/mixpanel";
 import Link from "next/link";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
 import { useHiddenBalances } from "@/hooks/use-hidden-balances";
@@ -85,6 +86,11 @@ function Tarjeta({
   return (
     <Link
       href={href}
+      // WHICH CARD OF THE HOME LEADS ANYWHERE. Owner's request of 2026-11-04: *«Cards en
+      // el home»*. It decides what stays at the top. Filed under the owner.
+      onClick={() =>
+        track("Home Card Tapped", { card: href.startsWith("/productos") ? "orders" : "sales", destination: href })
+      }
       // `min-w-0` y `flex-1`: las dos miden 162 en el frame, que es la mitad
       // justa de 338 con 14 de hueco. En vez de clavar los 162 se reparten a
       // partes iguales, para que a 320px --un iPhone SE-- se encojan en vez de
@@ -149,12 +155,14 @@ export function InicioResumenCards({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              track("Balance Visibility Toggled", { card: "sales", visible: oculto });
               alternarOculto();
             }}
             onKeyDown={(e) => {
               if (e.key !== "Enter" && e.key !== " ") return;
               e.preventDefault();
               e.stopPropagation();
+              track("Balance Visibility Toggled", { card: "sales", visible: oculto });
               alternarOculto();
             }}
             className="-m-1 shrink-0 rounded p-1 text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"

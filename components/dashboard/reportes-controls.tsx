@@ -1,5 +1,7 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
@@ -77,6 +79,8 @@ export function ReportesClientSearch({
             documentType: c.document_type ?? null,
           }));
 
+  useSearchEvent("reports", query, results.length);
+
   if (selectedName) {
     return (
       <div className="flex h-[50px] w-full items-center justify-between gap-2 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-3 pl-4">
@@ -119,6 +123,8 @@ export function ReportesClientSearch({
           <ClientResultList
             results={results}
             onSelect={(id) => {
+              // DO THEY NARROW A REPORT DOWN? Only that they did: never to what.
+              track("Report Filter Applied", { filter: "client" });
               setQuery("");
               set("cliente", id, "push");
             }}
@@ -186,6 +192,8 @@ export function ReportesEntitySearch({
   const q = foldForSearch(query.trim());
   const results = q === "" ? [] : items.filter((i) => foldForSearch(i.nombre).includes(q)).slice(0, RESULTADOS);
 
+  useSearchEvent("reports", query, results.length);
+
   if (seleccionado) {
     return (
       <div className="flex h-[50px] w-full items-center justify-between gap-2 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-3 pl-4">
@@ -231,6 +239,7 @@ export function ReportesEntitySearch({
                   <button
                     type="button"
                     onClick={() => {
+                      track("Report Filter Applied", { filter: clave === "proveedor" ? "supplier" : "product" });
                       setQuery("");
                       set(clave, i.id, "push");
                     }}

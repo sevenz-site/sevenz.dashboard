@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
@@ -42,6 +43,9 @@ export async function guardarUmbralDeStock(
   }
 
   revalidatePath("/reportes");
+  // DO THEY ADJUST «POR AGOTARSE»? If nobody does, the default is doing its job. Filed
+  // under the owner.
+  trackServer("Stock Threshold Changed", user.id, { threshold: valor }, user.email);
   return { ok: true };
 }
 

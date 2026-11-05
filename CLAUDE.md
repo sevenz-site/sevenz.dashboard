@@ -1794,7 +1794,9 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 - To create, edit or retire a Mixpanel event: run the `analytics-event` skill. It
   keeps the code and `../docs/Sevenz-Eventos-Mixpanel.xlsx` in step. Section 4i of
   the `qa-regression-checklist` checks every release for events it should add,
-  change or lost (owner's request of 2026-11-04).
+  change or lost (owner's request of 2026-11-04). Every change goes in the workbook's
+  `Changelog` sheet, and each release uploads the workbook to its Drive folder (owner's
+  request of 2026-11-05).
 
 ## Code is written in English. Always.
 

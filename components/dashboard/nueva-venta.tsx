@@ -1,5 +1,8 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { newFlowId } from "@/lib/analytics/flow-client";
+import type { EntryPoint } from "@/lib/analytics/events";
 import {
   useEffect,
   useMemo,
@@ -168,6 +171,7 @@ type Elegido = {
 };
 
 export function NuevaVenta({
+  entryPoint,
   clientes,
   inicial,
   ownerId,
@@ -175,6 +179,8 @@ export function NuevaVenta({
   rateContext,
   umbralDeStock,
 }: {
+  // Where this sale started, resolved by the page. Only for the funnels.
+  entryPoint: EntryPoint;
   // La lista del buscador del paso 3, sin el mostrador: se elige con su propio
   // botón y no buscándolo por nombre.
   clientes: Cliente[];
@@ -195,6 +201,23 @@ export function NuevaVenta({
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
+
+  // THE SALE FUNNEL. Owner's request of 2026-11-04: *«entender dónde ocurren los
+  // drop-off de cada flujo»*. All four steps are `useState` in this one component,
+  // so `Page Viewed` cannot see them and nothing else would. What it decides: which
+  // step to make shorter, and whether asking for the client loses sales. Leaving is
+  // not an event of its own: the funnel shows it as the step nobody reached.
+  //
+  // These are browser gestures and a floor. The count of sales is `Sale Completed`,
+  // on the server, joined by this same `flow_id`. Filed under the owner.
+  const [flujo] = useState(newFlowId);
+  const contexto = { flow_id: flujo, entry_point: entryPoint };
+  const empezada = useRef(false);
+  useEffect(() => {
+    if (empezada.current) return;
+    empezada.current = true;
+    track("Sale Started", { flow_id: flujo, entry_point: entryPoint, has_client: inicial != null });
+  }, [flujo, entryPoint, inicial]);
 
   // ── CUÁNTOS PASOS TIENE ESTA VENTA ──────────────────────────────────
   //
@@ -381,6 +404,7 @@ export function NuevaVenta({
     }
 
     const resultado = await registrarVenta({
+      analitica: { flowId: flujo, entryPoint },
       clientId: destino.id,
       lineas: lineas.map((l) => ({
         productId: l.productId,
@@ -456,6 +480,10 @@ export function NuevaVenta({
   // nombre del mostrador cuando el cliente que iba a llevarla no se pudo
   // crear.
   async function finalizar(form: HTMLFormElement | null, permiso: boolean) {
+    track("Sale Client Chosen", {
+      ...contexto,
+      method: form ? (duplicado ? "duplicate_separate" : "inline_new") : cliente ? "existing" : "walk_in",
+    });
     if (!form) {
       // CLIENTE QUE YA EXISTE. El permiso va por su cuenta y ANTES de guardar:
       // si la venta falla, el tendero reintenta y no vuelve a ver la casilla
@@ -474,6 +502,8 @@ export function NuevaVenta({
     // desde siempre.
     const datos = new FormData(form);
     if (duplicado) datos.set("confirm_duplicate", "true");
+    datos.set("analytics_flow_id", flujo);
+    datos.set("analytics_entry_point", "sale_step_client");
 
     const r = await registrarCliente(datos);
     if (!r.ok) {
@@ -553,7 +583,10 @@ export function NuevaVenta({
           catalogo={catalogo}
           onCatalogo={setCatalogo}
           lineas={lineas}
-          onAgregar={(l) => setLineas((xs) => agregar(xs, l))}
+          onAgregar={(l, via) => {
+            track("Sale Product Added", { ...contexto, added_via: via, cart_lines: agregar(lineas, l).length });
+            setLineas((xs) => agregar(xs, l));
+          }}
           onIrAlCarrito={() => setPaso(2)}
           ownerId={ownerId}
           umbralDeStock={umbralDeStock}
@@ -567,7 +600,15 @@ export function NuevaVenta({
           monedasDelLibro={catalogo?.monedasDelLibro ?? []}
           onCambiar={setLineas}
           onSeguirComprando={() => setPaso(1)}
-          onIrAPago={() => setPaso(3)}
+          onIrAPago={() => {
+            track("Sale Cart Confirmed", {
+              ...contexto,
+              lines: lineas.length,
+              units: lineas.reduce((suma, l) => suma + l.quantity, 0),
+              currencies_count: new Set(lineas.map((l) => l.currency)).size,
+            });
+            setPaso(3);
+          }}
         />
       ) : null}
 
@@ -587,7 +628,11 @@ export function NuevaVenta({
           rates={rates}
           prevista={catalogo?.prevista ?? null}
           ownerId={ownerId}
-          onContinuar={() => setPaso(4)}
+          onContinuar={() => {
+            track("Sale Client Step Viewed", contexto);
+            setPaso(4);
+          }}
+          onPagoDecidido={(currency, decision) => track("Sale Payment Decided", { ...contexto, currency, decision })}
           guardar={() => void guardar()}
         />
       ) : null}
@@ -660,14 +705,15 @@ export function NuevaVenta({
           // SI NO ESTUVIERA, se asume MARCADO y no sin marcar. Un aviso de más
           // cuesta un toque; uno de menos es fiarle a quien el tendero puso en
           // su lista negra sin decírselo, que es el fallo entero de `PR-E6`.
-          onUsarExistente={(c) =>
+          onUsarExistente={(c) => {
+            track("Sale Client Chosen", { ...contexto, method: "duplicate_existing" });
             void guardar({
               ...c,
               esMostrador: false,
               marcada:
                 clientes.find((x) => x.client_id === c.id)?.is_flagged ?? true,
-            })
-          }
+            });
+          }}
         />
       ) : null}
 
@@ -691,7 +737,13 @@ export function NuevaVenta({
       <AlertDialog
         open={avisando != null}
         onOpenChange={(abierto: boolean) => {
-          if (!abierto) setAvisando(null);
+          if (!abierto) {
+            // DOES THE FLAG STOP A LOAN, OR IS IT WAVED THROUGH? It is the reason the
+            // mala paga mark exists. Cancelling reaches here; proceeding closes it
+            // from its own button, which counts itself below.
+            if (avisando) track("Mala Paga Warning Answered", { ...contexto, choice: "cancel", flow: "sale" });
+            setAvisando(null);
+          }
         }}
       >
         <AlertDialogContent>
@@ -708,6 +760,7 @@ export function NuevaVenta({
             <AlertDialogAction
               onClick={() => {
                 const destino = avisando;
+                track("Mala Paga Warning Answered", { ...contexto, choice: "proceed", flow: "sale" });
                 setAvisando(null);
                 if (destino) void guardar(destino, true);
               }}
@@ -735,7 +788,7 @@ function PasoProducto({
   catalogo: ProductosParaVenta | null;
   onCatalogo: (c: ProductosParaVenta) => void;
   lineas: LineaVenta[];
-  onAgregar: (l: LineaVenta) => void;
+  onAgregar: (l: LineaVenta, via: "catalog" | "quick_create") => void;
   onIrAlCarrito: () => void;
   // Para el diálogo de alta de producto, que lo pide.
   ownerId: string;
@@ -818,7 +871,7 @@ function PasoProducto({
             producto: nuevo.producto,
             quantity: cantidad,
             currency: moneda,
-          });
+          }, "quick_create");
         }
       }
     }, 250);
@@ -922,7 +975,7 @@ function PasoProducto({
               producto: detalle.producto,
               quantity,
               currency,
-            });
+            }, "catalog");
             setDetalle(null);
           }}
         />
@@ -1358,6 +1411,7 @@ function TarjetaDeLinea({
 // Lo que no se cobre ni se pacte queda fiado al «Finalizar». El tendero no
 // clasifica la venta de antemano: cobra lo que le den y lo que sobre se fía.
 function PasoPago({
+  onPagoDecidido,
   conCliente,
   debeAvisar,
   registros,
@@ -1375,6 +1429,7 @@ function PasoPago({
   onContinuar,
   guardar,
 }: {
+  onPagoDecidido: (currency: PriceCurrency, decision: "full" | "partial" | "none") => void;
   // POR DÓNDE SE ENTRÓ, no si hay cliente ahora. Decide si el botón dice
   // «Finalizar» o «Continuar».
   conCliente: boolean;
@@ -1742,6 +1797,9 @@ function PasoPago({
           prevista={prevista}
           inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
+            const aPagar = cuentas.find((x) => x.currency === cobrando);
+            const falta = aPagar ? aPagar.amount - aPagar.saldoUsado : 0;
+            onPagoDecidido(cobrando, r.amount <= 0 ? "none" : r.amount >= falta - 0.005 ? "full" : "partial");
             setRegistros((xs) => ({ ...xs, [cobrando]: r }));
             setCobrando(null);
           }}

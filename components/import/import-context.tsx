@@ -16,6 +16,7 @@ export type ImportJob = {
 };
 
 export type ImportContextValue = {
+  batchId: string | null;
   jobs: ImportJob[];
   isProcessing: boolean;
   usage: ImportUsage;
@@ -27,6 +28,7 @@ export type ImportContextValue = {
 const DEFAULT_USAGE: ImportUsage = { plan: "free", used: 0, limit: null, remaining: null };
 
 export const ImportContext = createContext<ImportContextValue>({
+  batchId: null,
   jobs: [],
   isProcessing: false,
   usage: DEFAULT_USAGE,

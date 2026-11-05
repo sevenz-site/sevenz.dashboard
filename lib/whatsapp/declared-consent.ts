@@ -1,3 +1,5 @@
+import { trackServer } from "@/lib/mixpanel-server";
+import type { ConsentFlow } from "@/lib/analytics/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { textoPermisoDeclarado, type OrigenPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 
@@ -28,6 +30,7 @@ export async function guardarPermisoDeclarado(
     source,
     seMostro,
     acepta,
+    flow,
   }: {
     clientId: string;
     ownerId: string;
@@ -38,6 +41,9 @@ export async function guardarPermisoDeclarado(
     // se comería la única oportunidad de preguntar por él.
     seMostro: boolean;
     acepta: boolean;
+    // Which screen declared it. The database cannot tell: a sale, a payment and a new
+    // client all save `owner_movement_form`.
+    flow: ConsentFlow;
   },
 ): Promise<void> {
   if (!seMostro) return;
@@ -71,6 +77,9 @@ export async function guardarPermisoDeclarado(
     },
   );
 
+  // WHERE DOES THE OWNER DECLARE THE PERMISSION? It decides which screen to work on to
+  // raise the cover of `MS-41`. Sent only when it was given. Filed under the owner.
+  if (!consentError) trackServer("WhatsApp Consent Declared", ownerId, { client_id: clientId, flow });
   if (consentError) console.error("[guardarPermisoDeclarado] rpc", consentError.message);
   else if (guardado !== true) {
     // `false` tiene causas reales y ninguna es un fallo técnico: el cliente no

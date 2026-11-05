@@ -321,7 +321,7 @@ export function ReportesFacturacion({
         <Button asChild variant="outline" className="h-10 w-full">
           <Link href="/productos/nuevo">Crear producto</Link>
         </Button>
-        <RegisterSheet open={registrando} onOpenChange={setRegistrando} />
+        <RegisterSheet open={registrando} onOpenChange={setRegistrando} surface="report" />
       </EmptyState>
     );
   }
@@ -666,7 +666,7 @@ export function ReportesFacturacion({
                 mismo flujo, y el día que esa puerta cambie una de las dos se
                 queda atrás. */}
             <Button asChild className="h-10 w-full">
-              <Link href="/dashboard?nuevo=abono">Registrar abono</Link>
+              <Link href="/dashboard?nuevo=abono&origen=reporte">Registrar abono</Link>
             </Button>
           </EmptyState>
         ) : (

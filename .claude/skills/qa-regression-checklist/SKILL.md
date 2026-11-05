@@ -1068,6 +1068,13 @@ su pregunta de negocio (regla de `CLAUDE.md`).
 **4. Un evento se ve salir.** Los nuevos de este lanzamiento se comprueban en dev antes
 de reportarlos. Si no se pudo, la fila dice «no probado».
 
+**5. El `Changelog` del libro lleva su fila**, con la versión y lo añadido, cambiado o
+retirado. Pedido por el dueño el 2026-11-05. Si el lanzamiento no tocó ningún evento, no
+hace falta fila.
+
+**Después de lanzar**: los eventos `En dev` pasan a `Existe` con su fecha real, y el libro
+se sube a su carpeta de Drive. Sin eso el lanzamiento no ha terminado.
+
 En el informe va una fila por evento creado, cambiado o perdido. Si no hubo ninguno, una
 fila que lo diga: «sin eventos que crear ni actualizar», con la razón.
 

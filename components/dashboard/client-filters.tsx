@@ -1,5 +1,7 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { useListScreen, useSearchEvent } from "@/lib/analytics/use-search-event";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Broom, ChevronDown } from "lucide-react";
@@ -118,6 +120,7 @@ export function useClientFilters<T extends ClientSummary>(
   },
 ) {
   const [nameQuery, setNameQuery] = useState("");
+  const pantalla = useListScreen();
   // ── EL ESTADO PUEDE VENIR EN LA URL (`?estado=`), desde el 2026-10-27 ──
   //
   // Lo manda el bloque «Plazos de pago» de Reportes: sus cuatro tarjetas
@@ -249,6 +252,8 @@ export function useClientFilters<T extends ClientSummary>(
     setMaxAmount("");
     onFilterChange?.();
   }
+
+  useSearchEvent(pantalla, nameQuery, sortedRows.length);
 
   return {
     sortedRows,
@@ -416,6 +421,7 @@ export function ClientFilterChips({
   className?: string;
   tone?: "light" | "dark";
 }) {
+  const pantalla = useListScreen();
   const c = filters.controls;
 
   const sortLabel = SORT_OPTIONS.find((o) => o.value === c.sortBy)?.label;
@@ -448,6 +454,10 @@ export function ClientFilterChips({
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  // WHICH FILTERS EARN THEIR PLACE. Owner's request of 2026-11-04:
+                  // *«Search filtro»*. One event for every list, told apart by
+                  // `screen`. Filed under the owner.
+                  track("List Filtered", { screen: pantalla, filter: "sort", value: String(opt.value) });
                   c.setSortBy(opt.value);
                   close();
                 }}
@@ -473,6 +483,7 @@ export function ClientFilterChips({
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  track("List Filtered", { screen: pantalla, filter: "status", value: String(opt.value) });
                   c.setStatusFilter(opt.value);
                   close();
                 }}
@@ -509,7 +520,10 @@ export function ClientFilterChips({
           variant="ghost"
           size="sm"
           className="shrink-0 text-muted-foreground"
-          onClick={filters.clearFilters}
+          onClick={() => {
+            track("List Filtered", { screen: pantalla, filter: "clear" });
+            filters.clearFilters();
+          }}
         >
           <Broom className="size-4" />
           Limpiar

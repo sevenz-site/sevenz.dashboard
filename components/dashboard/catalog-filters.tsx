@@ -1,5 +1,7 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -206,10 +208,11 @@ export function CatalogFilterProvider({
 }
 
 export function CatalogSearchField() {
-  const { query, setQuery } = useCatalogFilters();
+  const { query, setQuery, visible } = useCatalogFilters();
   // `SearchField`, el mismo de Clientes, Malas pagas y Papelera, desde el
   // 2026-10-16. Antes era una copia de 46px con la lupa a la izquierda y sin
   // aspa: para vaciar la búsqueda había que borrar letra por letra.
+  useSearchEvent("catalog", query, visible.length);
   return <SearchField tone="dark" value={query} onChange={setQuery} placeholder="Buscar producto" />;
 }
 
@@ -247,6 +250,7 @@ export function CatalogFilterChips() {
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  track("List Filtered", { screen: "catalog", filter: "sort", value: String(opt.value) });
                   f.setSortBy(opt.value);
                   close();
                 }}
@@ -273,6 +277,7 @@ export function CatalogFilterChips() {
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  track("List Filtered", { screen: "catalog", filter: "status", value: String(opt.value) });
                   f.setStatus(opt.value);
                   close();
                 }}
@@ -360,7 +365,10 @@ export function CatalogCategorySection() {
           <Pencil className="size-[15px]" aria-hidden="true" />
         </button>
       </div>
-      <CategoryChips categorias={f.categorias} total={f.total} value={f.categoryId} onChange={f.setCategoryId} />
+      <CategoryChips categorias={f.categorias} total={f.total} value={f.categoryId} onChange={(id) => {
+        track("List Filtered", { screen: "catalog", filter: "category" });
+        f.setCategoryId(id);
+      }} />
 
       <CategoryManagerSheet
         open={editando}

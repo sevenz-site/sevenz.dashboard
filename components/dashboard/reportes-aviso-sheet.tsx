@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -82,7 +83,13 @@ export function ReportesAvisoSheet({
   const [abierta, setAbierta] = useState(false);
 
   return (
-    <Sheet open={abierta} onOpenChange={setAbierta}>
+    <Sheet
+      open={abierta}
+      onOpenChange={(abrir) => {
+        if (abrir) track("Report Sheet Opened", { hoja: "Avisos" });
+        setAbierta(abrir);
+      }}
+    >
       <SheetTrigger asChild>{children}</SheetTrigger>
       {/* `max-h-[90svh]` Y NO `vh`: `vh` mide el viewport GRANDE --el que
           habría sin la barra del navegador-- así que en un teléfono con la

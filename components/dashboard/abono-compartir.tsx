@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -39,11 +40,13 @@ const NOMBRE: Record<string, string> = {
 //   3. El texto -> si el dibujo falla. Un canvas puede no estar disponible, y
 //      quedarse sin compartir nada por eso sería peor que compartir texto.
 export function AbonoCompartir({
+  movementId,
   comprador,
   abono,
   rates,
   fecha,
 }: {
+  movementId: string;
   comprador: { nombre: string; documento: string; telefono: string };
   abono: AbonoDelResumen;
   rates: BolivarRates | null;
@@ -65,9 +68,12 @@ export function AbonoCompartir({
       if (navigator.canShare?.({ files: [fichero] })) {
         // Cerrar la hoja la rechaza. Eso es el tendero decidiendo no mandarlo,
         // no un fallo, así que no lleva aviso.
+        // DOES THE RECEIPT EARN ITS PLACE ON THIS SCREEN? A tap, not a confirmed send.
+        track("Payment Receipt Shared", { movement_id: movementId, method: "native" });
         void navigator.share({ files: [fichero] }).catch(() => {});
         return;
       }
+      track("Payment Receipt Shared", { movement_id: movementId, method: "download" });
       const url = URL.createObjectURL(blob);
       const enlace = document.createElement("a");
       enlace.href = url;
@@ -79,6 +85,7 @@ export function AbonoCompartir({
       return;
     }
 
+    track("Payment Receipt Shared", { movement_id: movementId, method: "text" });
     const texto = textoDelAbono(comprador.nombre, abono, fecha);
     if (navigator.share) {
       void navigator.share({ text: texto }).catch(() => {});

@@ -20,6 +20,8 @@ rompe nada: solo deja a alguien decidiendo sin dato.
 | Qué | Dónde |
 |---|---|
 | El catálogo de eventos y sus funnels | `../docs/Sevenz-Eventos-Mixpanel.xlsx`, repo privado |
+| Lo que cambió en el libro | Pestaña `Changelog` del mismo libro |
+| La copia que lee el dueño | [Carpeta de Drive](https://drive.google.com/drive/folders/10usG8u3Ha0EtFfAopipVDrhykh5YZ86i) |
 | Enviar desde una acción de servidor | `trackServer` en `lib/mixpanel-server.ts` |
 | Enviar un gesto del dueño | `track` en `lib/mixpanel.ts`, que pasa por `/api/track` |
 | Enviar desde la vista del cliente | Una ruta pública, ver «Dónde se dispara» |
@@ -143,6 +145,32 @@ Si se borra una pantalla o una acción, **se busca qué eventos se van con ella*
 Cada uno se sustituye en el mismo cambio, o se le dice al dueño que se pierde.
 Después se pasa a `Eventos retirados` en la pestaña `Globales y retirados`, con
 fecha, commit y qué lo sustituye. No se borra: explica por qué una serie termina.
+
+## El libro tiene versiones, y cada liberación deja rastro
+
+**Pedido por el dueño el 2026-11-05**: *«Actualiza la regla de eventos con cada
+liberación, si hay que editar, incluir, eliminar, etc un evento o algo al respecto, debe
+quedar reflejado en el documento, se podría incluir una especie de changelog en una hoja
+aparte dentro del documento que de una síntesis del último cambio y versiones del
+documento»*.
+
+Toda creación, edición o retiro de un evento, propiedad o funnel se escribe en la pestaña
+`Changelog`, con la versión más nueva arriba:
+
+| Columna | Qué lleva |
+|---|---|
+| `Version` | `1.2`. Sube el segundo número con cada cambio, y el primero si se rehace el libro |
+| `Date` | El día del cambio |
+| `Release` | `v0.3.0`, o `sin lanzar` si sigue en `dev` |
+| `Summary` | Dos líneas de qué cambió y por qué |
+| `Added`, `Changed`, `Removed` | Los nombres, o `—` |
+
+La versión sale también en `Léeme`. Al lanzar, los eventos `En dev` pasan a `Existe` con
+su fecha real, y esa liberación añade su fila.
+
+**El libro de `docs` es el original y Drive es la copia.** Después de cada liberación se
+sube a la carpeta de arriba, reemplazando el archivo con el mismo nombre. Sin eso, el
+dueño lee una versión vieja que parece vigente.
 
 ## Cómo se reporta
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { ArrowUpDown, Share2 } from "lucide-react";
 import { puedeCompartirArchivos, tarjetaDeTasa } from "@/lib/share-card";
@@ -138,7 +139,14 @@ export function ExchangeRateStrip({ rateContext }: { rateContext: MovementRateCo
     // the space actually visible, both measured from visualViewport rather
     // than assumed from vh units.
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={(abrir) => {
+          // IS THE CALCULATOR USED? It decides whether it earns its place on Inicio.
+          if (abrir) track("Calculator Used", { action: "opened" });
+          setOpen(abrir);
+        }}
+      >
         {/* Sin `aria-label`: el nombre accesible sale del contenido y queda
             "$1 = Bs. ... €1 = Bs. ... Calcular" — las tasas y la acción, en
             ese orden. Un rótulo propio las borraría del anuncio. */}
@@ -403,6 +411,7 @@ function RateCalculator({
   }
 
   async function handleShare() {
+    track("Calculator Used", { action: "shared" });
     // With nothing typed there is no conversion to send, but the rate itself is
     // still worth sharing — and it is the thing an owner is most often asked
     // for. Sharing "Bs. 0,00 = $0.00" instead, or disabling the button with no

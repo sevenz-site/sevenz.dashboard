@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Plus } from "lucide-react";
@@ -227,7 +228,13 @@ export function PlazosSheet({
 
   return (
     <>
-    <Sheet open={abierta} onOpenChange={setAbierta}>
+    <Sheet
+      open={abierta}
+      onOpenChange={(abrir) => {
+        if (abrir) track("Report Sheet Opened", { hoja: "Plazos de pago" });
+        setAbierta(abrir);
+      }}
+    >
       <SheetTrigger asChild>{children}</SheetTrigger>
       {/* `max-h-[90svh]` Y NO `vh`: `vh` mide el viewport GRANDE --el que
           habría sin la barra del navegador-- así que en un teléfono con la
@@ -367,7 +374,7 @@ export function PlazosSheet({
     </Sheet>
     {/* FUERA DE LA HOJA DE PLAZOS, a proposito: montada dentro, se
         desmontaria con ella justo cuando hay que abrirla. */}
-    <RegisterSheet open={registrando} onOpenChange={setRegistrando} />
+    <RegisterSheet open={registrando} onOpenChange={setRegistrando} surface="report" />
     </>
   );
 }

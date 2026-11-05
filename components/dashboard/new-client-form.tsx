@@ -1,6 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { track } from "@/lib/mixpanel";
+import { newFlowId } from "@/lib/analytics/flow-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
@@ -121,8 +123,21 @@ export function NewClientForm({
   function datosDelFormulario() {
     const datos = new FormData(formRef.current ?? undefined);
     if (confirmado) datos.set("confirm_duplicate", "true");
+    datos.set("analytics_flow_id", flujo);
+    datos.set("analytics_entry_point", "register");
     return datos;
   }
+
+  // HOW MANY START A CLIENT AND DO NOT FINISH. With `New Client Details Completed`
+  // it says whether people stop at the details or at the old debt, which decides
+  // which field to lighten. Filed under the owner.
+  const [flujo] = useState(newFlowId);
+  const contado = useRef(false);
+  useEffect(() => {
+    if (contado.current) return;
+    contado.current = true;
+    track("New Client Started", { flow_id: flujo, entry_point: "register" });
+  }, [flujo]);
 
   // PASO 1 → 2: se comprueba sin crear nada (`validarCliente`). Un error aquí
   // —el nombre, la cédula, una cédula repetida— se ve donde está el campo, no
@@ -140,6 +155,13 @@ export function NewClientForm({
         setDuplicado(r.duplicado ?? null);
         return;
       }
+      track("New Client Details Completed", {
+        flow_id: flujo,
+        entry_point: "register",
+        has_document: Boolean(String(datos.get("document_id") ?? "").trim()),
+        has_phone: Boolean(String(datos.get("whatsapp") ?? "").trim()),
+        duplicate_document: duplicado != null,
+      });
       if (duplicado) setConfirmado(true);
       setDuplicado(null);
       setPaso(2);
@@ -152,6 +174,7 @@ export function NewClientForm({
   function guardar(destino: "ficha" | "venta") {
     setError(null);
     const datos = datosDelFormulario();
+    if (destino === "venta") datos.set("analytics_next_step", "sale");
     startTransition(async () => {
       const r = await registrarCliente(datos);
       if (!r.ok) {
@@ -166,7 +189,7 @@ export function NewClientForm({
         }
         return;
       }
-      router.push(destino === "venta" ? `/ventas/nueva?cliente=${r.clientId}` : `/clients/${r.clientId}`);
+      router.push(destino === "venta" ? `/ventas/nueva?cliente=${r.clientId}&desde=nuevo_cliente` : `/clients/${r.clientId}`);
     });
   }
 

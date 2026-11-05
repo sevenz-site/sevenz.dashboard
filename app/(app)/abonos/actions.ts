@@ -233,6 +233,7 @@ export async function registrarAbonoDirigido(
         ownerId: user.id,
         clientName: cliente.name,
         source: "owner_movement_form",
+        flow: "payment",
         seMostro: entrada.permisoMostrado !== false,
         acepta: entrada.avisarPorWhatsapp === true,
       });
@@ -942,6 +943,7 @@ export async function registrarAbonoRepartido(
         ownerId: user.id,
         clientName: cliente.name,
         source: "owner_movement_form",
+        flow: "payment",
         seMostro: entrada.permisoMostrado !== false,
         acepta: entrada.avisarPorWhatsapp === true,
       });

@@ -80,6 +80,8 @@ const ENTRY_POINTS: readonly EntryPoint[] = [
   "payment_no_fiados",
   "transaction_detail",
   "report",
+  "sale_step_client",
+  "order_step_client",
 ];
 
 export type FlowInput = { flowId?: unknown; entryPoint?: unknown };

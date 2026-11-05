@@ -17,7 +17,10 @@ export function ShareActions({
   balanceText,
   ownerCountry,
   variant = "icons",
+  screen = "client_profile",
 }: {
+  // Which screen holds these buttons, for the funnels.
+  screen?: string;
   clientId: string;
   clientName: string;
   whatsapp: string | null;
@@ -69,7 +72,7 @@ export function ShareActions({
     if (navigator.share) {
       try {
         await navigator.share({ text: message });
-        track("Share Link Opened", { client_id: clientId, method: "native" });
+        track("Share Link Opened", { client_id: clientId, method: "native", control: "table_share", screen });
       } catch {
         // Dismissing the sheet rejects. That is the owner deciding not to
         // send, not a failure, so it gets no toast and no event.
@@ -82,7 +85,7 @@ export function ShareActions({
     // same thing the sheet would have sent.
     await navigator.clipboard.writeText(message);
     toast.success("Mensaje copiado", { description: message });
-    track("Share Link Opened", { client_id: clientId, method: "copy" });
+    track("Share Link Opened", { client_id: clientId, method: "copy", control: "table_share", screen });
   }
 
   // Abrir wa.me con el número que toque. `phone` vacío es válido y es lo que
@@ -94,7 +97,15 @@ export function ShareActions({
     const phone = numero ? numero.replace(/\D/g, "") : "";
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(buildMessage(url))}`;
     window.open(wa, "_blank", "noopener,noreferrer");
-    track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
+    // WHICH OF THE BUTTONS DO THEY USE? Owner's request of 2026-11-04: *«links compartidos
+    // por WhatsApp (hay dos botones para ello y uno que copia en portapapeles)»*. A
+    // hand-off to WhatsApp, not a confirmed send.
+    track("Share Link Opened", {
+      client_id: clientId,
+      method: "whatsapp",
+      control: variant === "whatsapp-button" ? "whatsapp_wide" : "table_reminder",
+      screen,
+    });
   }
 
   function handleRemind() {

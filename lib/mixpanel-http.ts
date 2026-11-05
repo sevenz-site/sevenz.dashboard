@@ -94,7 +94,7 @@ export async function sendEvent(
         // The owner as a plain property too, by the owner's decision of
         // 2026-11-04: `distinct_id` cannot be used to break a report down, and
         // this can. Written here, so no event can forget it or fake it.
-        owner_id: distinctId,
+        ...(distinctId.startsWith("anonymous-") ? {} : { owner_id: distinctId }),
         time: Date.now(),
         // Makes the event idempotent: if this ever gets retried, Mixpanel
         // discards the duplicate instead of double-counting.

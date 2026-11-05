@@ -41,10 +41,19 @@ export function InstallAppCapture() {
 export function InstallAppDialog({
   open,
   onOpenChange,
+  entryPoint = "banner",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Which door opened the steps, for the funnels.
+  entryPoint?: "banner" | "sidebar";
 }) {
+  // DO THE MANUAL STEPS GET READ? They are the only way to install on an iPhone. Filed
+  // under the owner.
+  useEffect(() => {
+    if (open) track("Install Steps Opened", { entry_point: entryPoint });
+  }, [open, entryPoint]);
+
   // Sin efecto: el sistema operativo no cambia a mitad de sesión, y leerlo con
   // useSyncExternalStore mantiene servidor y cliente de acuerdo durante la
   // hidratación sin escribir estado desde un efecto.
@@ -179,6 +188,20 @@ export function InstallAppBanner() {
   // vale "oculto", así que la tira no existe y no hay nada que discrepar.
   const estado = useSyncExternalStore(suscribirse, estadoDelAviso, estadoEnElServidor);
   const [pasos, setPasos] = useState(false);
+
+  // HOW MANY ARE OFFERED THE INSTALL: the base of every install rate. Once per tab
+  // session, not per visit to Inicio. Filed under the owner.
+  const visible = isMobile && estado !== "oculto";
+  useEffect(() => {
+    if (!visible) return;
+    try {
+      if (sessionStorage.getItem("sevenz:instalar:visto")) return;
+      sessionStorage.setItem("sevenz:instalar:visto", "1");
+    } catch {
+      // Blocked storage: it counts again next time, which is an honest floor.
+    }
+    track("Install Banner Shown", { mode: estado === "un-toque" ? "prompt" : "steps" });
+  }, [visible, estado]);
 
   if (!isMobile || estado === "oculto") return null;
 

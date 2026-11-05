@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -74,10 +75,14 @@ async function compartirTransaccion(compartir: DatosParaCompartir | null, moveme
     // como respaldo, con el mensaje entero y no solo el enlace: lo que se pega
     // tiene que ser lo mismo que habría mandado el menú.
     if (typeof navigator !== "undefined" && navigator.share) {
+      // DO THEY SHARE ONE TRANSACTION? `Share Link Opened` never counted this door. This
+      // screen also serves the client's link, which has no session to send it with.
+      if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "native" });
       await navigator.share({ text: mensaje });
       return;
     }
     await navigator.clipboard.writeText(mensaje);
+    if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "clipboard" });
     toast.success("Mensaje copiado", { description: mensaje });
   } catch (error) {
     // Cerrar el menú de compartir cuenta como un error para el navegador, y no

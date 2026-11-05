@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, Loader2, MoreVertical, Share2 } from "lucide-react";
@@ -138,6 +139,11 @@ export function CatalogShareButton({
     if (!t) return;
 
     const mensaje = `Mira lo que tenemos en ${businessName} y a qué precio: ${urlDe(t)}`;
+
+    // DO THEY SHARE THE CATALOGUE? It is the first step of the funnel that ends in an
+    // order, and without it «no orders» cannot be told from «nobody got the link». A
+    // tap, not a confirmed send. Filed under the owner.
+    track("Catalog Link Shared", { method: "share" in navigator ? "native" : "clipboard" });
 
     if (navigator.share) {
       try {
@@ -323,7 +329,12 @@ export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={() => void verPrevia()}>
+          <DropdownMenuItem
+            onSelect={() => {
+              track("Catalog Preview Opened", {});
+              void verPrevia();
+            }}
+          >
             <Eye />
             Vista previa
           </DropdownMenuItem>

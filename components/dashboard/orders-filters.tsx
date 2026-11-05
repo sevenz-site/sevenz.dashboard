@@ -1,5 +1,7 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
@@ -121,9 +123,10 @@ export function OrdersFilterProvider({
 }
 
 export function OrdersSearchField() {
-  const { query, setQuery } = useOrdersFilters();
+  const { query, setQuery, visible } = useOrdersFilters();
   // `SearchField`, el mismo de Clientes. Nació copiando el de Catálogo el
   // 2026-10-16 y se unificó con todos el mismo día.
+  useSearchEvent("orders", query, visible.length);
   return <SearchField tone="dark" value={query} onChange={setQuery} placeholder="Buscar cliente" />;
 }
 
@@ -148,6 +151,7 @@ export function OrdersFilterChips() {
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  track("List Filtered", { screen: "orders", filter: "status", value: String(opt.value) });
                   f.setStatus(opt.value);
                   close();
                 }}

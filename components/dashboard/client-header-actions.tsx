@@ -132,7 +132,7 @@ export function ClientHeaderActions({
     if (navigator.share) {
       try {
         await navigator.share({ text: message });
-        track("Share Link Opened", { client_id: clientId, method: "native" });
+        track("Share Link Opened", { client_id: clientId, method: "native", control: "menu_share", screen: "client_profile" });
       } catch {
         // Dismissing the sheet rejects. That is the owner deciding not to
         // send, not a failure, so it gets no toast and no event.
@@ -145,7 +145,7 @@ export function ClientHeaderActions({
     // same thing the sheet would have sent.
     await navigator.clipboard.writeText(message);
     toast.success("Mensaje copiado", { description: message });
-    track("Share Link Opened", { client_id: clientId, method: "copy" });
+    track("Share Link Opened", { client_id: clientId, method: "copy", control: "menu_share", screen: "client_profile" });
   }
 
   async function handleChat() {
@@ -154,7 +154,7 @@ export function ClientHeaderActions({
     const phone = whatsapp ? whatsapp.replace(/\D/g, "") : "";
     const wa = `https://wa.me/${phone}?text=${encodeURIComponent(buildMessage(url))}`;
     window.open(wa, "_blank", "noopener,noreferrer");
-    track("Share Link Opened", { client_id: clientId, method: "whatsapp" });
+    track("Share Link Opened", { client_id: clientId, method: "whatsapp", control: "whatsapp_icon", screen: "client_profile" });
   }
 
   async function handleTrash() {
@@ -169,7 +169,6 @@ export function ClientHeaderActions({
     toast.success(`${clientName} está en la papelera`, {
       description: "Puedes restaurarlo cuando quieras desde Papelera.",
     });
-    track("Client Trashed", { client_id: clientId, owed_money: owesMoney });
     // The client is no longer on any list this page could go back to, and this
     // page now shows a client the owner just asked to stop seeing. Cartera is
     // where they expect to land.
@@ -179,20 +178,19 @@ export function ClientHeaderActions({
   async function handleRestore() {
     if (guardia()) return;
     setBusy(true);
-    const result = await restoreClient(clientId);
+    const result = await restoreClient(clientId, "client_detail");
     setBusy(false);
     if (result.error) {
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success(`${clientName} volvió a tus clientes`);
-    track("Client Restored", { client_id: clientId, source: "client_detail" });
     router.refresh();
   }
 
   async function handleHide() {
     setBusy(true);
-    const result = await hideClientPermanently(clientId);
+    const result = await hideClientPermanently(clientId, "client_detail");
     setBusy(false);
     if (result.error) {
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
@@ -200,7 +198,6 @@ export function ClientHeaderActions({
     }
     setConfirming("none");
     toast.success(`${clientName} quedó oculto definitivamente`);
-    track("Client Hidden Permanently", { client_id: clientId, owed_money: owesMoney });
     router.replace("/dashboard");
   }
 

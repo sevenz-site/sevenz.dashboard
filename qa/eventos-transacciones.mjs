@@ -251,6 +251,70 @@ try {
   check(`22a. ninguna de las ${todos.length} notas lleva una propiedad personal`, claves.length === 0, claves.join(", "));
   check("22b. ningún nombre de cliente ni de producto viajó", conNombre.length === 0, conNombre.map((e) => e.event).join(", "));
 
+  // ── La libreta: un rechazo y sus códigos ─────────────────────────────
+  const aImport = await id("/import", "confirmImport");
+  const i1 = await llamarAccion(BASE, "/import", aImport, cookie, [[], undefined, { batchId: "qa-eventos-lote", door: "list" }], '{"error":');
+  const ei1 = await esperar("Import Rejected", (p) => p.reason === "empty_batch");
+  check("23a. libreta vacía: Import Rejected con su batch_id", i1.error && ei1?.batch_id === "qa-eventos-lote", JSON.stringify(ei1));
+
+  // ── El producto: las dos puertas y la edición ────────────────────────
+  const aCrear = await id("/productos/nuevo", "createProduct");
+  const baseProducto = {
+    name: `${MARCA} Nuevo`, unit: null, activeCurrenciesRetail: ["USD"], activeCurrenciesWholesale: ["USD"], priceRetail: "10", priceWholesale: null,
+    fixedRetail: {}, fixedWholesale: {}, cost: null, costCurrency: null, costCurrencyOther: null, marginRetailPct: null, marginWholesalePct: null,
+    stockOpening: "1", supplier: null, wholesaleMinQuantity: null, publishedRetail: true, publishedWholesale: false, photoPath: null, description: null,
+    baseCurrencyRetail: "USD", baseCurrencyWholesale: "USD",
+  };
+  const pr1 = await llamarAccion(BASE, "/productos/nuevo", aCrear, cookie, [{ ...baseProducto, analitica: { flowId: "qa-eventos-prod", source: "quick_sheet" } }], '{"error":');
+  const ep1b = await esperar("Product Created", (p) => p.flow_id === "qa-eventos-prod");
+  check("23b. producto creado: Product Created con su puerta y sin nombre", pr1.id && ep1b?.source === "quick_sheet" && ep1b?.has_cost === false && ep1b?.published === true, JSON.stringify(pr1).slice(0, 160));
+  if (pr1.id) creados.productos.push(pr1.id);
+  const pr2 = await llamarAccion(BASE, "/productos/nuevo", aCrear, cookie, [{ ...baseProducto, name: "" }], '{"error":');
+  check("23c. sin nombre: Product Creation Rejected", pr2.error && (await esperar("Product Creation Rejected", (p) => p.reason === "validation" && p.source === "wizard")), JSON.stringify(pr2));
+
+  // ── La ficha del cliente: marca, papelera, avisos ────────────────────
+  const cFicha = await nuevoCliente(ve.id, "ficha");
+  const pPerfil = `/clients/${cFicha}`;
+  const accion = (nombre) => id(pPerfil, nombre);
+  const aMarcar = await accion("flagClient");
+  const fdMarca = new FormData();
+  fdMarca.append("_1_client_id", cFicha);
+  fdMarca.append("_1_clientId", cFicha);
+  fdMarca.append("_1_reason", "QA motivo privado");
+  fdMarca.append("0", '[{},"$K1"]');
+  await fetch(`${BASE}${pPerfil}`, { method: "POST", headers: { "Next-Action": aMarcar, Cookie: cookie }, body: fdMarca });
+  const ef = await esperar("Client Flagged", (p) => p.client_id === cFicha);
+  check("23d. marcar mala paga: Client Flagged, sin el motivo", ef && !JSON.stringify(ef).includes("motivo privado"), JSON.stringify(ef));
+  const aDesmarcar = await accion("unflagClient");
+  await llamarAccion(BASE, pPerfil, aDesmarcar, cookie, [cFicha], '{"error":');
+  check("23e. quitar la marca: Client Unflagged", await esperar("Client Unflagged", (p) => p.client_id === cFicha));
+  const aPapelera = await accion("trashClient");
+  await llamarAccion(BASE, pPerfil, aPapelera, cookie, [cFicha], '{"error":');
+  const et = await esperar("Client Trashed", (p) => p.client_id === cFicha);
+  check("23f. a la papelera: Client Trashed, desde el servidor", et?.sent_from === "server" && et?.owed_money === false, JSON.stringify(et));
+  await llamarAccion(BASE, pPerfil, aPapelera, cookie, [cFicha], '{"error":');
+  await new Promise((r) => setTimeout(r, 900));
+  check("23g. repetirlo no vuelve a contar", eventos().filter((e) => e.event === "Client Trashed" && e.properties.client_id === cFicha).length === 1);
+  const aRecuperar = await accion("restoreClient");
+  await llamarAccion(BASE, pPerfil, aRecuperar, cookie, [cFicha, "notification"], '{"error":');
+  const er = await esperar("Client Restored", (p) => p.client_id === cFicha);
+  check("23h. restaurar: lleva su puerta en source", er?.source === "notification" && er?.sent_from === "server", JSON.stringify(er));
+
+  // ── Mi negocio y el registro ─────────────────────────────────────────
+  const aMetodo = await id("/profile", "addPaymentMethod");
+  const m1 = await llamarAccion(BASE, "/profile", aMetodo, cookie, ["QA pago movil 0414"], '{"error":');
+  const em = await esperar("Payment Method Changed", (p) => p.action === "add");
+  check("23i. método de pago: Payment Method Changed, sin su texto", m1.error === null && em && !JSON.stringify(em).includes("0414"), JSON.stringify(m1).slice(0, 120));
+  if (m1.method?.id) await admin.from("payment_methods").delete().eq("id", m1.method.id);
+
+  const aRegistro = await idDeLaAccion(BASE, "/signup", "signup", "");
+  const fdr = new FormData();
+  fdr.append("_1_email", "");
+  fdr.append("0", '["$undefined","$K1"]');
+  await fetch(`${BASE}/signup`, { method: "POST", headers: { "Next-Action": aRegistro }, body: fdr });
+  const er2 = await esperar("Signup Rejected", (p) => p.reason === "fields_missing");
+  check("23j. registro sin datos: Signup Rejected, sin owner_id", er2 && !("owner_id" in er2), JSON.stringify(er2));
+
   // ── La ruta pública: lo que acepta y lo que no ───────────────────────
   const cPub = await nuevoCliente(ve.id, "enlace");
   const token = `qa-eventos-${Date.now()}`;

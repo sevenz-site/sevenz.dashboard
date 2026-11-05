@@ -1,3 +1,5 @@
+import { readFlow } from "@/lib/analytics/flow-client";
+import { orderFlowKey } from "@/components/dashboard/order-flow-tracker";
 import {
   registrarPedidoComoVenta,
   type RegistroDePedidoEntrada,
@@ -75,6 +77,7 @@ export async function registrarTodoElPedido(
   for (const moneda of porRegistrar) {
     const entrada: RegistroDePedidoEntrada = {
       pedidoId,
+      analitica: { flowId: readFlow(orderFlowKey(pedidoId))?.id },
       moneda,
       pago: borrador.monedas[moneda],
       editadas: borrador.editadas ?? {},

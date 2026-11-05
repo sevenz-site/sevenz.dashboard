@@ -1,6 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { track } from "@/lib/mixpanel";
 import { ArrowUpRight, User } from "lucide-react";
 import { IconoDeAbono } from "@/components/dashboard/iconos-de-movimiento";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -50,6 +52,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 // de la misma cosa y «Nuevo cliente» otra categoría.
 type Opcion = {
   href: string;
+  opcion: "new_client" | "sale_or_fiado" | "payment";
   etiqueta: string;
   Icono: typeof User;
   // CÓMO SE NAVEGA, y no es un detalle: un `?nuevo=` es un MARCADOR sobre la
@@ -73,7 +76,7 @@ const OPCIONES: Opcion[] = [
   // existiendo y sigue creando cliente + primer fiado de una vez, que es lo
   // que hace falta cuando el tendero ya tiene la deuda delante; lo que ya no
   // hace es ser la única forma de apuntar a una persona.
-  { href: "/clients/nuevo", etiqueta: "Nuevo cliente", Icono: User, marcador: false },
+  { href: "/clients/nuevo", etiqueta: "Nuevo cliente", Icono: User, marcador: false, opcion: "new_client" as const },
   // EL ASISTENTE DE CUATRO PASOS. Un fiado manual es «una venta sin pago»
   // desde la migración `124`, y por eso las dos palabras van en el mismo
   // botón en vez de en dos.
@@ -82,7 +85,7 @@ const OPCIONES: Opcion[] = [
   // de arriba; lo único que cambia es cuál se lee primero, y en una hoja a la
   // que se llega con una deuda delante, «fiado» es la palabra que el tendero
   // está buscando.
-  { href: "/ventas/nueva", etiqueta: "Fiado o venta", Icono: ArrowUpRight, marcador: false },
+  { href: "/ventas/nueva", etiqueta: "Fiado o venta", Icono: ArrowUpRight, marcador: false, opcion: "sale_or_fiado" as const },
   // UN ABONO NECESITA SABER DE QUIÉN, así que pasa por el buscador de
   // clientes y el marcador viaja con él: al elegir a alguien se aterriza en su
   // ficha con el diálogo de abono ya abierto.
@@ -92,14 +95,17 @@ const OPCIONES: Opcion[] = [
   // «Venta o fiado» justo encima —una entra, otra sale—, y dos flechas
   // opuestas en una lista de tres se distinguen mirándolas, no de un vistazo.
   // El porcentaje no se parece a nada más de la hoja.
-  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: IconoDeAbono, marcador: true },
+  { href: "/dashboard?nuevo=abono", etiqueta: "Abono", Icono: IconoDeAbono, marcador: true, opcion: "payment" as const },
 ];
 
 export function RegisterSheet({
   open,
   onOpenChange,
+  surface,
 }: {
   open: boolean;
+  // Which of the two buttons opened it, for the funnels.
+  surface: "fab" | "desktop_button" | "report";
   // CONTROLADA DESDE FUERA, sin disparador propio: la abren dos botones que no
   // se parecen en nada —el flotante de la barra en teléfono y el del
   // encabezado en escritorio— y cada uno tiene su propia maquetación, sus
@@ -108,6 +114,15 @@ export function RegisterSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+
+  // THE FIRST STEP OF EVERY REGISTRATION FUNNEL. Owner's request of 2026-11-04:
+  // *«Botón "Registrar" y sus flujos»*. What it decides: from which screens people
+  // start, and how many open this and pick nothing. A gesture, so a browser event
+  // and a floor. Filed under the owner.
+  useEffect(() => {
+    if (open) track("Register Menu Opened", { surface, screen: pathname });
+  }, [open, surface, pathname]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -120,7 +135,7 @@ export function RegisterSheet({
         </SheetHeader>
 
         <div className="flex flex-col gap-2 px-4 pb-6 pt-2">
-          {OPCIONES.map(({ href, etiqueta, Icono, marcador }) => (
+          {OPCIONES.map(({ href, etiqueta, Icono, marcador, opcion }) => (
             <button
               key={href}
               type="button"
@@ -130,6 +145,7 @@ export function RegisterSheet({
               // a esta misma página con otro marcador— se quedaría abierta
               // ENCIMA del diálogo que acaba de abrir.
               onClick={() => {
+                track("Register Option Selected", { option: opcion, surface });
                 onOpenChange(false);
                 if (marcador) router.replace(href);
                 else router.push(href);

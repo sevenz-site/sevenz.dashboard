@@ -493,6 +493,7 @@ export async function guardarPermisoDeVenta(
     ownerId: user.id,
     clientName,
     source: "owner_movement_form",
+        flow: "sale",
     seMostro: true,
     acepta: true,
   });

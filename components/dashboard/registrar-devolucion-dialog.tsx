@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { track } from "@/lib/mixpanel";
+import { newFlowId } from "@/lib/analytics/flow-client";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Minus, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -77,6 +79,17 @@ export function RegistrarDevolucionDialog({
   currency: LedgerCurrency | null;
   ledger: LedgerDisplay | null;
 }) {
+  // HOW MANY RETURNS ARE STARTED AND NOT FINISHED. The modal writes as soon as an
+  // option is chosen, so the only way to leave is to close it. Filed under the owner.
+  // A new id each time it opens: closing and coming back is a second attempt. A ref and
+  // not state, because nothing paints it.
+  const flujo = useRef("");
+  useEffect(() => {
+    if (!open) return;
+    flujo.current = newFlowId();
+    track("Return Started", { flow_id: flujo.current, sale_kind: context.source.kind === "fiado" ? "fiado" : "cash" });
+  }, [open, context.source.kind]);
+
   const router = useRouter();
   const guardia = useGuardiaDeCuentaPausada();
   const available = round2(line.quantity - (line.devuelto ?? 0));
@@ -180,7 +193,7 @@ export function RegistrarDevolucionDialog({
     setSaving(choice.kind);
     setError(null);
     const { fiados, aFavor, efectivo } = choice;
-    const payload = { lineId: line.id, quantity, fiados, aFavor, efectivo };
+    const payload = { lineId: line.id, quantity, fiados, aFavor, efectivo, analitica: { flowId: flujo.current } };
     const result =
       source.kind === "fiado"
         ? await registrarDevolucion({ ...payload, movementId: source.movementId })
