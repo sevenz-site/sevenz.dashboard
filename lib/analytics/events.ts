@@ -329,7 +329,11 @@ export type EventProps = {
 
   "Signup Completed": { country: string; referral_source: string; email_confirmation_required: boolean };
   "Signup Rejected": { reason: string };
-  "Login Completed": Record<string, never>;
+  "Login Completed": { new_device?: boolean };
+  // C2 of PL-22: an account opened from a device Sevenz did not know, and what came of it.
+  "New Device Alert Sent": { known_devices: number };
+  "Session Revoked By Owner": { reason: "not_me" };
+  "Login Blocked Pending Reset": Record<string, never>;
   "Logout Completed": { scope: "local" | "global" };
   "Client Flagged": { client_id: string };
   "Client Unflagged": { client_id: string };

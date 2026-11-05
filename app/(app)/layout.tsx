@@ -21,6 +21,8 @@ import { RevisionEnCursoProvider } from "@/components/import/revision-en-curso";
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-context";
 import { CuentaPausadaProvider } from "@/components/dashboard/cuenta-pausada";
 import { motivoDeBloqueo } from "@/lib/cuenta-pausada-server";
+import { mustResetPassword } from "@/lib/security/new-device";
+import { ResetRequired } from "@/components/reset-required";
 import { getUnreadNotificationCount } from "@/app/(app)/actions";
 import { refreshStockAlerts } from "@/lib/stock-alerts";
 import { getImportUsageForOwner } from "@/lib/import-usage";
@@ -39,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  const [{ data: owner }, unreadCount, importUsage, motivo] = await Promise.all([
+  const [{ data: owner }, unreadCount, importUsage, motivo, mustReset] = await Promise.all([
     supabase.from("owners").select("business_name, onboarding_completed_at, plan, country").eq("id", user.id).single(),
     // Today's inventory notices (CT-162) before counting, so a product still
     // low since yesterday puts its notice in the badge on the first load of
@@ -50,7 +52,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // el aviso tiene que salir se entre por donde se entre, y porque desde
     // aqui lo ve cualquier pantalla que rechace una escritura.
     motivoDeBloqueo(supabase, user.id),
+    // After «No fui yo» (C2 of PL-22): the whole app is replaced by one screen until the
+    // password changes. In the layout and not a redirect because /login bounces a signed-in
+    // visitor back to /dashboard. A read of one boolean, through `my_security_state`.
+    mustResetPassword(supabase),
   ]);
+
+  if (mustReset) {
+    return <ResetRequired email={user.email ?? null} />;
+  }
 
   return (
     <ZonaDelNegocioProvider country={owner?.country ?? null}>

@@ -190,6 +190,11 @@ export const MANIFEST = {
     // 179: payment handles. Nothing anonymous may read them (decision of `043`).
     owner_payment_methods: { via: "owner" },
     owners: { via: "id" },
+    // 192 (C2 of PL-22): devices, the «No fui yo» token and the reset mark. Only the
+    // server writes or reads them; a session may ask one boolean through my_security_state.
+    owner_devices: { via: "none" },
+    owner_security_state: { via: "none" },
+    owner_security_tokens: { via: "none" },
     plans: { via: "none" },
     product_currencies: { via: "product" },
     product_hides: { via: "owner" },
@@ -235,6 +240,13 @@ export const MANIFEST = {
     admin_credit_movements: "service",
     // 191 (B of PL-22): the credit balances born from a return that /admin lists. Read-only.
     admin_credit_watch: "service",
+    // 192 (C2 of PL-22): sign-in devices and «No fui yo». Server only, except the boolean.
+    register_login_device: "service",
+    create_not_me_token: "service",
+    peek_not_me_token: "service",
+    consume_not_me_token: "service",
+    clear_must_reset_password: "service",
+    my_security_state: "owner",
     admin_cuenta_historial: "service",
     admin_cuentas_lista: "service",
     admin_dar_demo: "service",
@@ -354,6 +366,10 @@ export const MANIFEST = {
   actions: {
     "app/(app)/abonos/actions.ts#registrarAbonoDirigido": "cubierta: qa:abono-accion, abono dirigido a un fiado de OTRO dueño",
     "app/(app)/abonos/actions.ts#registrarAbonoRepartido": "atacada",
+    // C2 of PL-22: unauthenticated by design, one-use token in, three fixed sentences out.
+    // qa:new-device drives the function it calls with an invented, a used and an expired
+    // token, and proves anon cannot call it; the action adds no decision of its own.
+    "app/cuenta/no-fui-yo/[token]/actions.ts#confirmNotMe": "cubierta: qa:new-device, token inventado, usado y caducado; anon sin permiso",
     "app/(app)/actions.ts#completeOnboarding": "atacada",
     "app/(app)/actions.ts#getNotifications": "atacada",
     "app/(app)/actions.ts#getUnreadNotificationCount": "atacada",
