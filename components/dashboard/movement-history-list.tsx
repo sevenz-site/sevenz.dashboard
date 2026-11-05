@@ -17,6 +17,7 @@ import {
   FiltrosDelHistorial,
   tituloDeListaVacia,
   type EstadoFiltro,
+  type FechaFiltro,
   type MonedaFiltro,
   type TipoFiltro,
 } from "@/components/dashboard/movement-type-filter";
@@ -27,6 +28,8 @@ import type { Movement } from "@/lib/types";
 import type { VentaDeContado } from "@/lib/ventas-de-contado";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { foldForSearch } from "@/lib/search/fold";
+import { dayInZone } from "@/lib/format";
+import { useZonaDelNegocio } from "@/components/fecha";
 
 const PAGE_SIZE = 10;
 
@@ -128,6 +131,8 @@ export function MovementHistoryList({
   const [tipo, setTipo] = useState<TipoFiltro>("todos");
   const [estado, setEstado] = useState<EstadoFiltro>("todos");
   const [moneda, setMoneda] = useState<MonedaFiltro>("todas");
+  const [fecha, setFecha] = useState<FechaFiltro>(null);
+  const zona = useZonaDelNegocio();
 
   // EL CÓDIGO TECLEADO. Cadena vacía es «sin filtrar», no «ningún código»:
   // un buscador que no deja ver nada mientras está vacío sería un filtro
@@ -394,10 +399,18 @@ export function MovementHistoryList({
   const porCodigo =
     buscado === "" ? filas : filas.filter((f) => foldForSearch(textoDeLaFila(f)).includes(buscado));
 
+  // THE DAY THE ROW PRINTS, in the zone of the business. See `dayInZone`.
+  const porFecha = !fecha
+    ? porCodigo
+    : porCodigo.filter((f) => {
+        const dia = dayInZone(f.fecha, zona);
+        return dia >= fecha.desde && dia <= fecha.hasta;
+      });
+
   const porTipo =
     tipo === "todos"
-      ? porCodigo
-      : porCodigo.filter((f) =>
+      ? porFecha
+      : porFecha.filter((f) =>
           tipo === "cash" ? f.clase === "contado" : f.clase === "movimiento" && f.m.type === tipo,
         );
 
@@ -460,6 +473,11 @@ export function MovementHistoryList({
     setPage(1);
   }
 
+  function cambiarFecha(f: FechaFiltro) {
+    setFecha(f);
+    setPage(1);
+  }
+
   function cambiarCodigo(c: string) {
     setCodigo(c);
     setPage(1);
@@ -486,6 +504,8 @@ export function MovementHistoryList({
           monedas={monedasDelNegocio}
           codigo={codigo}
           setCodigo={cambiarCodigo}
+          fecha={fecha}
+          setFecha={cambiarFecha}
         />
       ) : null}
     </div>
@@ -524,7 +544,7 @@ export function MovementHistoryList({
     return (
       <div className="flex flex-col gap-2">
         {cabecera}
-        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo })} />
+        <EmptyState subtitle={tituloDeListaVacia({ tipo, estado, moneda, codigo, fecha })} />
       </div>
     );
   }
@@ -586,14 +606,18 @@ export function MovementHistoryList({
                 : m.description
                   ? [m.description]
                   : []
-              : [];
+              : m.devolucion
+                ? [m.devolucion.product_name]
+                : [];
           return (
             <HistoryCard
               key={m.id}
-              kind={m.type === "charge" ? "fiado" : "abono"}
+              kind={m.type === "charge" ? "fiado" : m.type === "return" ? "devolucion" : "abono"}
               productos={productos}
               createdAt={m.created_at}
-              amount={Number(m.amount)}
+              // A return prints the VALUE of what came back: its ledger lines
+              // leave out what was handed back in cash, and can be zero.
+              amount={Number(m.devolucion?.amount ?? m.amount)}
               currency={m.currency}
               ledger={ledger}
               // Cada fila abre su propia ficha (2026-10-23). La de un reparto

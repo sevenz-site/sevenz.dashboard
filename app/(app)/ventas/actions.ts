@@ -399,10 +399,13 @@ export type DatosDelCliente = {
   // Preguntarlo con una consulta propia aquí sería tener dos definiciones de
   // «acepta», y la que decide si sale un mensaje es la suya.
   aceptaAvisos: boolean;
+  // What can be spent in this sale, per currency (`get_client_credit`, migration
+  // 185). Not `-saldo`: only what came from a return can be spent.
+  saldoAFavor: Partial<Record<PriceCurrency, number>>;
 };
 
 export async function datosDelCliente(clientId: string): Promise<DatosDelCliente> {
-  const vacio: DatosDelCliente = { saldo: {}, aceptaAvisos: false };
+  const vacio: DatosDelCliente = { saldo: {}, aceptaAvisos: false, saldoAFavor: {} };
   const supabase = await createClient();
   const {
     data: { user },
@@ -430,7 +433,21 @@ export async function datosDelCliente(clientId: string): Promise<DatosDelCliente
       COP: Number(data.balance ?? 0),
     },
     aceptaAvisos: acepta.data === true,
+    saldoAFavor: await saldoUsable(supabase, clientId),
   };
+}
+
+// `currency` null is the Colombian book, spelled 'COP' on this side.
+async function saldoUsable(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  clientId: string,
+): Promise<Partial<Record<PriceCurrency, number>>> {
+  const { data } = await supabase.rpc("get_client_credit", { p_client_id: clientId });
+  const out: Partial<Record<PriceCurrency, number>> = {};
+  for (const r of (data ?? []) as { currency: string | null; credit: number }[]) {
+    if (Number(r.credit) > 0) out[(r.currency ?? "COP") as PriceCurrency] = Number(r.credit);
+  }
+  return out;
 }
 
 // ===========================================================================
@@ -859,6 +876,14 @@ export type VentaEntrada = {
   lineas: LineaDeVentaEntrada[];
   pagos: PagoDeVentaEntrada[];
   credito: CreditoDeVentaEntrada[];
+  // WHAT THE SHOPKEEPER CHOSE TO PAY WITH SALDO A FAVOR, per currency. Owner's
+  // decision of 2026-11-03: the exchange (a product comes back, another one
+  // goes out) has to work in a cash sale too.
+  //
+  // IT NEEDS NOTHING NEW IN THE LEDGER: that part stays as the charge this sale
+  // leaves anyway, and the queue settles it with the saldo (migration 185). All
+  // this adds is that the charge needs no plazo when the saldo covers it whole.
+  saldoAFavor?: { currency: PriceCurrency; amount: number }[];
   nota?: string | null;
   // ── REGISTRAR UN PEDIDO DEL CATÁLOGO ────────────────────────────────
   //
@@ -1211,9 +1236,30 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     return { ok: false, error: "Para dejar algo fiado tienes que elegir o crear un cliente." };
   }
 
+  // THE SALDO IS READ HERE, never taken from the browser's word: a figure sent
+  // from outside would write a charge nobody can settle.
+  const usoDeSaldo = new Map<PriceCurrency, number>();
+  if ((entrada.saldoAFavor ?? []).length > 0) {
+    if (cliente.is_walk_in) return { ok: false, error: "Elige un cliente para usar su saldo a favor." };
+    const disponible = await saldoUsable(supabase, cliente.id);
+    for (const uso of entrada.saldoAFavor ?? []) {
+      if (!Number.isFinite(uso.amount) || uso.amount <= 0) continue;
+      const resto = restos.find((r) => r.currency === uso.currency)?.amount ?? 0;
+      if (uso.amount - (disponible[uso.currency] ?? 0) > HOLGURA || uso.amount - resto > HOLGURA) {
+        return { ok: false, error: "El saldo a favor de este cliente cambió. Revísalo y vuelve a intentarlo." };
+      }
+      usoDeSaldo.set(uso.currency, redondear(uso.amount));
+    }
+  }
+
+  // FULLY COVERED BY THE SALDO: nothing is owed, so there is no plazo to agree.
+  const cubiertoConSaldo = (r: { currency: PriceCurrency; amount: number }) =>
+    (usoDeSaldo.get(r.currency) ?? 0) >= r.amount - HOLGURA;
+
   const creditoPorMoneda = new Map(entrada.credito.map((c) => [c.currency, c]));
   for (const resto of restos) {
     const credito = creditoPorMoneda.get(resto.currency);
+    if (!credito && cubiertoConSaldo(resto)) continue;
     if (!credito) return { ok: false, error: "Falta decir en cuánto tiempo te pagan lo que queda." };
     if (
       credito.plazoDias != null &&
@@ -1319,12 +1365,12 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
 
   const fiado: { currency: PriceCurrency; amount: number; movementId: string }[] = [];
   for (const resto of restos) {
-    const credito = creditoPorMoneda.get(resto.currency)!;
+    const credito = creditoPorMoneda.get(resto.currency);
     const snapshot = await resolveMovementRateSnapshot(
       supabase,
       user.id,
       libroDeMoneda(resto.currency),
-      credito.usarPrevista === true,
+      credito?.usarPrevista === true,
     );
     if (!snapshot.ok) {
       await deshacer("tasa", snapshot.reason);
@@ -1364,12 +1410,13 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         // que durante un tiempo convivirán fichas con descripción heredada y
         // fichas con «—». Es el precio de no borrar lo que no se puede
         // distinguir.
-        description: credito.description?.trim() ? credito.description.trim().slice(0, 500) : null,
-        photo_path: credito.photoPath ?? null,
+        description: credito?.description?.trim() ? credito.description.trim().slice(0, 500) : null,
+        photo_path: credito?.photoPath ?? null,
         source: "manual",
-        plazo_dias: credito.plazoDias,
-        cuotas: credito.cuotas,
+        plazo_dias: credito?.plazoDias ?? null,
+        cuotas: credito?.cuotas ?? null,
         sale_id: venta.id,
+        paid_with_credit: cubiertoConSaldo(resto),
         rate_mode_used: sello.rateModeUsed,
         exchange_rate_used: sello.exchangeRateUsed,
         official_bcv_rate_at_time: sello.officialBcvRateAtTime,
@@ -1451,6 +1498,9 @@ export type BloqueDelResumen = {
   cobrado: number;
   // Lo que quedó debiendo de ESTA venta.
   debe: number;
+  // What the client's saldo a favor covered of this sale. Read from the book
+  // before the sale, so a plain fiado that absorbed a saldo says it too.
+  saldoUsado: number;
   // Lo que ya debía ANTES de esta venta, en este mismo libro. `null` cuando no
   // hay cuenta que mirar: una venta de mostrador no es de nadie.
   deudaAntigua: number | null;
@@ -1662,13 +1712,18 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   const bloques: BloqueDelResumen[] = monedas.map((currency) => {
     const total = totales.get(currency) ?? 0;
     const cobrado = cobrados.get(currency) ?? 0;
-    const debe = redondear(Math.max(0, total - cobrado));
+    const sinCobrar = redondear(Math.max(0, total - cobrado));
+    const saldoUsado = esMostrador
+      ? 0
+      : redondear(Math.min(Math.max(0, -(deudaPrevia.get(currency) ?? 0)), sinCobrar));
+    const debe = redondear(sinCobrar - saldoUsado);
     return {
       currency,
       lineas: porMoneda.get(currency) ?? [],
       total,
       cobrado,
       debe,
+      saldoUsado,
       // Una deuda previa negativa es un cliente con saldo a favor. Se enseña
       // como cero y no en negativo: la fila dice «Deuda antigua», y un número
       // rojo con signo menos debajo de esa palabra se lee al revés de lo que
@@ -1780,6 +1835,38 @@ export async function eliminarVenta(
 
   if (!venta || venta.owner_id !== user.id) {
     return { ok: false, error: "No encontramos esa venta." };
+  }
+
+  // A SALE WITH A LIVE RETURN STAYS until the return goes. Deleting it gives
+  // back `stock_taken` whole (migration 163), so returned units would land on
+  // the shelf twice. The database refuses too (185); this is the sentence.
+  const { count: devoluciones } = await supabase
+    .from("sale_returns")
+    .select("id", { count: "exact", head: true })
+    .eq("sale_id", saleId)
+    .is("deleted_at", null);
+  if ((devoluciones ?? 0) > 0) {
+    return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
+  }
+
+  // AND ITS FIADOS, which may have received money from another return (188). The
+  // database refuses that too, with no sentence to show.
+  const { data: susCargos } = await supabase
+    .from("movements")
+    .select("id")
+    .eq("sale_id", saleId)
+    .eq("type", "charge")
+    .is("deleted_at", null);
+  if ((susCargos ?? []).length > 0) {
+    const { count: recibidas } = await supabase
+      .from("movements")
+      .select("id", { count: "exact", head: true })
+      .in("applies_to_movement_id", (susCargos ?? []).map((c) => c.id as string))
+      .eq("type", "return")
+      .is("deleted_at", null);
+    if ((recibidas ?? 0) > 0) {
+      return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
+    }
   }
 
   // Los movimientos que nacieron de ella, para borrarlos con ella y para

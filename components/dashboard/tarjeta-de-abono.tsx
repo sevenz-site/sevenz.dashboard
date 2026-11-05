@@ -25,6 +25,9 @@ import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 // viene de `CLASE_TARJETA`: es lo único que tiene que seguir siendo idéntico
 // para que las dos se vean como la misma cosa.
 export type AbonoDirigido = {
+  // A return that reached this fiado (migration 185). Listed with its abonos,
+  // under its own name: it lowered the debt, and no money came in.
+  esDevolucion?: boolean;
   movementId: string;
   fecha: string;
   currency: PriceCurrency | null;
@@ -135,7 +138,11 @@ export function TarjetaDeAbono({
   // EL CHIP GRIS DE LA COMPRA NO ES UN `ChipDeEstado`: no es un estado del
   // plazo, es «esto se pagó el mismo día» — nodo `1510:9975`, gris y sin
   // borde. Los demás sí salen del plazo.
-  const chip = inicial ? (
+  const chip = abono.esDevolucion ? (
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs leading-4">
+      Devolución
+    </span>
+  ) : inicial ? (
     <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-transparent bg-accent px-1.5 py-px text-xs leading-4">
       Al día de la compra
     </span>
@@ -153,8 +160,11 @@ export function TarjetaDeAbono({
         {chip}
       </div>
       <div className="flex shrink-0 flex-col items-end">
-        <span className="flex items-center gap-1 text-sm tabular-nums text-money-in">
-          +{formatPriceAmount(abono.amount, abono.currency ?? "COP")}
+        <span
+          className={`flex items-center gap-1 text-sm tabular-nums ${abono.esDevolucion ? "" : "text-money-in"}`}
+        >
+          {abono.esDevolucion ? "" : "+"}
+          {formatPriceAmount(abono.amount, abono.currency ?? "COP")}
           {abono.currency ? (
             <CurrencyFlagIcon currency={abono.currency} className="size-4 shrink-0" />
           ) : null}

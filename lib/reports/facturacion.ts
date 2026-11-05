@@ -3,6 +3,7 @@ import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
+import { cargarDevoluciones } from "@/lib/reports/devoluciones";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ClientStatus, ClientSummary } from "@/lib/types";
@@ -39,6 +40,8 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //
 //   Gráfico «Transacciones»
 //     RECUENTOS, no importes.
+//       devolucion = one per return, on the day of the return. See
+//                 `devoluciones.ts`, which also says what the card does.
 //       contado = nº de pares (venta, libro) que NO dejaron cargo. Es la
 //                 misma definición de «de contado» que usa la tarjeta
 //                 «Ventas» y que el historial del cliente. Una venta mixta
@@ -46,7 +49,7 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //                 historial. Los pedidos del catálogo entran solos: se
 //                 registran creando una venta normal.
 //       abono   = nº de `movements` con type='payment'.
-//       fiado   = nº de `movements` que no son 'payment'.
+//       fiado   = nº de `movements` con type='charge'.
 //
 //   Transacciones por catálogo en X
 //     Σ cantidad × precio de las `sale_lines` de las ventas que vienen de un
@@ -60,7 +63,8 @@ import type { ClientStatus, ClientSummary } from "@/lib/types";
 //     movimiento de abono. Disjunto de «Ventas» por construcción.
 //
 //   Fiados en X
-//     Σ `movements.amount` de los que NO son type='payment', en el rango.
+//     Σ `movements.amount` con type='charge', en el rango, menos lo que una
+//     devolución le quitó a su fiado (`lib/reports/devoluciones.ts`).
 //
 //   Pedidos por atender / Dinero por atender
 //     `countUnregisteredOrders` y `pendingOrdersMoney`, las MISMAS que
@@ -148,6 +152,7 @@ export type PuntoDeTransacciones = {
   contado: number;
   abono: number;
   fiado: number;
+  devolucion: number;
 };
 
 /** Un cliente dentro de una de las cuatro hojas de «Plazos de pago». */
@@ -201,6 +206,8 @@ export type Facturacion = {
   abonos: Partial<Record<Libro, number>>;
   /** Lo fiado en el periodo: la suma de los cargos, por libro. */
   fiados: Partial<Record<Libro, number>>;
+  /** El valor de lo devuelto en el rango, por libro. Ver `devoluciones.ts`. */
+  devoluciones: Partial<Record<Libro, number>>;
   ventasPorCatalogo: Partial<Record<Libro, number>>;
   serieVentas: PuntoDeVentas[];
   serieTransacciones: PuntoDeTransacciones[];
@@ -393,7 +400,7 @@ export async function cargarFacturacion({
   const qMov = idsDeCliente.length
     ? supabase
         .from("movements")
-        .select("type, amount, currency, created_at, client_id")
+        .select("type, amount, currency, created_at, client_id, paid_with_credit")
         .in("client_id", idsDeCliente)
         .is("deleted_at", null)
         .gte("created_at", desdeIso)
@@ -453,7 +460,7 @@ export async function cargarFacturacion({
         // segundo convertiría un fiado en una venta de contado.
         supabase
           .from("movements")
-          .select("sale_id, currency, type")
+          .select("sale_id, currency, type, paid_with_credit")
           .in("sale_id", idsDeVenta)
           .is("deleted_at", null),
       ])
@@ -470,7 +477,8 @@ export async function cargarFacturacion({
   // dependiera de algo que ya no existe.
   const librosFiados = new Set(
     (cargosDeVenta ?? [])
-      .filter((m) => m.type !== "payment")
+      // Settled with saldo a favor (migration 185): nothing was lent.
+      .filter((m) => m.type === "charge" && !m.paid_with_credit)
       .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
   );
 
@@ -501,9 +509,11 @@ export async function cargarFacturacion({
 
   const abonosPorLibro: Partial<Record<Libro, number>> = {};
   const fiadosPorLibro: Partial<Record<Libro, number>> = {};
+  const devolucionesPorLibro: Partial<Record<Libro, number>> = {};
   for (const l of libros) {
     abonosPorLibro[l] = 0;
     fiadosPorLibro[l] = 0;
+    devolucionesPorLibro[l] = 0;
   }
 
   // ── «TRANSACCIONES POR CATÁLOGO» SIGUE SIENDO LO VENDIDO ────────────
@@ -572,6 +582,7 @@ export async function cargarFacturacion({
     contado: 0,
     abono: 0,
     fiado: 0,
+    devolucion: 0,
   }));
 
   // ── «DE CONTADO» CUENTA VENTAS, NO FILAS DE PAGO ───────────────────
@@ -620,10 +631,31 @@ export async function cargarFacturacion({
     if (m.type === "payment") {
       serieTransacciones[i].abono += 1;
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
-    } else {
+    } else if (m.type === "charge" && !m.paid_with_credit) {
+      // `else if` AND NOT `else`: since migration 185 not being a payment no
+      // longer means being a fiado, and a return here would add to the lending.
       serieTransacciones[i].fiado += 1;
       fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) + monto;
     }
+  }
+
+  // ── LO QUE VOLVIÓ, EL DÍA QUE VOLVIÓ ───────────────────────────────────
+  //
+  // Which card moves and why is at the top of `lib/reports/devoluciones.ts`.
+  for (const d of await cargarDevoluciones(supabase, { ownerId, desdeIso, hastaIso, clientId })) {
+    const libro = d.currency as Libro;
+    const i = cuboDe(cs, d.createdAt);
+    if (!libros.includes(libro) || i < 0) continue;
+    serieTransacciones[i].devolucion += 1;
+    devolucionesPorLibro[libro] = (devolucionesPorLibro[libro] ?? 0) + d.amount;
+    if (d.fromFiado) {
+      abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
+    } else {
+      ventasPorLibro[libro] = (ventasPorLibro[libro] ?? 0) - d.toCash;
+      serieVentas[i][libro] = (serieVentas[i][libro] ?? 0) - d.toCash;
+    }
+    fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) - d.toOwn;
+    if (d.fromCatalog) catalogoPorLibro[libro] = (catalogoPorLibro[libro] ?? 0) - d.amount;
   }
 
   // ── PLAZOS DE PAGO ─────────────────────────────────────────────────
@@ -785,6 +817,7 @@ export async function cargarFacturacion({
     ventas: ventasPorLibro,
     abonos: abonosPorLibro,
     fiados: fiadosPorLibro,
+    devoluciones: devolucionesPorLibro,
     ventasPorCatalogo: catalogoPorLibro,
     serieVentas,
     serieTransacciones,

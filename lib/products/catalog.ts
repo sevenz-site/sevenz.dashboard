@@ -45,6 +45,8 @@ export type ProductRow = {
   // NO necesite ninguna consulta nueva -- /productos ya carga todos los
   // productos del dueno, asi que la lista de proveedores sale de aqui.
   supplier: string | null;
+  // Migration 184: one category per product, or none.
+  category_id: string | null;
   // La cantidad desde la que aplica el precio de mayor. Migracion 088.
   wholesale_min_quantity: number | null;
   stock_opening_at: string | null;
@@ -115,7 +117,7 @@ export const PRODUCT_COLUMNS =
   "price_retail, price_wholesale, cost, " +
   "cost_currency, cost_currency_other, " +
   "margin_retail_pct, margin_wholesale_pct, stock_opening, stock_opening_at, " +
-  "wholesale_min_quantity, supplier, " +
+  "wholesale_min_quantity, supplier, category_id, " +
   "published_retail, published_wholesale, photo_path, description";
 
 // THE USDT PRICE IS ASKED FOR ONCE A MINUTE, NOT ONCE PER RENDER.

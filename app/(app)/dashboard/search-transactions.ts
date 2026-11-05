@@ -45,7 +45,7 @@ import { normalizePartialCode } from "@/lib/transaction-code";
 
 export type TransactionSearchResult = {
   code: string;
-  kind: "fiado" | "abono" | "venta";
+  kind: "fiado" | "abono" | "venta" | "devolucion";
   clientName: string;
   href: string;
 };
@@ -107,7 +107,7 @@ export async function searchTransactionsByCode(
 
   type Move = {
     id: string;
-    type: "charge" | "payment";
+    type: "charge" | "payment" | "return";
     sale_id: string | null;
     created_at: string;
     transaction_code: string;
@@ -199,7 +199,7 @@ export async function searchTransactionsByCode(
     if (!m.transaction_code || byCode.has(m.transaction_code)) continue;
     byCode.set(m.transaction_code, {
       code: m.transaction_code,
-      kind: m.type === "charge" ? "fiado" : "abono",
+      kind: m.type === "charge" ? "fiado" : m.type === "return" ? "devolucion" : "abono",
       clientName: nameOf(m.clients),
       href: `/transacciones/${m.id}`,
       at: m.created_at,

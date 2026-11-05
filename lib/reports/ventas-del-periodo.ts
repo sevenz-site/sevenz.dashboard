@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
+import { cargarDevoluciones } from "@/lib/reports/devoluciones";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -82,9 +83,27 @@ export async function ventasDelPeriodo({
   if (errorVentas) throw new Error(`ventas: ${errorVentas.message}`);
 
   const ids = (ventas ?? []).map((v) => v.id as string);
+
+  // THE MONEY THAT WENT BACK from cash sales, on the day it went back. Read
+  // first and not after the early return below: a day with no sales can still
+  // have a return. Why only `to_cash`: `devoluciones.ts`.
+  const devuelto: Partial<Record<Libro, number>> = {};
+  const devoluciones = await cargarDevoluciones(supabase, {
+    ownerId,
+    desdeIso: rango.desde.toISOString(),
+    hastaIso: rango.hasta.toISOString(),
+  });
+  for (const d of devoluciones) {
+    if (d.fromFiado || d.toCash <= 0) continue;
+    const libro = d.currency as Libro;
+    devuelto[libro] = (devuelto[libro] ?? 0) + d.toCash;
+  }
+
   // Un `in()` vacío en PostgREST devuelve TODO en vez de nada, que aquí
   // sería el libro de otro negocio.
-  if (!ids.length) return {};
+  if (!ids.length) {
+    return Object.fromEntries(Object.entries(devuelto).map(([l, n]) => [l, -n]));
+  }
 
   // ── LO COBRADO DE CONTADO, NO LO VENDIDO ─────────────────────────────
   //
@@ -106,7 +125,7 @@ export async function ventasDelPeriodo({
       // en una venta de contado.
       supabase
         .from("movements")
-        .select("sale_id, currency, type")
+        .select("sale_id, currency, type, paid_with_credit")
         .in("sale_id", ids)
         .is("deleted_at", null),
     ]);
@@ -115,7 +134,8 @@ export async function ventasDelPeriodo({
 
   const librosFiados = new Set(
     (cargos ?? [])
-      .filter((m) => m.type !== "payment")
+      // Settled with saldo a favor (migration 185): nothing was lent.
+      .filter((m) => m.type === "charge" && !m.paid_with_credit)
       .map((m) => claveDeFila(m.sale_id as string, (m.currency as "USD" | "EUR" | null) ?? null)),
   );
 
@@ -132,6 +152,9 @@ export async function ventasDelPeriodo({
     // una fila sin moneda sin dejarla fuera de la cuenta en silencio.
     const libro = ((pg.currency as Libro | null) ?? "COP") as Libro;
     porLibro[libro] = (porLibro[libro] ?? 0) + Number(pg.amount);
+  }
+  for (const [l, n] of Object.entries(devuelto)) {
+    porLibro[l as Libro] = (porLibro[l as Libro] ?? 0) - n;
   }
   return porLibro;
 }

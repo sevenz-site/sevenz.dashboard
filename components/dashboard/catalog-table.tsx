@@ -70,7 +70,7 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
   catalogToken: string | null;
 }) {
   const router = useRouter();
-  const { visible, total, query, sortBy, status, minAmount, maxAmount } = useCatalogFilters();
+  const { visible, total, query, sortBy, status, minAmount, maxAmount, categoryId } = useCatalogFilters();
   // ── PAGINADO, LA MISMA REGLA QUE CLIENTES ────────────────────────────
   //
   // Encargo del dueño el 2026-10-20. Hasta hoy esta rejilla pintaba TODOS
@@ -108,7 +108,7 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
     return () => marcarPantallaVacia(false);
   }, [estadoVacioALaVista]);
 
-  const claveDeFiltros = `${query}|${sortBy}|${status}|${minAmount}|${maxAmount}`;
+  const claveDeFiltros = `${query}|${sortBy}|${status}|${minAmount}|${maxAmount}|${categoryId ?? ""}`;
   const [claveprevia, setClavePrevia] = useState(claveDeFiltros);
   if (claveDeFiltros !== claveprevia) {
     setClavePrevia(claveDeFiltros);
@@ -204,9 +204,13 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
 
       {visible.length === 0 ? (
         <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-          {query.trim() === ""
-            ? "Ningún producto cumple con esos filtros."
-            : "Ningún producto se llama así."}
+          {/* A category chip with nothing in it is the one empty case that
+              has an obvious next step, so it says it (2026-11-03). */}
+          {query.trim() === "" && categoryId && status === "todos" && !minAmount && !maxAmount
+            ? "Todavía no hay productos en esta categoría. Asígnala al crear o editar un producto."
+            : query.trim() === ""
+              ? "Ningún producto cumple con esos filtros."
+              : "Ningún producto se llama así."}
         </p>
       ) : (
         <>

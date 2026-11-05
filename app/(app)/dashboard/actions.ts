@@ -139,6 +139,44 @@ export async function deleteMovement(
     return { error: "No encontramos esa transacción." };
   }
 
+  // A RETURN GOES THROUGH ITS OWN FUNCTION (migration 185): its ledger lines,
+  // the event and the shelf have to move together.
+  if (movement.type === "return") {
+    const { data, error } = await supabase.rpc("eliminar_devolucion", { p_movement_id: movementId });
+    if (error) return { error: mensajeDeError("eliminar la devolución", error, "deleteMovement") };
+    if (!(data as { ok: boolean }).ok) {
+      // The page already says this with its button; this is for a saldo spent
+      // after the page was opened.
+      return {
+        error:
+          (data as { code?: string }).code === "saldo_usado"
+            ? "Este saldo a favor ya se usó. Elimina primero la venta que lo gastó."
+            : "No pudimos eliminar la devolución.",
+      };
+    }
+    revalidatePath("/dashboard");
+    revalidatePath(`/clients/${movement.client_id}`);
+    return { error: null };
+  }
+
+  // A FIADO WITH A LIVE RETURN STAYS until the return goes. Deleting the sale
+  // behind it would put the same units on the shelf twice: see migration 185.
+  // The database refuses too; this is the sentence.
+  //
+  // BY THE LEDGER AND NOT BY `sale_returns` since 188: a fiado that received
+  // money from another return has to stay too, or that money ends as a saldo no
+  // sale can spend. Its own return always writes a line, even at zero.
+  if (movement.type === "charge") {
+    const { count } = await supabase
+      .from("movements")
+      .select("id", { count: "exact", head: true })
+      .eq("applies_to_movement_id", movementId)
+      .eq("client_id", movement.client_id)
+      .eq("type", "return")
+      .is("deleted_at", null);
+    if ((count ?? 0) > 0) return { error: "Este fiado tiene devoluciones. Elimínalas primero." };
+  }
+
   const borradoEn = new Date().toISOString();
 
   // LOS ABONOS PRIMERO, y el fiado después. Si el borrado de los abonos falla,
@@ -250,7 +288,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id)")
+    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id, trashed_at, deleted_at)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
@@ -258,6 +296,46 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
 
   if (fetchError || !movement) {
     return { error: "No encontramos esa transacción eliminada." };
+  }
+
+  // NOTHING OF A CLIENT IN THE TRASH COMES BACK ON ITS OWN, finding B6 of the
+  // 2026-11-04 audit, fixed at the owner's request that day, first for returns
+  // and then for fiados and abonos too. It came back without a word, moving
+  // money in a ledger nobody can see, and units onto the shelf.
+  //
+  // HERE AND NOT IN `restaurar_devolucion`: nothing in the books goes wrong, the
+  // balance stays right. What it breaks is the shopkeeper's view, and only this
+  // screen has one, so it costs no migration.
+  const dueno = movement.clients as unknown as { trashed_at: string | null; deleted_at: string | null };
+  const queEs = movement.type === "return" ? "devolución" : "transacción";
+  if (dueno.deleted_at) {
+    return { error: `Ese cliente se eliminó, así que esta ${queEs} no se puede restaurar.` };
+  }
+  if (dueno.trashed_at) {
+    return { error: `Este cliente está en la papelera. Restáuralo primero y vuelve a restaurar esta ${queEs}.` };
+  }
+
+  // A RETURN COMES BACK THROUGH ITS OWN FUNCTION, and it can refuse: the same
+  // units may have been returned again in the meantime.
+  if (movement.type === "return") {
+    const { data, error } = await supabase.rpc("restaurar_devolucion", { p_movement_id: movementId });
+    if (error) return { error: mensajeDeError("restaurar la devolución", error, "restoreMovement") };
+    const result = data as { ok: boolean; code?: string };
+    if (!result.ok) {
+      return {
+        error:
+          result.code === "ya_devuelto"
+            ? "Esas unidades ya se devolvieron otra vez, así que esta devolución no se puede restaurar."
+            : result.code === "fiado_eliminado"
+              ? "Su fiado ya no existe, así que esta devolución no se puede restaurar."
+              : result.code === "ya_no_cabe"
+                ? "Sus fiados ya no deben eso, así que esta devolución no se puede restaurar. Regístrala de nuevo."
+                : "No pudimos restaurar la devolución.",
+      };
+    }
+    revalidatePath("/dashboard");
+    revalidatePath(`/clients/${movement.client_id}`);
+    return { error: null };
   }
 
   // LA VENTA DE LA QUE NACIÓ VUELVE CON ÉL, si también estaba borrada.

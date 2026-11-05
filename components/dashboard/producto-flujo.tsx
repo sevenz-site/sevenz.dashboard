@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SupplierField } from "@/components/dashboard/supplier-field";
+import { CategoryField, type CategoriaConConteo } from "@/components/dashboard/category-field";
 import {
   Select,
   SelectContent,
@@ -19,16 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   formatAmountForInput,
   formatPercent,
@@ -55,7 +46,6 @@ import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   createProduct,
   updateProduct,
-  trashProduct,
   type ProductInput,
 } from "@/app/(app)/productos/actions";
 import type { ProductRow } from "@/lib/products/catalog";
@@ -132,6 +122,7 @@ export function ProductoFlujo({
   overrides,
   initialCurrencies,
   supplierSuggestions,
+  categorias: categoriasIniciales = [],
   lastCostCurrency,
   ownerId,
 }: {
@@ -147,6 +138,10 @@ export function ProductoFlujo({
   // Los proveedores que este negocio ya escribió, para el autocompletado.
   // Salen de los productos que la página ya cargó, no de una consulta nueva.
   supplierSuggestions: string[];
+  // The business's categories with how many products each has (migration
+  // 184). The sheet keeps its own copy so creating, renaming or deleting shows
+  // at once.
+  categorias?: CategoriaConConteo[];
   // La moneda del costo del ULTIMO producto creado por este negocio, o
   // null si todavia no tiene ninguno. Solo la usa el dialogo de alta: al
   // editar manda la del producto que se esta abriendo.
@@ -258,6 +253,8 @@ export function ProductoFlujo({
 
   // DÓNDE LO COMPRÓ. Migración 103, frame 1192:4185.
   const [supplier, setSupplier] = useState(product?.supplier ?? "");
+  const [categoryId, setCategoryId] = useState<string | null>(product?.category_id ?? null);
+  const [categorias, setCategorias] = useState<CategoriaConConteo[]>(categoriasIniciales);
 
   // LA MONEDA DEL COSTO DEL ÚLTIMO PRODUCTO QUE CREÓ ESTE NEGOCIO.
   //
@@ -366,8 +363,6 @@ export function ProductoFlujo({
   const [ventaWholesale, setVentaWholesale] = useState(
     product == null ? true : product.price_wholesale != null,
   );
-
-  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
 
   const [fixed, setFixed] = useState<Record<PriceTier, Partial<Record<PriceCurrency, string>>>>({
     retail: Object.fromEntries(
@@ -598,6 +593,7 @@ export function ProductoFlujo({
       : null,
     stockOpening: stock || null,
     supplier: supplier || null,
+    categoryId,
     wholesaleMinQuantity: minQty || null,
     publishedRetail: ventaRetail && pubRetail,
     publishedWholesale: ventaWholesale && pubWholesale,
@@ -753,6 +749,17 @@ export function ProductoFlujo({
               value={supplier}
               onChange={setSupplier}
               suggestions={supplierSuggestions}
+              disabled={saving}
+            />
+
+            {/* UNDER «PROVEEDOR», where the owner drew the arrow on
+                2026-11-03. Creating, editing and deleting categories all
+                happen from its sheet. */}
+            <CategoryField
+              value={categoryId}
+              onChange={setCategoryId}
+              categorias={categorias}
+              onCategoriasChange={setCategorias}
               disabled={saving}
             />
         </div>
@@ -998,6 +1005,7 @@ export function ProductoFlujo({
           cost={cost}
           costCurrency={costCurrency}
           supplier={supplier}
+          categoria={categorias.find((c) => c.id === categoryId)?.name ?? null}
           description={description}
           photoPath={photoPath}
           pubRetail={pubRetail}
@@ -1031,8 +1039,14 @@ export function ProductoFlujo({
           EN EL 4/4 SON DOS, del frame `1465:19879`: «Crear producto» relleno
           y «Editar» con borde. El segundo vuelve al paso 1, que es lo que una
           pantalla de revisión tiene que ofrecer: corregir lo que acabas de
-          leer. Al editar un producto que ya existe, el relleno dice «Guardar»
-          — es la misma acción y el verbo tiene que decir cuál de las dos es. */}
+          leer.
+
+          EDITING SHOWS «Guardar» ALONE, owner's request of 2026-11-03, with a
+          screenshot circling the other two: *«los botones editar y eliminar no
+          deben verse en esta pantalla, solo el botón "Guardar"»*. The back
+          arrow still walks to any step. Deleting stays on the product's page
+          (`product-detail.tsx`), the door that leads here; this screen had its
+          own «Eliminar producto» and confirmation until that day. */}
       <StickyActions>
         {paso < 4 ? (
           <Button type="button" className="h-10 w-full text-base font-semibold" onClick={continuar}>
@@ -1056,69 +1070,20 @@ export function ProductoFlujo({
                 "Crear producto"
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 w-full text-base font-semibold"
-              disabled={saving}
-              onClick={() => setPaso(1)}
-            >
-              Editar
-            </Button>
-            {/* «Eliminar producto» SOLO AL EDITAR, y aquí abajo: el frame no
-                lo dibuja porque el suyo es el flujo de alta, donde no hay nada
-                que eliminar. Se conserva el control que el diálogo ya tenía
-                en vez de dejar sin borrado a quien edita. */}
-            {editing ? (
+            {editing ? null : (
               <Button
                 type="button"
-                variant="destructiveText"
+                variant="outline"
+                className="h-10 w-full text-base font-semibold"
                 disabled={saving}
-                onClick={() => setConfirmarBorrado(true)}
+                onClick={() => setPaso(1)}
               >
-                Eliminar producto
+                Editar
               </Button>
-            ) : null}
+            )}
           </>
         )}
       </StickyActions>
-
-      {/* BORRAR PREGUNTA ANTES, a petición del dueño el 2026-10-10. El botón
-          vivía junto a «Guardar» y borraba al primer toque, que en un teléfono
-          es un dedo mal puesto de distancia.
-
-          El texto NO dice «esta acción no se puede deshacer», porque sí se
-          puede: el producto va a la papelera y la notificación trae su botón
-          de restaurar (migración 090). Decirlo aquí es lo que convierte la
-          confirmación en información y no solo en un freno. */}
-      <AlertDialog open={confirmarBorrado} onOpenChange={setConfirmarBorrado}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar {product?.name ?? "el producto"}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Sale de tu catálogo y deja de verse en los enlaces que hayas compartido. Si te
-              arrepientes, puedes restaurarlo desde tus notificaciones.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                startTransition(async () => {
-                  const r = await trashProduct(product!.id);
-                  if (avisarCuentaPausada(r.error)) return;
-                  if (r.error) return setError(r.error);
-                  // SALE DE LA PANTALLA, que antes era cerrar el diálogo.
-                  salir();
-                  toast.success("Producto eliminado.");
-                })
-              }
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
@@ -2168,6 +2133,7 @@ function Verifica({
   cost,
   costCurrency,
   supplier,
+  categoria,
   description,
   photoPath,
   pubRetail,
@@ -2188,6 +2154,7 @@ function Verifica({
   cost: string;
   costCurrency: string;
   supplier: string;
+  categoria: string | null;
   description: string;
   photoPath: string | null;
   pubRetail: boolean;
@@ -2226,6 +2193,7 @@ function Verifica({
           moneda={cost.trim() ? costCurrency : null}
         />
         <FilaDeRepaso nombre="Proveedor" valor={supplier.trim() || SIN_DATO} />
+        <FilaDeRepaso nombre="Categoría" valor={categoria ?? SIN_DATO} />
         <FilaAncha nombre="Descripción">
           <p className="min-w-0 flex-1 break-words">{description.trim() || SIN_DATO}</p>
         </FilaAncha>

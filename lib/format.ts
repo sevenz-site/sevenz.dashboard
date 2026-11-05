@@ -50,6 +50,20 @@ export function formatDateLong(iso: string, zona: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * `YYYY-MM-DD` of an instant, in the zone of the business. What a date filter has
+ * to compare: the day the row PRINTS. A sale at 23:30 in Caracas is the next day in
+ * UTC, and read that way it would fall out of the day it says it belongs to.
+ */
+export function dayInZone(iso: string, zona: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zona,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
 export function formatDateTime(iso: string, zona: string): string {
   return new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",

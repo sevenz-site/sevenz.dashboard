@@ -72,7 +72,7 @@ export async function readWeeklyLending(
     .gte("created_at", lendingFetchWindowStart(period));
 
   const rows = (data ?? []) as {
-    type: "charge" | "payment";
+    type: "charge" | "payment" | "return";
     amount: number;
     currency: "USD" | "EUR" | null;
     created_at: string;

@@ -778,6 +778,39 @@ Vale en los dos historiales **y en la ficha de la transacción**, que es donde
 se vio. La tarjeta de saldo de `/s/[token]` ya lo hacía así desde antes —
 `Math.abs` y «A favor» / «Debe»— y es el precedente que fija la forma.
 
+### «Por cobrar» es UNA cifra, en los tres sitios donde sale
+
+**Regla del dueño, escrita a la segunda vez que la pidió.** El 2026-10-23, para
+el pie del historial: *«"Por cobrar" … en la card principal de la moneda y en
+la card de la última transacción. Deben coincidir»*. El 2026-11-03, para la
+ficha: *«"Total por cobrar" debe ser la deuda total en esa moneda. La misma
+deuda que aparece en el card del historial con el label "Por cobrar" y misma
+deuda que aparece en el card principal "Por cobrar"»*.
+
+**Los tres sitios, y en todos es el saldo del LIBRO de esa moneda**, nunca lo
+que debe un fiado suelto:
+
+| Dónde | Rótulo | Qué cifra |
+|---|---|---|
+| La tarjeta principal de la ficha del cliente | «Por cobrar» | Lo que se debe hoy (`client_summary`) |
+| El pie de cada fila del historial | «Por cobrar» | El libro justo DESPUÉS de esa transacción (`running_balance`) |
+| La ficha de la transacción, fiado y abono | «Total por cobrar» | La misma que el pie de SU fila: su `running_balance`. En un abono repartido, el de su última línea, que es la más baja |
+
+En la transacción más reciente las tres coinciden por construcción. En una
+vieja, la ficha dice lo mismo que su fila, no lo de hoy: lo eligió el dueño el
+2026-11-03, con el caso de un fiado viejo delante.
+
+**Lo que debe un fiado tiene su propio rótulo, «Total»**, bajo sus productos, y
+no puede volver a ocupar el sitio de «Total por cobrar». Lo ocupó del
+2026-10-20 al 2026-11-03 —con buena razón, la que cuenta el comentario de
+`app/(app)/transacciones/[movementId]/page.tsx`— y esa es justo la forma en
+que las tres cifras dejaron de coincidir sin que nada avisara.
+
+**Las dos vistas, igual**: la del dueño y la del cliente pasan las mismas dos
+cifras al mismo componente (`DetalleDeTransaccion`, `PaymentSummary`, y la fila
+común `fila-de-total.tsx`). Una pantalla nueva que enseñe un «por cobrar» se
+comprueba contra las otras dos con la misma transacción delante.
+
 ## Una deuda antigua no tiene compra: ninguna pantalla le dibuja una
 
 **Pedido por el dueño el 2026-10-31**, a la segunda vez que salió el mismo
@@ -893,6 +926,66 @@ dialogs mounted, duplicate tour markers).
 
 Read it before writing UI, and update it when a new rule is established —
 it exists so the next screen doesn't have to rediscover the same failures.
+
+## Toda decisión de interfaz queda en Figma, Drive y Trello, o no se lanza
+
+**Pedido por el dueño el 2026-11-04**, al dejar respaldado el documento de las
+modales de devolución: *«de ahora en adelante debemos documentar de esta manera
+las decisiones de las interfaces. Agrégalo a tus Rules, Debe quedar figma y drive
+con documento final de caso por caso. Sin dichos documentos se bloquea el
+lanzamiento a producción»*.
+
+**Una interfaz nueva o cambiada lleva tres cosas antes de salir:**
+
+1. **Figma**: un frame por caso, con el copy final. Tiene que coincidir con la app.
+2. **Drive de Sevenz**: un documento final, caso por caso, con la captura real de
+   cada pantalla, cuándo sale y qué pasa. El modelo es el de las modales de
+   devolución: `Modales-de-devolucion-final.pdf`. Desde el 2026-11-04 abre además
+   con **su fecha de modificación** y una **descripción breve de la solución, en
+   dos partes: el problema planteado y la solución, con la interfaz final**. Pedido
+   por el dueño ese día: *«El documento debe incluir fecha de modificación y una
+   breve descripción de la solución dividida por el problema planteado y la solución
+   con la interfaz final»*. Vale para los documentos nuevos; los cinco generados
+   antes de esa frase se quedan como están, decisión suya.
+3. **El ticket de Trello de su liberación**: UNO por liberación, no uno por
+   interfaz, con la versión en el nombre y dentro todos los enlaces de Drive y de
+   Figma que se trabajaron. Pedido por él el 2026-11-04, y desplaza al ticket por
+   interfaz que había pedido ese mismo día: *«como en una liberación podemos lanzar
+   inumerables ajustes y por ende implicaría crear inumerables tickets, vamos a
+   trabajar con un mismo ticket por liberación, el ticket tendrá la versión de la
+   liberación y dentro todo los archivos drive y figma que se trabajaron»*. Junto a
+   cada enlace va el problema planteado y la solución, para leerlos sin abrir el
+   documento.
+
+**Los PDF van en la carpeta `Liberaciones` de Drive, una subcarpeta por
+funcionalidad, y esas carpetas se alimentan.** Si la funcionalidad ya tiene carpeta, el
+PDF entra ahí; solo se crea una si todavía no tiene. Antes de subir se listan las que
+hay. Decisión del dueño el 2026-11-04: *«si la funcionalidad no posee carpeta, se crea
+una nueva, pero si ya posee carpeta, el archivo pdf va dentro de la carpeta existente»*.
+
+**El nombre del ticket es `Liberación vX.Y.Z · <de qué trata>`.** La versión sube el
+número del medio en una liberación con funciones nuevas y el último en una de
+arreglos. Una liberación cubre el dashboard y `Web/` juntos. La primera con este
+nombre es la `v0.2.0`, porque `package.json` dice `0.1.0` y nunca se había usado.
+
+**Es una parada dura del `qa-regression-checklist`** (sección 4g). Si falta uno de
+los tres, no se lanza esa interfaz, y no se decide a solas que este cambio no lo
+necesita: se le pregunta al dueño.
+
+**El registro vive en `../docs/LIBERACIONES.md`**, con el enlace de cada documento
+dentro de su liberación, porque este repo es público. Sin estar ahí, el documento no
+existe para el checklist. El ticket lo mantiene el dueño:
+desde aquí no hay acceso a Trello, así que se le pasa su contenido listo para pegar.
+
+**La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
+genera con capturas de la app, después del último cambio de copy. El 2026-11-04 se
+compararon los textos de los frames contra los de la app; si el copy cambia después
+de generarlo, hay que generarlo de nuevo.
+
+**Por qué merece regla propia**: ese día el mismo flujo pasó por tres versiones de
+copy en horas, y el dueño corrigió dos cifras de sus frames y una palabra que podía
+hacer perder dinero. Solo se vio porque estaban los casos uno al lado del otro. Sin
+ese documento, cada caso se revisa por separado y nadie compara los demás.
 
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
@@ -1245,6 +1338,32 @@ cambiar con el log diciendo que todo fue bien.
 
 Así que el orden completo es **`npm run build` → `npx wrangler deploy` →
 `git push origin main`**, y la comprobación en vivo va después de las tres.
+
+### Y `dev` se sube DESPUÉS de que `sevenz.site` publique, nunca a la vez
+
+Pedido por el dueño el 2026-11-03, tras un lanzamiento que se quedó a medias.
+
+**Qué sirve el dominio, medido ese día**: el worker **`sevenz-site`** (no
+`sevenz-web`, que es el de `wrangler deploy`), que Cloudflare compila desde git.
+Cada push compila: el de `main` se **despliega** en el dominio y el de `dev`
+solo sube una versión de vista previa (alias `dev`). Se ve con
+`npx wrangler versions list --name sevenz-site`: las de `main` salen sin alias,
+las de `dev` con `"workers/alias":"dev"`.
+
+**Qué pasó**: el back-merge (paso 4 del despliegue) subió `dev` en el MISMO
+comando que `main`, con segundos de diferencia, y Cloudflare solo compiló
+`dev`. La compilación de `main` no llegó a existir: el dominio siguió sirviendo
+la versión anterior más de doce minutos mientras el worker de `wrangler`
+enseñaba la nueva. Nada daba error.
+
+**La regla**: push de `main` → esperar a que `sevenz.site` enseñe la frase nueva
+(suelen ser unos 9 minutos) → solo entonces el back-merge y el push de `dev`.
+
+**Si vuelve a pasar**, el arreglo es un commit vacío en `main`
+(`git commit --allow-empty`) y su push, que dispara la compilación otra vez sin
+cambiar código; luego se espera al dominio y después se sube `dev`. Antes de
+eso, `wrangler versions list --name sevenz-site` dice si la compilación de
+`main` existe: si la última versión sin alias es anterior al push, no existe.
 
 **And the live page is what gets checked, not the log.** Fetch it with
 `cache: 'no-store'` and assert on both sides: the new sentence present AND the
@@ -1664,8 +1783,11 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production
-  Supabase project: run the `qa-regression-checklist` skill first, and
-  wait for the user's explicit confirmation before actually launching.
+  Supabase project: run the `qa-regression-checklist` skill first, always with
+  the Fable 5.1 model (owner's decision of 2026-11-04), and
+  wait for the user's explicit confirmation before actually launching. An
+  interface with no Figma, no Drive document, or missing from the release's
+  Trello ticket blocks the launch (section 4g).
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.
@@ -1802,6 +1924,32 @@ Esto salió de correr `new-api-risk-review` **después** de instalarla, el
 2026-09-15 — al revés de como lo pide la regla de arriba. La lección no es que
 la librería fuera mala: es que la reseña sí tenía algo que decir, y saltársela
 fue decidir de antemano que no lo tendría.
+
+## Toda liberación queda en `LIBERACIONES.md`
+
+**Pedido por el dueño el 2026-11-04**: *«trazar lo que se libera, cuando (fecha y
+hora), para en el futuro poder auditar qué se hizo, decisiones que se tomaron
+revisando los links (pdf y figma) y trabajar sobre esas bases y no en el aire»*.
+
+`../docs/LIBERACIONES.md` lleva una entrada por liberación y, arriba, un índice por
+funcionalidad. El formato está escrito en el propio archivo.
+
+1. **Antes de tocar una funcionalidad existente, se lee su línea del índice**: qué se
+   hizo, qué se decidió y qué quedó sin hacer. Un frame enseña cómo está hoy; lo que
+   salió lo dice el PDF.
+2. **Un lanzamiento no termina hasta que su entrada tiene las horas reales**, el
+   commit y la etiqueta `vX.Y.Z` en `main`. Las horas salen de git y de lo observado.
+3. **Un arreglo urgente también lleva entrada.** Un bug sin interfaz nueva no pide
+   Figma ni PDF, pero sí una nota con el problema y la solución, decisión del dueño
+   ese día.
+4. **Una liberación revertida no se borra.** Se marca `REVERTIDA`, con lo que quedó
+   eliminado, y lo mismo se comenta en sus PDF, en una versión nueva del archivo.
+   Decisión del dueño: *«no veo por qué borrarlo porque fué parte del historial»*.
+
+**Es una parada dura del `qa-regression-checklist`** (sección 4h): compara el último
+despliegue de git con la última entrada. Sin esa comparación, un arreglo urgente sin
+anotar deja el archivo diciendo que algo no cambió cuando sí cambió, y eso se lee como
+verdad.
 
 ## Después de cada liberación: la lista de lo abierto, y la ficha cerrada sin preguntar
 

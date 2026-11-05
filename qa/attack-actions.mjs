@@ -167,19 +167,23 @@ try {
     ctx[`link${quien}`] = (await svc.from("catalog_share_links").insert({ owner_id: o.id }).select("token").single()).data.token;
     // Migration 179: one payment method each, B's being the one A goes after.
     ctx[`pm${quien}`] = (await svc.from("owner_payment_methods").insert({ owner_id: o.id, body: `Pago móvil de ${quien}` }).select("id").single()).data?.id;
+    // Migration 184: a category each, B's being the one A goes after; A gets a
+    // second one so the delete control has something of its own to delete.
+    ctx[`cat${quien}`] = (await svc.from("product_categories").insert({ owner_id: o.id, name: `Categoría de ${quien}` }).select("id").single()).data?.id;
   }
+  ctx.catA2 = (await svc.from("product_categories").insert({ owner_id: A.id, name: "Categoría de A para borrar" }).select("id").single()).data?.id;
   ctx.mA = ctx.mA.id; ctx.codigoB = ctx.mB.transaction_code; ctx.mB = ctx.mB.id;
   // B's logo, the file the logo attack tries to take over and delete.
   await svc.storage.from("logos").upload(`${B.id}/logo.png`, new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" }), { upsert: true });
-  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "Fiado de B", "12345678", ctx.tokB, B.email, "ZZ Actions b", "Pago móvil de B"];
+  const SECRETOS = ["Cliente de B", "Producto de B", "Pedido de B", "Línea de B", "Fiado de B", "12345678", ctx.tokB, B.email, "ZZ Actions b", "Pago móvil de B", "Categoría de B"];
   const filtra = (x) => { let t; try { t = JSON.stringify(x ?? ""); } catch { t = String(x); } return SECRETOS.find((s) => t.includes(s)) ?? null; };
 
   // A snapshot of everything B owns, to compare before/after each attack.
   const foto = async (o, c) => {
-    const [cli, mov, prod, ven, ped, flags, hides, links, sub, ev, own, pagos] = await Promise.all([
+    const [cli, mov, prod, ven, ped, flags, hides, links, sub, ev, own, pagos, cats] = await Promise.all([
       svc.from("clients").select("id,name,document_id,whatsapp,trashed_at,deleted_at,is_flagged,profile_picture_path").eq("owner_id", o).order("id"),
       svc.from("movements").select("id,amount,type,deleted_at,client_id,description").eq("client_id", c).order("id"),
-      svc.from("products").select("id,name,price_retail,published_retail,published_wholesale,trashed_at,owner_id").eq("owner_id", o).order("id"),
+      svc.from("products").select("id,name,price_retail,published_retail,published_wholesale,trashed_at,owner_id,category_id").eq("owner_id", o).order("id"),
       svc.from("sales").select("id,deleted_at,client_id").eq("owner_id", o).order("id"),
       svc.from("catalog_orders").select("id,status,sale_id,discarded_at").eq("owner_id", o).order("id"),
       svc.from("client_flags").select("id,unflagged_at").eq("owner_id", o).order("id"),
@@ -189,8 +193,9 @@ try {
       svc.from("subscription_events").select("id", { count: "exact", head: true }).eq("owner_id", o),
       svc.from("owners").select("business_name,country,plan,whatsapp,logo_path").eq("id", o).single(),
       svc.from("owner_payment_methods").select("id,body,owner_id").eq("owner_id", o).order("id"),
+      svc.from("product_categories").select("id,name,owner_id").eq("owner_id", o).order("id"),
     ]);
-    return JSON.stringify([cli.data, mov.data, prod.data, ven.data, ped.data, flags.data, hides.data, links.data, sub.data, ev.count, own.data, pagos.data]);
+    return JSON.stringify([cli.data, mov.data, prod.data, ven.data, ped.data, flags.data, hides.data, links.data, sub.data, ev.count, own.data, pagos.data, cats.data]);
   };
   const fotoB = () => foto(B.id, ctx.cB);
   const fotoA = () => foto(A.id, ctx.cA);
@@ -313,8 +318,11 @@ try {
         const { data: files } = await svc.storage.from("logos").list(B.id);
         return data.country === "VE" && !String(data.logo_path ?? "").includes(B.id) && (files ?? []).some((o) => o.name === "logo.png");
       } },
-    { clave: P("productos/actions.ts#createProduct"), fase: 2, ataques: [["crea un producto con owner_id de B", A.cookie, () => [{ ...productoBase("ZZ plantado"), owner_id: B.id }]]], control: [A.cookie, () => [productoBase("ZZ propio")]] },
-    { clave: P("productos/actions.ts#updateProduct"), fase: 2, ataques: [["edita el producto de B", A.cookie, () => [ctx.pB, productoBase("HACKED")]]], control: [A.cookie, () => [ctx.pA, productoBase("Producto de A")]] },
+    { clave: P("productos/actions.ts#createProduct"), fase: 2, ataques: [["crea un producto con owner_id de B", A.cookie, () => [{ ...productoBase("ZZ plantado"), owner_id: B.id }]], ["crea un producto en la categoría de B (184)", A.cookie, () => [{ ...productoBase("ZZ categoría ajena"), categoryId: ctx.catB }]]], control: [A.cookie, () => [{ ...productoBase("ZZ propio"), categoryId: ctx.catA }]] },
+    { clave: P("productos/actions.ts#updateProduct"), fase: 2, ataques: [["edita el producto de B", A.cookie, () => [ctx.pB, productoBase("HACKED")]], ["pone su producto en la categoría de B (184)", A.cookie, () => [ctx.pA, { ...productoBase("Producto de A"), categoryId: ctx.catB }]]], control: [A.cookie, () => [ctx.pA, { ...productoBase("Producto de A"), categoryId: ctx.catA }]] },
+    // Migration 184: renaming and deleting take an id from the browser.
+    { clave: P("productos/actions.ts#renombrarCategoria"), fase: 2, ataques: [["renombra la categoría de B", A.cookie, () => [ctx.catB, "HACKED"]]], control: [A.cookie, () => [ctx.catA, "Categoría de A"]] },
+    { clave: P("productos/actions.ts#eliminarCategoria"), fase: 2, ataques: [["elimina la categoría de B", A.cookie, () => [ctx.catB]]], control: [A.cookie, () => [ctx.catA2]] },
     ...[["actions.ts#getNotifications"], ["actions.ts#getUnreadNotificationCount"], ["actions.ts#completeOnboarding"], ["productos/actions.ts#getOrCreateCatalogLink"], ["ventas/actions.ts#resolverMostrador"],
         ["profile/actions.ts#registrarPreguntaAvisos"]].map(([k]) => ({
       clave: P(k), fase: 2, ataques: [["un anónimo la llama", null, () => []]], control: [A.cookie, () => []],

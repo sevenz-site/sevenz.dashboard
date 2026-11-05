@@ -1,3 +1,4 @@
+import { cargarDevoluciones, lineasDevueltas } from "@/lib/reports/devoluciones";
 import type { createClient } from "@/lib/supabase/server";
 import type { Rango } from "@/lib/reports/rango";
 import type { BolivarRates } from "@/lib/products/price";
@@ -175,7 +176,15 @@ export async function cargarProveedores({
   if (!productos.length) return [];
 
   const idsDeVenta = (resVentas.data ?? []).map((v) => v.id as string);
-  const vendidas: LineaVendida[] = [];
+  // What came back counts as a sold line with a negative quantity: see
+  // `lib/reports/devoluciones.ts`.
+  const vendidas: LineaVendida[] = lineasDevueltas(
+    await cargarDevoluciones(supabase, {
+      ownerId,
+      desdeIso: rango.desde.toISOString(),
+      hastaIso: rango.hasta.toISOString(),
+    }),
+  );
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")

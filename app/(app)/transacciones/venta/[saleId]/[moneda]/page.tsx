@@ -8,6 +8,7 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { CatalogOrderTrace } from "@/components/dashboard/catalog-order-trace";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
@@ -15,7 +16,9 @@ import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
-import type { SaleLineRow } from "@/lib/sale-lines";
+import { bookBalance, ceilingOfBook, lineasDe, otherFiadosOf } from "@/lib/returns/read";
+import { libroDeVenta } from "@/lib/ventas-de-contado";
+import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -73,31 +76,26 @@ export default async function VentaDeContadoPage({
   const { data: venta } = await supabase
     .from("sales")
     .select(
-      "id, owner_id, created_at, client_id, transaction_code, catalog_order_id, clients!inner(id, name)",
+      "id, owner_id, created_at, client_id, transaction_code, catalog_order_id, clients!inner(id, name, is_walk_in)",
     )
     .eq("id", saleId)
     .maybeSingle();
 
-  const cliente = venta?.clients as unknown as { id: string; name: string } | null;
+  const cliente = venta?.clients as unknown as { id: string; name: string; is_walk_in: boolean } | null;
   if (!venta || !cliente || venta.owner_id !== user.id) notFound();
 
-  const [{ data: lineasCrudas }, { data: pagosCrudos }] = await Promise.all([
-    supabase.from("sale_lines").select("name, quantity, unit_price, currency").eq("sale_id", saleId),
+  const [lineas, { data: pagosCrudos }] = await Promise.all([
+    lineasDe(supabase, saleId, moneda),
     supabase
       .from("sale_payments")
       .select("amount, currency, entry_currency, entry_amount, rate_used, description")
       .eq("sale_id", saleId),
   ]);
 
-  const lineas: SaleLineRow[] = (lineasCrudas ?? [])
-    .filter((l) => (l.currency ?? null) === moneda)
-    .map((l) => ({
-      name: l.name as string,
-      quantity: Number(l.quantity),
-      unitPrice: Number(l.unit_price),
-    }));
-
-  const pagos = (pagosCrudos ?? []).filter((p) => (p.currency ?? null) === moneda);
+  // NORMALISED: `sale_payments` spells the Colombian book 'COP' and `moneda` is
+  // null for it. Compared raw, this screen answered 404 to every Colombian
+  // cash sale until 2026-11-04.
+  const pagos = (pagosCrudos ?? []).filter((p) => libroDeVenta(p.currency as string) === moneda);
 
   // SIN PAGOS EN ESTA MONEDA NO HAY NADA QUE ENSEÑAR. Pasa si alguien escribe
   // la ruta a mano con la moneda equivocada, y también si la parte de contado
@@ -194,6 +192,26 @@ export default async function VentaDeContadoPage({
     porMoneda.set(clave, (porMoneda.get(clave) ?? 0) + Number(p.amount));
   }
 
+  // ── THE «⋮» OF EACH PRODUCT (migration 186) ─────────────────────────────
+  //
+  // A book that left a charge is not cash: its return belongs to that fiado.
+  // The table of what is offered is at the top of `lib/returns/options.ts`.
+  let contextoDeDevolucion: ReturnMenuContext | null = null;
+  if (lineas.length > 0 && !(fiados ?? []).some((f) => (f.currency ?? null) === moneda)) {
+    const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
+      p_client_id: cliente.id,
+    });
+    contextoDeDevolucion = {
+      source: { kind: "contado", saleId, walkIn: cliente.is_walk_in },
+      pendingOfFiado: 0,
+      bookBalance: await bookBalance(supabase, cliente.id, moneda),
+      ceiling: await ceilingOfBook(supabase, saleId, moneda, 0),
+      otherFiados: otherFiadosOf(abiertos ?? [], moneda, null),
+      currency: moneda,
+      ledger,
+    };
+  }
+
   const loQueSeLleva = [
     ...[...porMoneda].map(
       ([c, total]) =>
@@ -223,15 +241,7 @@ export default async function VentaDeContadoPage({
       <dl className="flex flex-col gap-4">
         <Grupo>
           <Fila nombre="Fecha"><Fecha iso={venta.created_at as string} /></Fila>
-        </Grupo>
-
-        {/* LA TARJETA SE SEPARA CON UNA LÍNEA, no con un recuadro — frame
-            `1487:9948`. Y su título va en 16 semibold. */}
-        <div className="flex flex-col gap-1.5 border-t py-2.5">
-          <p className="py-2 text-base leading-6 font-semibold">
-            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
-          </p>
-
+          {/* Under «Fecha», as in every transaction: owner's decision of 2026-11-04. */}
           <Fila nombre="Tipo">
             <span className="inline-flex items-center gap-1.5">
               De contado
@@ -242,9 +252,21 @@ export default async function VentaDeContadoPage({
               <Check className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
             </span>
           </Fila>
+        </Grupo>
+
+        {/* LA TARJETA SE SEPARA CON UNA LÍNEA, no con un recuadro — frame
+            `1487:9948`. Y su título va en 16 semibold. */}
+        <div className="flex flex-col gap-1.5 border-t py-2.5">
+          <p className="py-2 text-base leading-6 font-semibold">
+            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
+          </p>
 
           {lineas.length > 0 ? (
-            <ProductosDelMovimiento productos={lineas} formatearMonto={formatear} />
+            <ProductosDelMovimiento
+              productos={lineas}
+              formatearMonto={formatear}
+              devolucion={contextoDeDevolucion}
+            />
           ) : null}
 
           {/* ── «PAGÓ», UNA SOLA FILA — frame `1580:11620` ──────────────
@@ -284,20 +306,12 @@ export default async function VentaDeContadoPage({
           {/* «Total» Y NO «Total por cobrar»: aquí no queda nada por cobrar.
               Es la diferencia que el frame `1487:9972` marca contra el del
               fiado, y es la que importa de toda esta pantalla. */}
-          <div className="flex items-center justify-between gap-4 border-t pt-3">
-            <span className="text-base font-semibold">Total</span>
-            <span className="flex items-center gap-2">
-              <span className="flex flex-col items-end">
-                <span className="text-base font-semibold tabular-nums">{formatear(total)}</span>
-                {enBs != null ? (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} al día de pago
-                  </span>
-                ) : null}
-              </span>
-              {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" /> : null}
-            </span>
-          </div>
+          <FilaDeTotal
+            rotulo="Total"
+            cifra={formatear(total)}
+            bolivares={enBs != null ? `${formatBs(enBs)} al día de pago` : null}
+            moneda={moneda}
+          />
         </div>
 
         <Grupo>

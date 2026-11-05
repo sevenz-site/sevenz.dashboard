@@ -42,7 +42,7 @@
 
 export type GroupableMovement = {
   id: string;
-  type: "charge" | "payment";
+  type: "charge" | "payment" | "return";
   currency: string | null;
   amount: number | string;
   created_at: string;
@@ -66,7 +66,9 @@ const ledgerOrder = (a: GroupableMovement, b: GroupableMovement) =>
 
 /** The key that decides which payment lines are one abono. */
 export function paymentGroupKey(m: GroupableMovement): string {
-  if (m.type !== "payment" || !m.transaction_code) return `id:${m.id}`;
+  // A RETURN GROUPS THE SAME WAY (migration 185): its lines share one code, and
+  // the shopkeeper did one thing. A charge never groups.
+  if (m.type === "charge" || !m.transaction_code) return `id:${m.id}`;
   return `code:${m.transaction_code}|${m.currency ?? "COP"}`;
 }
 

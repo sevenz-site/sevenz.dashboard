@@ -63,6 +63,7 @@ export function SearchField({
   onChange,
   placeholder,
   tone = "light",
+  size = "default",
   onFocus,
   onBlur,
 }: {
@@ -70,6 +71,10 @@ export function SearchField({
   onChange: (v: string) => void;
   placeholder: string;
   tone?: "light" | "dark";
+  // "sheet" is the `input-search` component of the sheets' frames (`1667:20276`,
+  // first used by the categories sheet, 2026-11-03): 18px text, 24px icon,
+  // radius 12. Only the light tone has it.
+  size?: "default" | "sheet";
   // Para las pantallas que además despliegan resultados bajo el campo
   // —Reportes—, que necesitan su propio retardo al salir. Se SUMAN al
   // comportamiento de abajo, no lo reemplazan.
@@ -111,7 +116,9 @@ export function SearchField({
         className={
           tone === "dark"
             ? "h-[50px] w-full min-w-0 rounded-[10px] border-2 border-brand-field-border bg-brand-field pr-10 pl-4 text-[17px] text-brand-secondary shadow-[inset_0_4px_4px_rgba(0,0,0,0.25),0_4px_4px_rgba(0,0,0,0.25)] outline-none transition-colors placeholder:text-brand-secondary focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"
-            : "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
+            : size === "sheet"
+              ? "h-10 w-full min-w-0 rounded-[12px] border border-input bg-transparent pr-11 pl-4 text-lg font-medium outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring dark:bg-input/30"
+              : "h-10 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 pr-9 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring md:text-sm dark:bg-input/30"
         }
       />
       {value ? (
@@ -133,7 +140,9 @@ export function SearchField({
           className={
             tone === "dark"
               ? "absolute top-1/2 right-3 size-6 -translate-y-1/2 text-brand-secondary"
-              : "absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
+              : size === "sheet"
+                ? "absolute top-1/2 right-3 size-6 -translate-y-1/2 text-muted-foreground"
+                : "absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
           }
         />
       )}

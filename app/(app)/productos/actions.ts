@@ -8,6 +8,11 @@ import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
+import {
+  errorDeNombreDeCategoria,
+  limpiarNombreDeCategoria,
+  type Categoria,
+} from "@/lib/products/categories";
 
 export type ProductResult = { error: string | null; id?: string };
 
@@ -143,6 +148,11 @@ export type ProductInput = {
   publishedWholesale: boolean;
   photoPath: string | null;
   description: string | null;
+  // Migration 184. OPTIONAL ON PURPOSE: the quick-create sheet inside a sale
+  // (`quick-product-sheet.tsx`) does not ask for it. Absent means «leave the
+  // category as it is» on an update and «no category» on a create, so a form
+  // that does not know about categories can never wipe one by saving.
+  categoryId?: string | null;
 };
 
 type Checked = {
@@ -403,6 +413,27 @@ async function writeSatellites(
   return null;
 }
 
+// THE CATEGORY MUST BE THE SAME OWNER'S. The id comes from the browser, so it
+// is checked here explicitly (CLAUDE.md's ownership rule) before it is written;
+// the composite foreign key of migration 184 refuses it again underneath.
+// `undefined` = not sent (leave as is), `null` = no category.
+async function categoriaPermitida(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  categoryId: string | null | undefined,
+): Promise<{ ok: true; value: string | null | undefined } | { ok: false }> {
+  if (categoryId === undefined || categoryId === null) return { ok: true, value: categoryId };
+  const { data } = await supabase
+    .from("product_categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("owner_id", userId)
+    .maybeSingle();
+  return data ? { ok: true, value: categoryId } : { ok: false };
+}
+
+const CATEGORIA_AJENA = "No encontramos esa categoría. Elige otra o créala de nuevo.";
+
 export async function createProduct(input: ProductInput): Promise<ProductResult> {
   const supabase = await createClient();
   const {
@@ -420,9 +451,12 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
   const photo = ownPhotoPath(input.photoPath, user.id);
   if (photo && !(await storageFileExists("product-photos", photo))) return { error: PHOTO_GONE };
 
+  const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
+  if (!categoria.ok) return { error: CATEGORIA_AJENA };
+
   const { data, error } = await supabase
     .from("products")
-    .insert({ owner_id: user.id, ...rowFrom(input, checked, user.id) })
+    .insert({ owner_id: user.id, ...rowFrom(input, checked, user.id), category_id: categoria.value ?? null })
     .select("id")
     .single();
 
@@ -453,9 +487,16 @@ export async function updateProduct(
     return { error: PHOTO_GONE };
   }
 
+  const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
+  if (!categoria.ok) return { error: CATEGORIA_AJENA };
+
   const { error } = await supabase
     .from("products")
-    .update({ ...rowFrom(input, checked, user.id), updated_at: new Date().toISOString() })
+    .update({
+      ...rowFrom(input, checked, user.id),
+      ...(categoria.value === undefined ? {} : { category_id: categoria.value }),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", productId)
     .eq("owner_id", user.id);
 
@@ -690,4 +731,106 @@ export async function buscarProductos(query: string): Promise<ProductoBuscado[]>
     priceRetail: p.price_retail == null ? null : Number(p.price_retail),
     baseCurrencyRetail: p.base_currency_retail,
   }));
+}
+
+// ── CATEGORIES (migration 184) ───────────────────────────────────────────
+//
+// Owner's request of 2026-11-03: create, edit and delete them from the
+// create-product flow. Every action checks the owner in code before touching a
+// row (CLAUDE.md), and a blocked account cannot write them, like products.
+
+export type CategoriaResult = { error: string } | { categoria: Categoria };
+
+async function sesionQuePuedeEscribir() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { supabase, user: null, error: "Sesión expirada, vuelve a entrar." };
+  if (!(await puedeEscribir(supabase, user.id))) return { supabase, user, error: MENSAJE_CUENTA_PAUSADA };
+  return { supabase, user, error: null };
+}
+
+async function categoriasDe(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
+  const { data } = await supabase.from("product_categories").select("id, name").eq("owner_id", userId);
+  return (data ?? []) as Categoria[];
+}
+
+export async function crearCategoria(nombre: string): Promise<CategoriaResult> {
+  const { supabase, user, error: sesion } = await sesionQuePuedeEscribir();
+  if (!user || sesion) return { error: sesion ?? "Sesión expirada, vuelve a entrar." };
+
+  const limpio = limpiarNombreDeCategoria(String(nombre ?? ""));
+  const invalido = errorDeNombreDeCategoria(limpio, await categoriasDe(supabase, user.id));
+  if (invalido) return { error: invalido };
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .insert({ owner_id: user.id, name: limpio })
+    .select("id, name")
+    .single();
+  if (error) {
+    // 23505: the unique index on lower(name) won a race the check above lost.
+    if (error.code === "23505") return { error: `Ya tienes la categoría «${limpio}».` };
+    console.error("[crearCategoria]", error.message);
+    return { error: "No pudimos crear la categoría. Intenta de nuevo." };
+  }
+  revalidatePath("/productos");
+  return { categoria: data as Categoria };
+}
+
+export async function renombrarCategoria(categoryId: string, nombre: string): Promise<CategoriaResult> {
+  const { supabase, user, error: sesion } = await sesionQuePuedeEscribir();
+  if (!user || sesion) return { error: sesion ?? "Sesión expirada, vuelve a entrar." };
+
+  const propias = await categoriasDe(supabase, user.id);
+  if (!propias.some((c) => c.id === categoryId)) return { error: "No encontramos esa categoría." };
+
+  const limpio = limpiarNombreDeCategoria(String(nombre ?? ""));
+  const invalido = errorDeNombreDeCategoria(limpio, propias, categoryId);
+  if (invalido) return { error: invalido };
+
+  const { data, error } = await supabase
+    .from("product_categories")
+    .update({ name: limpio, updated_at: new Date().toISOString() })
+    .eq("id", categoryId)
+    .eq("owner_id", user.id)
+    .select("id, name")
+    .single();
+  if (error) {
+    if (error.code === "23505") return { error: `Ya tienes la categoría «${limpio}».` };
+    console.error("[renombrarCategoria]", error.message);
+    return { error: "No pudimos guardar el nombre. Intenta de nuevo." };
+  }
+  revalidatePath("/productos");
+  return { categoria: data as Categoria };
+}
+
+// DELETING LEAVES THE PRODUCTS WITHOUT A CATEGORY, the owner's decision of
+// 2026-11-03. The database does it (`on delete set null (category_id)`), so
+// it cannot half-happen; the confirmation dialog names how many products lose
+// it before he presses.
+export async function eliminarCategoria(categoryId: string): Promise<{ error: string | null }> {
+  const { supabase, user, error: sesion } = await sesionQuePuedeEscribir();
+  if (!user || sesion) return { error: sesion ?? "Sesión expirada, vuelve a entrar." };
+
+  const { data: propia } = await supabase
+    .from("product_categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!propia) return { error: "No encontramos esa categoría." };
+
+  const { error } = await supabase
+    .from("product_categories")
+    .delete()
+    .eq("id", categoryId)
+    .eq("owner_id", user.id);
+  if (error) {
+    console.error("[eliminarCategoria]", error.message);
+    return { error: "No pudimos eliminar la categoría. Intenta de nuevo." };
+  }
+  revalidatePath("/productos");
+  return { error: null };
 }

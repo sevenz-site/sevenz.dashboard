@@ -49,12 +49,13 @@ import type { LedgerCurrency } from "@/lib/types";
 // amount at 16px («+$12.345,67» plus flag and chevron) is wider than 120 and
 // would be clipped. A clipped amount is the one thing this card cannot do, so
 // the column keeps its natural width and the TITLE is what truncates.
-export type HistoryCardKind = "fiado" | "abono" | "contado";
+export type HistoryCardKind = "fiado" | "abono" | "contado" | "devolucion";
 
 const LABEL: Record<HistoryCardKind, string> = {
   fiado: "Fiado",
   abono: "Abono",
   contado: "De contado",
+  devolucion: "Devolución",
 };
 
 export function HistoryCard({
@@ -92,11 +93,16 @@ export function HistoryCard({
   // THE SIGN FOLLOWS THE TILL, NOT THE DEBT -- owner's correction of
   // 2026-10-22: abonos and sales «+», fiados «-». Green what comes in, red what
   // goes out, so the sign and the colour say the same thing.
-  const signo = kind === "fiado" ? "-" : "+";
+  //
+  // A RETURN HAS NO SIGN AND NO COLOUR, and that is the point of it: no money
+  // came in and none is being lent. The figure is the value of what came back.
+  const signo = kind === "fiado" ? "-" : kind === "devolucion" ? "" : "+";
   const estiloMonto =
     kind === "fiado"
       ? "text-sm text-destructive"
-      : kind === "abono"
+      : kind === "devolucion"
+        ? "text-sm"
+        : kind === "abono"
         ? "text-sm text-money-in"
         : "text-base font-semibold text-money-in";
 

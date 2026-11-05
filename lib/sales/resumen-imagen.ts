@@ -54,6 +54,7 @@ export type BloqueDeResumen = {
   total: number;
   cobrado: number;
   debe: number;
+  saldoUsado?: number;
   deudaAntigua: number | null;
 };
 
@@ -853,6 +854,11 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
         hayDeuda ? `Abonó en ${nombre}` : "Pago de contado",
         formatPriceAmount(b.cobrado, b.currency),
       );
+      by += 10 * ESCALA;
+    }
+
+    if ((b.saldoUsado ?? 0) > 0.005) {
+      fila("Saldo a favor", formatPriceAmount(b.saldoUsado ?? 0, b.currency));
       by += 10 * ESCALA;
     }
 

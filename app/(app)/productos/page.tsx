@@ -8,7 +8,9 @@ import {
   CatalogFilterProvider,
   CatalogSearchField,
   CatalogFilterChips,
+  CatalogCategorySection,
 } from "@/components/dashboard/catalog-filters";
+import type { Categoria } from "@/lib/products/categories";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
@@ -48,6 +50,7 @@ export default async function ProductosPage() {
     country,
     rateContext,
     ordenesSinAtender,
+    { data: categorias },
   ] = await Promise.all([
       supabase
         .from("products")
@@ -81,6 +84,8 @@ export default async function ProductosPage() {
       // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
       // `head: true` count, so it costs a plan and no rows.
       countUnregisteredOrders(supabase, user!.id),
+      // Migration 184: the owner's categories, for the «Categorías» section.
+      supabase.from("product_categories").select("id, name").eq("owner_id", user!.id),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano
@@ -127,7 +132,12 @@ export default async function ProductosPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <CatalogFilterProvider rows={rows} rates={rates} compareCurrency={defaultCurrency}>
+      <CatalogFilterProvider
+        rows={rows}
+        rates={rates}
+        compareCurrency={defaultCurrency}
+        categorias={(categorias ?? []) as Categoria[]}
+      >
         <ScreenHeader
           title="Catálogo"
           /* En plural desde el frame 1175:5881: un producto tiene precio al
@@ -162,6 +172,8 @@ export default async function ProductosPage() {
             gradient is built from two theme tokens and a second hand-written
             copy of it is a copy that drifts. */}
         <OrdersCard unattended={ordenesSinAtender} />
+        {/* Categories under the card, frame `1958:16272` (2026-11-03). */}
+        <CatalogCategorySection />
         {/* SOLO `loadFailed`. Las otras ocho props existían para los dos
             diálogos que esta tabla montaba; desde el 2026-10-20 el alta y la
             edición son rutas propias y cada una pide sus datos. */}

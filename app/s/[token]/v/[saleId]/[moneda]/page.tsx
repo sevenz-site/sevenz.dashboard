@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { formatBs } from "@/lib/exchange-rate/format";
@@ -111,6 +112,7 @@ export default async function VentaDeContadoDelClientePage({
     name: l.name,
     quantity: Number(l.quantity),
     unitPrice: Number(l.unit_price),
+    devuelto: Number(l.devuelto ?? 0),
   }));
 
   const total = Number(venta.amount);
@@ -153,13 +155,7 @@ export default async function VentaDeContadoDelClientePage({
       <dl className="flex flex-col gap-4">
         <Grupo>
           <Fila nombre="Fecha"><Fecha iso={venta.created_at} /></Fila>
-        </Grupo>
-
-        <div className="flex flex-col gap-1.5 rounded-xl border p-4">
-          <p className="pb-1.5 text-base">
-            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
-          </p>
-
+          {/* Under «Fecha», as on the owner's side: owner's decision of 2026-11-04. */}
           <Fila nombre="Tipo">
             <span className="inline-flex items-center gap-1.5">
               De contado
@@ -169,6 +165,12 @@ export default async function VentaDeContadoDelClientePage({
               <Check className="size-4 text-emerald-700 dark:text-emerald-400" aria-hidden />
             </span>
           </Fila>
+        </Grupo>
+
+        <div className="flex flex-col gap-1.5 rounded-xl border p-4">
+          <p className="pb-1.5 text-base">
+            Resumen de compra{moneda ? ` en ${NOMBRE_DE_MONEDA[moneda]}` : ""}
+          </p>
 
           {lineas.length > 0 ? (
             <ProductosDelMovimiento productos={lineas} formatearMonto={formatear} />
@@ -199,20 +201,12 @@ export default async function VentaDeContadoDelClientePage({
           {/* «Total» y no «Total por cobrar»: aquí no queda nada por cobrar, y
               es la diferencia que más importa de esta pantalla para quien la
               lee. */}
-          <div className="flex items-center justify-between gap-4 border-t pt-3">
-            <span className="text-base font-semibold">Total</span>
-            <span className="flex items-center gap-2">
-              <span className="flex flex-col items-end">
-                <span className="text-base font-semibold tabular-nums">{formatear(total)}</span>
-                {enBs != null ? (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} al día de pago
-                  </span>
-                ) : null}
-              </span>
-              {moneda ? <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" /> : null}
-            </span>
-          </div>
+          <FilaDeTotal
+            rotulo="Total"
+            cifra={formatear(total)}
+            bolivares={enBs != null ? `${formatBs(enBs)} al día de pago` : null}
+            moneda={moneda}
+          />
         </div>
 
         <Grupo>

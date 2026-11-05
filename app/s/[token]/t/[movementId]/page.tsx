@@ -14,6 +14,9 @@ import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import type { PaymentLine } from "@/components/dashboard/payment-summary";
 import { paymentGroupKey } from "@/lib/history/group-payments";
+import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
+import { bookSegment } from "@/lib/returns/read";
+import type { ReturnSummary } from "@/lib/returns/read";
 import type { ExchangeRateMode, LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -22,7 +25,11 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 
 type SharedMovement = {
   id: string;
-  type: "charge" | "payment";
+  type: "charge" | "payment" | "return";
+  // Migration 185, built by `get_shared_balance`. Optional like the others:
+  // while code and database are out of step the keys are simply absent.
+  devolucion?: ReturnSummary | null;
+  paid_with_credit?: boolean;
   // LOS BOLÍVARES TECLEADOS AL COMPRAR — migración `152`. Opcional: sin ella
   // la tarjeta de la compra cae en la conversión, como hasta hoy.
   abono_inicial_bs?: number | null;
@@ -60,7 +67,7 @@ type SharedMovement = {
   // movimiento, solo las de SU moneda. Opcional porque durante un despliegue
   // el código y la base no coinciden; ausente cae en `[]` y la tabla no se
   // dibuja, que es exactamente como estaba antes.
-  productos?: { name: string; quantity: number; unit_price: number }[] | null;
+  productos?: { name: string; quantity: number; unit_price: number; devuelto?: number }[] | null;
 };
 
 // LA TARJETA DE UN FIADO, tal y como la entrega la migración `128`: todo lo
@@ -92,6 +99,8 @@ type FiadoAbonadoJson = {
 // plazo ni cuotas porque un abono no tiene acuerdo propio — lo hereda del
 // fiado, que es lo que se enseña en la ficha del abono.
 type AbonoDirigidoJson = {
+  // Migration 185: `return` for a return that reached this fiado.
+  tipo?: string;
   movement_id: string;
   fecha: string;
   currency: LedgerCurrency | null;
@@ -297,6 +306,7 @@ export default async function DetalleDelClientePage({
           // necesita tocar la base.
           entryCurrency: (a.entry_currency ?? null) as "VES" | null,
           entryAmount: a.entry_amount == null ? null : Number(a.entry_amount),
+          esDevolucion: a.tipo === "return",
         }))
       : undefined;
 
@@ -355,6 +365,25 @@ export default async function DetalleDelClientePage({
           })
       : undefined;
 
+  // «TOTAL POR COBRAR», THE BOOK'S AND NOT THE FIADO'S -- owner's decision of
+  // 2026-11-03, asked for this view: «Igual» as the owner's. It is the
+  // `running_balance` this payload already carries, the history row's «Por
+  // cobrar»; for a split abono, its lowest line, which is the book after the
+  // whole payment (each line only lowers it).
+  const lineasDelGrupo =
+    m.type === "payment"
+      ? movimientos.filter(
+          (x) =>
+            x.type === "payment" &&
+            paymentGroupKey({ ...x, transaction_code: x.transaction_code ?? null }) ===
+              paymentGroupKey({ ...m, transaction_code: m.transaction_code ?? null }),
+        )
+      : [];
+  const saldoDelLibro =
+    lineasDelGrupo.length > 0
+      ? Math.min(...lineasDelGrupo.map((x) => Number(x.running_balance)))
+      : Number(m.running_balance);
+
   return (
     <ZonaDelNegocioProvider country={shared.owner_country}>
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
@@ -370,6 +399,54 @@ export default async function DetalleDelClientePage({
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
       <CodigoDeTransaccion codigo={m.transaction_code ?? null} />
+
+      {/* A RETURN: the same screen as the owner's, with no actions (owner's
+          decision of 2026-11-03, «Con variante»). Its lines come from the
+          payload `get_shared_balance` already authorised: nothing here is
+          queried by an id from the URL. */}
+      {m.type === "return" && m.devolucion ? (
+        (() => {
+          const devolucion = m.devolucion;
+          const lineas = movimientos.filter(
+            (x) =>
+              x.type === "return" &&
+              x.transaction_code === m.transaction_code &&
+              (x.currency ?? null) === (m.currency ?? null),
+          );
+          return (
+            <DetalleDeDevolucion
+              createdAt={m.created_at}
+              devolucion={devolucion}
+              currency={m.currency}
+              ledger={ledger}
+              runningBalance={Math.min(...lineas.map((l) => Number(l.running_balance)))}
+              fiadoHref={devolucion.charge_movement_id ? `/s/${token}/t/${devolucion.charge_movement_id}` : null}
+              ventaHref={
+                devolucion.charge_movement_id
+                  ? null
+                  : `/s/${token}/v/${devolucion.sale_id}/${bookSegment(m.currency)}`
+              }
+              otherFiados={lineas
+                .filter(
+                  (l) =>
+                    l.applies_to_movement_id &&
+                    l.applies_to_movement_id !== devolucion.charge_movement_id &&
+                    Number(l.amount) > 0,
+                )
+                .map((l) => {
+                  const f = (shared.fiados_abonados ?? {})[l.applies_to_movement_id as string];
+                  return {
+                    movementId: l.id,
+                    amount: Number(l.amount),
+                    title: `fiado ${f?.transaction_code ?? ""}`.trim(),
+                    href: f ? `/s/${token}/t/${l.applies_to_movement_id}` : null,
+                  };
+                })}
+            />
+          );
+        })()
+      ) : (
+      <>
 
       {/* «Total por cobrar» TAMBIÉN EN LA PANTALLA DEL CLIENTE, igual que en
           la del dueño. Decisión del dueño el 2026-10-20, preguntada: los
@@ -403,7 +480,9 @@ export default async function DetalleDelClientePage({
           name: l.name,
           quantity: Number(l.quantity),
           unitPrice: Number(l.unit_price),
+          devuelto: Number(l.devuelto ?? 0),
         }))}
+        pagadoConSaldo={m.paid_with_credit === true}
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}
         deudaAntigua={m.is_old_debt === true}
@@ -424,7 +503,13 @@ export default async function DetalleDelClientePage({
         //
         // `?? running_balance` por si la `132` no ha corrido en el entorno:
         // degrada a lo de antes en vez de enseñar un cero.
-        runningBalance={m.pending ?? Number(m.running_balance)}
+        //
+        // SINCE 2026-11-03 THAT FIGURE IS THE «Total» ROW under the products,
+        // and «Total por cobrar» is the book's (see `saldoDelLibro` above).
+        // Both sides agree because both pass the same two numbers. Without
+        // `pending` (132 not run) the «Total» row is simply not drawn.
+        runningBalance={saldoDelLibro}
+        pendienteDelFiado={m.type === "charge" && m.pending != null ? Number(m.pending) : null}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount}
@@ -445,6 +530,8 @@ export default async function DetalleDelClientePage({
         // —piden sesión y comprueban el dueño— así que no era una fuga; era
         // ofrecerle una puerta que no abre.
       />
+      </>
+      )}
     </div>
     </ZonaDelNegocioProvider>
   );

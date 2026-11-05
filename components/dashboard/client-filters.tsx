@@ -351,41 +351,59 @@ export function FilterChip({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {/* Not `size="sm"`: a chip is a filter control, not a labelled action,
-            so the 40px button rule does not apply — same escape hatch the
-            design system already grants to `xs`.
-
-            shrink-0 because the row scrolls horizontally: without it flex
-            squeezes every chip to fit and the labels — which are the whole
-            point, since they carry the active value — get clipped instead. */}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          // The active state carries in colour AND in the label below, never
-          // colour alone: on a phone in sunlight a subtle border change is
-          // invisible, and the label is what tells you the list is filtered.
-          className={
-            tone === "dark"
-              ? // THE BORDER IS THE WHOLE CHIP. It has no fill, so without a
-                // visible edge it is a word with an arrow next to it. The spec
-                // drew it in #525252, which is 1,91:1 against the header — the
-                // same number that made Inicio's search field invisible. It
-                // reuses `--brand-field-border` (5,78:1) at 1px instead of the
-                // field's 2px: one colour for every control on this surface,
-                // and the weight is what says which one is primary.
-                `h-[38px] shrink-0 rounded-[10px] border border-brand-field-border bg-transparent px-4 text-sm text-brand-muted hover:bg-white/10 hover:text-white ${active ? "border-white font-medium text-white" : ""}`
-              : `shrink-0 ${active ? "border-foreground font-medium" : ""}`
-          }
-        >
-          {label}
-          <ChevronDown className={tone === "dark" ? "size-4" : "size-4 opacity-60"} />
-        </Button>
+        <FilterChipButton label={label} active={active} tone={tone} />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64">
         {typeof children === "function" ? children(() => setOpen(false)) : children}
       </PopoverContent>
     </Popover>
+  );
+}
+
+// THE CHIP WITHOUT ITS POPOVER, since 2026-11-04: «Fecha» in the history opens a
+// sheet, and it has to look like the chips beside it without copying them.
+export function FilterChipButton({
+  label,
+  active,
+  tone = "light",
+  ...props
+}: {
+  label: string;
+  active: boolean;
+  tone?: "light" | "dark";
+} & Omit<React.ComponentProps<typeof Button>, "children" | "className">) {
+  // Not `size="sm"`: a chip is a filter control, not a labelled action, so the
+  // 40px button rule does not apply — same escape hatch the design system already
+  // grants to `xs`.
+  //
+  // shrink-0 because the row scrolls horizontally: without it flex squeezes every
+  // chip to fit and the labels — which are the whole point, since they carry the
+  // active value — get clipped instead.
+  return (
+    <Button
+      {...props}
+      type="button"
+      variant="outline"
+      size="sm"
+      // The active state carries in colour AND in the label below, never
+      // colour alone: on a phone in sunlight a subtle border change is
+      // invisible, and the label is what tells you the list is filtered.
+      className={
+        tone === "dark"
+          ? // THE BORDER IS THE WHOLE CHIP. It has no fill, so without a
+            // visible edge it is a word with an arrow next to it. The spec
+            // drew it in #525252, which is 1,91:1 against the header — the
+            // same number that made Inicio's search field invisible. It
+            // reuses `--brand-field-border` (5,78:1) at 1px instead of the
+            // field's 2px: one colour for every control on this surface,
+            // and the weight is what says which one is primary.
+            `h-[38px] shrink-0 rounded-[10px] border border-brand-field-border bg-transparent px-4 text-sm text-brand-muted hover:bg-white/10 hover:text-white ${active ? "border-white font-medium text-white" : ""}`
+          : `shrink-0 ${active ? "border-foreground font-medium" : ""}`
+      }
+    >
+      {label}
+      <ChevronDown className={tone === "dark" ? "size-4" : "size-4 opacity-60"} />
+    </Button>
   );
 }
 

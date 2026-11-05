@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { IconoDeAbono } from "@/components/dashboard/iconos-de-movimiento";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { Fecha } from "@/components/fecha";
+import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { estadosDelFiado, type EstadoDelPlazo } from "@/lib/estado-del-plazo";
 import type { PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
@@ -21,8 +21,9 @@ import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 // It replaces the boxed summary of frame `1580:11677` for every abono, split or
 // not -- one layout, so a single abono is just a split with one row:
 //
-//   · NO BOX. The section is separated by a top border, its title is 16
-//     semibold, and «Tipo» moves INSIDE it, right under the title.
+//   · NO BOX. The section is separated by a top border and its title is 16
+//     semibold. «Tipo» lived inside it, under the title, until 2026-11-04: it
+//     went back under «Fecha», in `DetalleDeTransaccion` (frame «Abono V10»).
 //   · «Abonó a fiado» (one row with the fiado's products) becomes «Fiados a
 //     los que abonó», one row per fiado: the fiado's date, how this part of the
 //     payment arrived against that fiado's term, the part, and its bolivars.
@@ -31,6 +32,13 @@ import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 //     the first read of `1864:15660`, gone at the second). Both made sense for
 //     ONE fiado -- they were that fiado's -- and mean nothing for four. The
 //     book's balance is still on the history card and on the client's page.
+//
+//     «TOTAL POR COBRAR» CAME BACK ON 2026-11-03, and the reason above does not
+//     cover it, which is why it could: the owner asked for it under «Abonó»,
+//     «tal cual, con la misma UI que en el detalle del fiado», and it is now
+//     the BOOK's balance after this abono -- the history card's «Por cobrar»
+//     -- not one fiado's. That figure means the same with one fiado or four.
+//     The plazo table stays out.
 //
 // ===========================================================================
 // THE CHIP ON «Abonó»: ONLY WHEN THERE IS ONE FIADO
@@ -99,11 +107,15 @@ export function PaymentSummary({
   currency,
   ledger,
   lines,
+  saldoDelLibro = null,
 }: {
   createdAt: string;
   currency: LedgerCurrency | null;
   ledger: LedgerDisplay | null;
   lines: PaymentLine[];
+  /** What the book owed right after this abono (its last line's
+   *  `running_balance`). `null` draws no row. */
+  saldoDelLibro?: number | null;
 }) {
   // ── LAS FILAS POR LA FECHA DEL FIADO, DEL MÁS VIEJO AL MÁS NUEVO ─────
   //
@@ -133,12 +145,6 @@ export function PaymentSummary({
         {`Resumen de abono${currency ? ` en ${NOMBRE_DE_MONEDA[currency]}` : ""}`}
       </h2>
 
-      <div className="flex items-center gap-1 py-2">
-        <span className="flex-1 text-xs leading-4 text-muted-foreground">Tipo</span>
-        <span className="text-sm">Abono</span>
-        <IconoDeAbono className="size-4 text-money-in" aria-hidden />
-      </div>
-
       <div className="flex items-center justify-between gap-4 border-y py-4">
         <span className="flex flex-col items-start gap-1">
           <span className="text-xs leading-4 text-muted-foreground">Abonó</span>
@@ -156,6 +162,28 @@ export function PaymentSummary({
           ) : null}
         </span>
       </div>
+
+      {saldoDelLibro != null
+        ? (() => {
+            // A credit balance without a minus, explained by the chip: the
+            // owner's rule of 2026-10-23, the same as in the fiado's detail.
+            const s = formatLedgerAmount(Math.abs(saldoDelLibro), currency, ledger);
+            return (
+              // `border-t-0`: «Abonó» above already ends with a line, and two
+              // borders touching read as one thick rule.
+              <div className="pb-1 [&>div]:border-t-0">
+                <FilaDeTotal
+                  rotulo="Total por cobrar"
+                  cifra={s.primary}
+                  bolivares={s.secondary ? `${s.secondary} hoy` : null}
+                  moneda={currency}
+                  tono={saldoDelLibro > 0.005 ? "debe" : saldoDelLibro < -0.005 ? "a_favor" : "neutro"}
+                  aFavor={saldoDelLibro < -0.005}
+                />
+              </div>
+            );
+          })()
+        : null}
 
       <p className="py-2 text-xs leading-4 text-muted-foreground">Fiados a los que abonó</p>
       <ul className="flex flex-col">

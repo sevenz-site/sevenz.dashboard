@@ -7,11 +7,15 @@ import { SetupNotice } from "@/components/setup-notice";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
+import { VentaAcciones } from "@/components/dashboard/venta-acciones";
+import { libroDeVenta } from "@/lib/ventas-de-contado";
+import { formatLedgerAmount } from "@/lib/exchange-rate/movement-display";
+import { DetalleDeDevolucion } from "@/components/dashboard/detalle-de-devolucion";
+import { bookBalance, bookSegment, ceilingOfBook, lineasDe, otherFiadosOf, withReturns } from "@/lib/returns/read";
+import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import type { SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
@@ -53,25 +57,6 @@ export const metadata = { title: "Detalle de transacción — Sevenz" };
 //
 // `moneda` nula es un negocio colombiano: un solo libro, y las líneas se
 // guardan con `currency` nulo. El filtro lo respeta.
-async function lineasDe(
-  supabase: SupabaseClient,
-  saleId: string | null,
-  moneda: LedgerCurrency | null,
-): Promise<SaleLineRow[]> {
-  if (!saleId) return [];
-  const { data } = await supabase
-    .from("sale_lines")
-    .select("name, quantity, unit_price, currency")
-    .eq("sale_id", saleId);
-  return (data ?? [])
-    .filter((l) => (l.currency ?? null) === moneda)
-    .map((l) => ({
-      name: l.name as string,
-      quantity: Number(l.quantity),
-      unitPrice: Number(l.unit_price),
-    }));
-}
-
 export default async function TransaccionPage({
   params,
   searchParams,
@@ -79,7 +64,9 @@ export default async function TransaccionPage({
   params: Promise<{ movementId: string }>;
   // `?abono=<id>` — cuál de las tarjetas de abono se vino a ver. Lo manda la
   // fila del historial desde el 2026-10-22, porque esa fila abre el FIADO.
-  searchParams: Promise<{ abono?: string }>;
+  // `?registrada=1` — recién registrada una devolución: la ficha es su pantalla
+  // de éxito, y solo cambia el título.
+  searchParams: Promise<{ abono?: string; registrada?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -88,7 +75,7 @@ export default async function TransaccionPage({
   // abre su propia ficha, así que nadie llega aquí con ese parámetro. Se
   // sigue aceptando en la URL —hay enlaces compartidos con él— y se
   // ignora, que es lo que hace que no rompan.
-  await searchParams;
+  const { registrada } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -100,12 +87,12 @@ export default async function TransaccionPage({
   // del navegador, y aquí ese id es toda la dirección de la página.
   const { data: fila } = await supabase
     .from("movements")
-    .select("*, clients!inner(id, name, owner_id)")
+    .select("*, clients!inner(id, name, owner_id, is_walk_in)")
     .eq("id", movementId)
     .is("deleted_at", null)
     .maybeSingle();
 
-  const cliente = fila?.clients as unknown as { id: string; name: string; owner_id: string } | null;
+  const cliente = fila?.clients as unknown as { id: string; name: string; owner_id: string; is_walk_in: boolean } | null;
   if (!fila || !cliente || cliente.owner_id !== user.id) notFound();
   const m = fila as unknown as Movement;
 
@@ -202,16 +189,44 @@ export default async function TransaccionPage({
   let abonoInicialBs: number | null = null;
   let pendienteDelFiado: number | null = null;
   let abonosRecibidos: AbonoDirigido[] | undefined;
+  let contextoDeDevolucion: ReturnMenuContext | null = null;
   if (m.type === "charge") {
     const { data: abiertos } = await supabase.rpc("get_open_charges_for_client", {
       p_client_id: cliente.id,
     });
-    const abierto = ((abiertos ?? []) as { movement_id: string; pending: number }[]).find(
-      (c) => c.movement_id === m.id,
-    );
+    const filasAbiertas = (abiertos ?? []) as {
+      movement_id: string;
+      pending: number;
+      charge_at: string;
+      currency: LedgerCurrency | null;
+      description: string | null;
+    }[];
+    const abierto = filasAbiertas.find((c) => c.movement_id === m.id);
     puedePagar = abierto != null && Number(abierto.pending) > 0.005;
 
+    // WHAT THE RETURN MODAL NEEDS. Only a fiado that came from a sale has
+    // products, and an old debt has no purchase. `otherFiados` is the SAME
+    // CURRENCY only: see the table in `lib/returns/options.ts`.
+    if (m.sale_id && m.is_old_debt !== true && productos.length > 0) {
+      contextoDeDevolucion = {
+        source: { kind: "fiado", movementId: m.id },
+        pendingOfFiado: abierto == null ? 0 : Number(abierto.pending),
+        bookBalance: await bookBalance(supabase, cliente.id, m.currency),
+        ceiling: await ceilingOfBook(supabase, m.sale_id, m.currency, Number(m.amount)),
+        otherFiados: otherFiadosOf(filasAbiertas, m.currency, m.id),
+        currency: m.currency,
+        ledger,
+      };
+    }
+
     // ── «TOTAL POR COBRAR» DE UN FIADO ES LO QUE ESE FIADO DEBE ─────────
+    //
+    // DISPLACED ON 2026-11-03, and both decisions stay written. The owner
+    // asked for «Total por cobrar» to be the BOOK's debt -- the same figure as
+    // the history card's «Por cobrar» (`running_balance`) -- and for THIS
+    // figure to move to a new «Total» row under the products. The problem
+    // described below does not come back: the fiado's own remainder is still
+    // on the card, next to its abonos, only under its own label.
     //
     // No `running_balance`, que es el saldo del CLIENTE justo después de este
     // movimiento y no se mueve cuando llegan abonos posteriores.
@@ -295,14 +310,18 @@ export default async function TransaccionPage({
     // últimamente», y el último abono es el que se viene a comprobar.
     const { data: pagos } = await supabase
       .from("movements")
-      .select("id, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
+      .select("id, type, created_at, currency, amount, description, exchange_rate_used, entry_currency, entry_amount, transaction_code")
       .eq("client_id", cliente.id)
       .eq("applies_to_movement_id", m.id)
-      .eq("type", "payment")
+      // A return that reached this fiado is listed here too, under its own
+      // name. `gt` because its line can be zero (migration 185).
+      .in("type", ["payment", "return"])
+      .gt("amount", 0)
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
     abonosRecibidos = (pagos ?? []).map((p) => ({
+      esDevolucion: p.type === "return",
       movementId: p.id as string,
       fecha: p.created_at as string,
       currency: p.currency as AbonoDirigido["currency"],
@@ -338,10 +357,16 @@ export default async function TransaccionPage({
   // líneas de otro cliente.
   let lineasDelAbono: PaymentLine[] | undefined;
   let lineasDelReparto = 1;
+  // «TOTAL POR COBRAR» OF AN ABONO: the book after the WHOLE abono. A split
+  // writes its lines in one transaction and the chain is recalculated (142),
+  // each line only lowers the balance, so the last one is the lowest.
+  let saldoTrasElAbono: number | null = null;
   if (m.type === "payment") {
     const consulta = supabase
       .from("movements")
-      .select("id, amount, created_at, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id")
+      .select(
+        "id, amount, created_at, entry_currency, entry_amount, exchange_rate_used, applies_to_movement_id, running_balance",
+      )
       .eq("client_id", cliente.id)
       .eq("type", "payment")
       .is("deleted_at", null);
@@ -355,6 +380,9 @@ export default async function TransaccionPage({
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
     const lineas = filas ?? [];
+    if (lineas.length > 0) {
+      saldoTrasElAbono = Math.min(...lineas.map((l) => Number(l.running_balance)));
+    }
     // EL BORRADO SE LLEVA TODAS LAS LÍNEAS DEL CÓDIGO, de los dos libros si
     // cruzó monedas: fue UN pago. Por eso este recuento no filtra la moneda.
     if (m.transaction_code) {
@@ -419,6 +447,150 @@ export default async function TransaccionPage({
     enlace: { de: "dueño", clientId: cliente.id },
   };
 
+  // ── UNA DEVOLUCIÓN TIENE SU PROPIA FICHA ───────────────────────────────
+  //
+  // All her ledger lines, to know where the money went: they share
+  // `payment_group_id`, which is the id of the event (migration 185).
+  if (m.type === "return") {
+    const { data: filas } = await supabase
+      .from("movements")
+      .select("id, type, amount, running_balance, applies_to_movement_id, payment_group_id")
+      .eq("client_id", cliente.id)
+      .eq("type", "return")
+      .eq("payment_group_id", m.payment_group_id as string)
+      .is("deleted_at", null);
+    const lineas = await withReturns(supabase, filas ?? []);
+    const devolucion = lineas[0]?.devolucion;
+    if (!devolucion) notFound();
+
+    const aOtros = lineas.filter(
+      (l) =>
+        l.applies_to_movement_id &&
+        l.applies_to_movement_id !== devolucion.charge_movement_id &&
+        Number(l.amount) > 0,
+    );
+    const { data: fiadosDestino } = aOtros.length
+      ? await supabase
+          .from("movements")
+          .select("id, transaction_code")
+          .in("id", aOtros.map((l) => l.applies_to_movement_id as string))
+          .eq("client_id", cliente.id)
+          .is("deleted_at", null)
+      : { data: [] };
+    const codigos = new Map((fiadosDestino ?? []).map((f) => [f.id as string, f.transaction_code as string]));
+
+    const aviso = [
+      devolucion.charge_movement_id
+        ? "Se elimina la devolución: la deuda vuelve a como estaba y las unidades salen otra vez del inventario."
+        : "Se elimina la devolución: las unidades salen otra vez del inventario.",
+      devolucion.to_credit > 0 ? "El saldo a favor que dejó desaparece." : null,
+      devolucion.to_cash > 0 ? "El efectivo devuelto deja de restarse en Reportes." : null,
+      "Podrás restaurarla desde Notificaciones.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    // THE MOSTRADOR HAS NO LINK TO SEND: nobody is behind it.
+    const compartirDevolucion = cliente.is_walk_in ? null : compartir;
+
+    // ITS SALDO ALREADY PAID FOR SOMETHING: migration 189 refuses, and this is
+    // the way out. A charge marked as paid with saldo is a sale; a plain charge
+    // may be a fiado typed by hand.
+    const { data: gastadoEn } = await supabase.rpc("return_credit_spent_on", {
+      p_return_id: m.payment_group_id,
+    });
+    const { data: cargoQueLoGasto } = gastadoEn
+      ? await supabase
+          .from("movements")
+          .select("sale_id")
+          .eq("id", gastadoEn as string)
+          .eq("client_id", cliente.id)
+          .maybeSingle()
+      : { data: null };
+    const destino = cargoQueLoGasto?.sale_id ? "venta" : "fiado";
+    const bloqueo = gastadoEn
+      ? {
+          texto: `Este saldo a favor ya se usó. Elimina primero ${destino === "venta" ? "la venta" : "el fiado"} que lo gastó y después podrás eliminar esta devolución.`,
+          href: `/transacciones/${gastadoEn as string}`,
+          boton: `Ir ${destino === "venta" ? "a la venta" : "al fiado"}`,
+        }
+      : null;
+
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center justify-between border-b bg-background px-4 py-2">
+          <Button variant="ghost" size="icon" asChild className="-ml-2">
+            <Link href={`/clients/${cliente.id}`} aria-label={`Volver a ${cliente.name}`}>
+              <IconoVolver className="text-primary" />
+            </Link>
+          </Button>
+          <DetalleAcciones
+            movementId={m.id}
+            clientId={cliente.id}
+            compartir={compartirDevolucion}
+            puedePagar={false}
+            avisoDeBorrado={aviso}
+            bloqueoDeBorrado={bloqueo}
+          />
+        </div>
+
+        <ScreenTitle>{registrada ? "Devolución registrada" : "Detalle de transacción"}</ScreenTitle>
+        <CodigoDeTransaccion codigo={(m.transaction_code as string | null) ?? null} />
+
+        <DetalleDeDevolucion
+          createdAt={m.created_at}
+          devolucion={devolucion}
+          currency={m.currency}
+          ledger={ledger}
+          runningBalance={Math.min(...lineas.map((l) => Number(l.running_balance)))}
+          fiadoHref={devolucion.charge_movement_id ? `/transacciones/${devolucion.charge_movement_id}` : null}
+          ventaHref={
+            devolucion.charge_movement_id
+              ? null
+              : `/transacciones/venta/${devolucion.sale_id}/${bookSegment(m.currency)}`
+          }
+          otherFiados={aOtros.map((l) => ({
+            movementId: l.id,
+            amount: Number(l.amount),
+            title: `fiado ${codigos.get(l.applies_to_movement_id as string) ?? ""}`.trim(),
+            href: codigos.has(l.applies_to_movement_id as string)
+              ? `/transacciones/${l.applies_to_movement_id}`
+              : null,
+          }))}
+        />
+
+        <DetalleBotones movementId={m.id} compartir={compartirDevolucion} puedePagar={false} />
+      </div>
+    );
+  }
+
+
+  // A SALE PAID WITH SALDO A FAVOR IS DELETED WHOLE (migration 189). The return
+  // that left that saldo sends the shopkeeper here, and taking out the charge
+  // alone would leave the sale alive and its units off the shelf.
+  let ventaPagadaConSaldo: string[] | null = null;
+  if (m.paid_with_credit === true && m.sale_id) {
+    const [{ data: pagos }, { data: cargos }] = await Promise.all([
+      supabase.from("sale_payments").select("amount, currency").eq("sale_id", m.sale_id),
+      supabase
+        .from("movements")
+        .select("amount, currency, paid_with_credit")
+        .eq("sale_id", m.sale_id)
+        .eq("type", "charge")
+        .is("deleted_at", null),
+    ]);
+    const cifra = (n: unknown, c: unknown) =>
+      formatLedgerAmount(Number(n), libroDeVenta(c as string), ledger).primary;
+    ventaPagadaConSaldo = [
+      ...(pagos ?? []).map((p) => `Cobro de contado de ${cifra(p.amount, p.currency)}`),
+      ...(cargos ?? []).map((c) =>
+        c.paid_with_credit
+          ? `Pagado con saldo a favor: ${cifra(c.amount, c.currency)}`
+          : `Fiado de ${cifra(c.amount, c.currency)}`,
+      ),
+    ];
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LA BARRA DE ARRIBA DEL FRAME: flecha a la izquierda, «⋮» a la derecha.
@@ -436,6 +608,9 @@ export default async function TransaccionPage({
             <IconoVolver className="text-primary" />
           </Link>
         </Button>
+        {ventaPagadaConSaldo ? (
+          <VentaAcciones saleId={m.sale_id as string} clientId={cliente.id} loQueSeLleva={ventaPagadaConSaldo} />
+        ) : (
         <DetalleAcciones
           movementId={m.id}
           clientId={cliente.id}
@@ -445,11 +620,12 @@ export default async function TransaccionPage({
           // diálogo de confirmación pregunta qué hacer con ellos. Ya está
           // calculado arriba para la propia ficha, así que no cuesta otra
           // consulta; `?? []` cubre el caso de un abono, donde no se pide.
-          abonosDirigidos={(abonosRecibidos ?? []).length}
+          abonosDirigidos={(abonosRecibidos ?? []).filter((a) => !a.esDevolucion).length}
           // CUÁNTAS LÍNEAS SE VAN SI SE BORRA ESTE ABONO: un reparto se borra
           // entero (decisión del dueño el 2026-10-30), y el diálogo lo dice.
           lineasDelReparto={lineasDelReparto}
         />
+        )}
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
@@ -469,8 +645,11 @@ export default async function TransaccionPage({
         // draws an ordinary fiado instead of guessing.
         deudaAntigua={m.is_old_debt === true}
         productos={productos}
+        devolucion={contextoDeDevolucion}
+        pagadoConSaldo={m.paid_with_credit === true}
         createdAt={m.created_at}
-        runningBalance={pendienteDelFiado ?? Number(m.running_balance)}
+        runningBalance={saldoTrasElAbono ?? Number(m.running_balance)}
+        pendienteDelFiado={m.type === "charge" ? pendienteDelFiado : null}
         photoUrl={photoUrl}
         entryCurrency={m.entry_currency}
         entryAmount={m.entry_amount == null ? null : Number(m.entry_amount)}

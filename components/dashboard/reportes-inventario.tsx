@@ -789,6 +789,50 @@ export function ReportesInventario({
           />
         }
       />
+      {/* ══ MÁS DEVUELTOS — encargo del dueño el 2026-11-03 ══════════════════
+          The same chart and sheet as «Más vendidos», for the same reason they
+          exist: which product to look at. No frame: the block repeats the one
+          above. In units, because they are comparable across currencies and
+          money is not. */}
+      <span id="mas-devueltos" className="scroll-mt-28" aria-hidden />
+      <TituloDeBloque
+        texto="Más devueltos"
+        subtitulo={`Lo que más volvió ${periodoTexto}, en unidades.`}
+        accion={
+          datos.masDevueltosLista.length ? (
+            <ReportesProductosSheet
+              umbral={datos.umbral}
+              titulo="Más devueltos"
+              explicacion="Lo que te devolvieron de cada producto en este periodo."
+              filas={[]}
+              productos={datos.masDevueltosLista}
+              vacio={{
+                titulo: "Todavía no hay devoluciones en este periodo",
+                sub: "Aquí aparecerán los productos que te devuelvan dentro del rango que elijas.",
+              }}
+              tasas={tasas}
+            >
+              <VerTodo />
+            </ReportesProductosSheet>
+          ) : null
+        }
+      />
+      <GraficoDeProductos
+        filas={datos.masDevueltos.map((v) => ({
+          id: v.id,
+          nombre: v.nombre,
+          valor: v.unidades,
+          detalle: `${formatCantidad(v.unidades)}${v.unidad ? ` ${v.unidad}` : ""}`,
+        }))}
+        sufijo=""
+        vacio={
+          <EmptyState
+            title="Todavía no hay devoluciones en este periodo"
+            subtitle={`No te devolvieron ningún producto ${periodoTexto}.`}
+          />
+        }
+      />
+
       {/* LAS LÍNEAS SUELTAS SE DICEN. Lo que el tendero teclea a mano en una
           venta no apunta a ningún producto, así que «más vendidos» estaría
           describiendo solo una parte de lo que vendió -- y nada en pantalla

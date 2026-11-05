@@ -109,6 +109,8 @@ export function DetalleAcciones({
   puedePagar,
   abonosDirigidos = 0,
   lineasDelReparto = 1,
+  avisoDeBorrado = null,
+  bloqueoDeBorrado = null,
 }: {
   movementId: string;
   clientId: string;
@@ -122,6 +124,12 @@ export function DetalleAcciones({
   // el diálogo promete: se borra el abono entero (decisión del dueño el
   // 2026-10-30) y vuelve con un solo aviso en Notificaciones.
   lineasDelReparto?: number;
+  // What deleting THIS transaction undoes, when the usual sentence falls short:
+  // a return also takes units off the shelf and brings a debt back.
+  avisoDeBorrado?: string | null;
+  // Owner's decision of 2026-11-04: a return whose saldo was spent does not go,
+  // and the dialog takes him to the sale that has to go first (migration 189).
+  bloqueoDeBorrado?: { texto: string; href: string; boton: string } | null;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
@@ -234,9 +242,15 @@ export function DetalleAcciones({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar esta transacción?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {bloqueoDeBorrado ? "Todavía no se puede eliminar" : "¿Eliminar esta transacción?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {lineasDelReparto > 1
+              {bloqueoDeBorrado
+                ? bloqueoDeBorrado.texto
+                : avisoDeBorrado
+                ? avisoDeBorrado
+                : lineasDelReparto > 1
                 ? `Se eliminará el abono completo, con su reparto en ${lineasDelReparto} fiados. Se recalculará el saldo de este cliente y podrás restaurarlo después desde Notificaciones.`
                 : "Se recalculará el saldo de este cliente y el capital por cobrar. Podrás restaurarlo después desde Notificaciones."}
             </AlertDialogDescription>
@@ -275,9 +289,15 @@ export function DetalleAcciones({
 
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={borrando}>
-              {borrando ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
+            {bloqueoDeBorrado ? (
+              <AlertDialogAction asChild>
+                <Link href={bloqueoDeBorrado.href}>{bloqueoDeBorrado.boton}</Link>
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction variant="destructive" onClick={handleDelete} disabled={borrando}>
+                {borrando ? "Eliminando..." : "Eliminar"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
