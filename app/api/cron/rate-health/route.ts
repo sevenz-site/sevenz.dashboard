@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRateHealth } from "@/lib/admin/rate-health";
+import { getCreditWatch } from "@/lib/admin/credit-watch";
+import { creditWatchForLog } from "@/lib/returns/credit-watch";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
 
-  const health = await getRateHealth();
-  return NextResponse.json(health, { status: health.status === "fail" ? 503 : 200 });
+  const [health, creditWatch] = await Promise.all([getRateHealth(), getCreditWatch()]);
+  // B OF PL-22 RIDES THE SAME MESSENGER, as a line of its own: counts and the window, never a
+  // business name or an amount, because the workflow's logs are public. It does not decide the
+  // status yet: a week of observation first, then the owner says whether it turns GitHub red
+  // (lib/returns/credit-watch.ts).
+  return NextResponse.json(
+    { ...health, credit_watch: creditWatchForLog(creditWatch) },
+    { status: health.status === "fail" ? 503 : 200 },
+  );
 }

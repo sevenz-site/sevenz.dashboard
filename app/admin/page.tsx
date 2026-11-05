@@ -8,6 +8,7 @@ import { ServiceHealth } from "@/components/admin/service-health";
 import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
 import { getSaludDelAsistente } from "@/lib/admin/asistente-salud";
 import { getRateHealth } from "@/lib/admin/rate-health";
+import { getCreditWatch } from "@/lib/admin/credit-watch";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import { seccionDe } from "@/lib/admin/secciones";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -677,7 +678,7 @@ async function SeccionNegocios({ filters }: { filters: Filters }) {
 //
 // Not product metrics: the health of the money writes and of the pipelines.
 async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado: boolean }) {
-  const [health, cronWhatsapp, asistente, tasa] = await Promise.all([
+  const [health, cronWhatsapp, asistente, tasa, creditWatch] = await Promise.all([
     getHealth(filters),
     // SIN `filters` a propósito: el filtro de fechas acota el negocio, y esto
     // no es una métrica de negocio sino el pulso de una tubería. Preguntarle
@@ -691,6 +692,8 @@ async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado:
     getSaludDelAsistente(),
     // WITHOUT `filters` too: the question is what the app shows today, never in a date range.
     getRateHealth(),
+    // WITHOUT `filters` as well: its window is fixed at 7 days by the rule itself.
+    getCreditWatch(),
   ]);
 
   return (
@@ -799,7 +802,28 @@ async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado:
           alert={tasa.status === "fail"}
           explica="Qué fuentes respaldan la tasa que ven los tenderos. Si dice Retenida, las fuentes fallan o no coinciden y la app enseña la última cifra buena en vez de la de hoy: es correcto, pero esa cifra envejece. Después de 24 horas se pone en rojo y GitHub avisa al dueño de Sevenz."
         />
+        {/* B OF PL-22 — owner's decision of 2026-11-05: *«B nunca debe bloquear transacciones, solo
+            avisar a admin»*. A count, never a refusal: credit balances born from a return of a
+            sale registered minutes earlier. The rule and the words are in
+            lib/returns/credit-watch.ts; the read is the definer of migration 191. Red only when
+            the table could not be read, because "nothing to look at" and "could not look" are the
+            two answers this card exists to tell apart. The sentences below name the business:
+            /admin is the owner of Sevenz's screen and nobody else's. */}
+        <Stat
+          label="Saldos a favor que conviene mirar"
+          value={creditWatch.count === 0 ? "—" : String(creditWatch.count)}
+          hint={creditWatch.detail}
+          alert={creditWatch.readFailed}
+          explica={creditWatch.explain}
+        />
       </div>
+      {creditWatch.items.length > 0 ? (
+        <ul className="flex flex-col gap-1 text-sm text-muted-foreground">
+          {creditWatch.items.map((frase) => (
+            <li key={frase}>{frase}</li>
+          ))}
+        </ul>
+      ) : null}
 
       {/* Last, and inert until clicked. It is a tool you come looking for when
           something seems wrong, not a number to read alongside the metrics. */}

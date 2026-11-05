@@ -233,6 +233,8 @@ export const MANIFEST = {
     admin_cambiar_plan: "service",
     admin_credit_inputs: "service",
     admin_credit_movements: "service",
+    // 191 (B of PL-22): the credit balances born from a return that /admin lists. Read-only.
+    admin_credit_watch: "service",
     admin_cuenta_historial: "service",
     admin_cuentas_lista: "service",
     admin_dar_demo: "service",
