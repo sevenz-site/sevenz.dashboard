@@ -19,10 +19,14 @@
 // should: that day a person has to look.
 const MIN_EUR_PER_USD = 0.7;
 const MAX_EUR_PER_USD = 1.6;
-const MIN_BS_PER_USD = 100;
+export const MIN_BS_PER_USD = 100;
+
+export function usdIsPlausible(usd: number): boolean {
+  return Number.isFinite(usd) && usd >= MIN_BS_PER_USD;
+}
 
 export function eurIsPlausible(usd: number, eur: number): boolean {
-  if (!Number.isFinite(usd) || !Number.isFinite(eur) || usd < MIN_BS_PER_USD || eur <= 0) return false;
+  if (!usdIsPlausible(usd) || !Number.isFinite(eur) || eur <= 0) return false;
   const ratio = eur / usd;
   return ratio >= MIN_EUR_PER_USD && ratio <= MAX_EUR_PER_USD;
 }
