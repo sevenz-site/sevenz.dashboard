@@ -381,7 +381,7 @@ export type EventProps = {
   "Client Transaction Opened": PublicContext & { transaction_type?: string };
   "Client Signup Link Tapped": PublicContext;
   "Catalog Link Opened": PublicContext & { from_balance?: boolean };
-  "Catalog Product Opened": PublicContext & { product_id?: string };
+  "Catalog Product Opened": PublicContext & { product_id?: string; from_balance?: boolean };
   "Catalog Product Added": PublicContext & { product_id?: string; cart_lines?: number };
   "Catalog Cart Opened": PublicContext & { lines?: number };
   "Catalog Order Form Opened": PublicContext & { lines?: number };

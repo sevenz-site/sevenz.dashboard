@@ -389,11 +389,10 @@ function FilaDeProducto({
         )}
         {/* THE FOURTH STATE ARRIVED ON 2026-10-29 and the three written here
             by hand could not express it: at or below the owner's alert
-            threshold the chip is amber with its figure. `showUncounted`
-            keeps this sheet's own exception — naming the products nobody
-            counted is half of what it is for. */}
+            threshold the chip is amber with its figure. Naming the products
+            nobody counted is half of what this sheet is for. */}
         {conChip ? (
-          <StockBadge quantity={p.cantidad} threshold={umbral} showUncounted />
+          <StockBadge quantity={p.cantidad} threshold={umbral} />
         ) : null}
       </span>
 

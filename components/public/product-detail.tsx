@@ -1,6 +1,6 @@
 "use client";
 
-import { PublicEventOnMount, sendPublicEvent } from "@/components/public/public-event";
+import { CatalogProductOpenedEvent, sendPublicEvent } from "@/components/public/public-event";
 import { useMemo, useState } from "react";
 import { StockBadge } from "@/components/stock-badge";
 import { CircleCheck, Minus, Plus } from "lucide-react";
@@ -321,12 +321,7 @@ export function ProductDetail({
   return (
     <div className="flex flex-col gap-5">
       {isPreview || alAgregar ? null : (
-        <PublicEventOnMount
-          token={token}
-          code="catalog_product_opened"
-          onceKey={productId}
-          props={{ product_id: productId }}
-        />
+        <CatalogProductOpenedEvent token={token} productId={productId} />
       )}
       {/* EL DISPONIBLE, SIN CIFRA, igual que la etiqueta del catálogo.
           Decisión del dueño el 2026-10-15: dice si hay o no hay, nunca cuánto.

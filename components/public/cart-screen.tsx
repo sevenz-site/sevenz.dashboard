@@ -1151,6 +1151,9 @@ function Enviado({
           porque las dos enseñan lo mismo y el día que una cambie la otra
           tiene que cambiar con ella.
 
+          Each card opens its product, as on the balance, since 2026-11-05:
+          the reason is at the top of `catalog-strip.tsx`.
+
           SIN `shareToken`, a propósito: quien lee esto YA está dentro del
           catálogo, así que no hay ningún «abrió el catálogo desde el enlace»
           que contar. Mandar ese evento desde aquí inflaría el único número

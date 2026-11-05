@@ -29,6 +29,10 @@
 //      prueba llamándola con la clave anónima de verdad, que es exactamente
 //      la que viaja en el navegador.
 //
+// Since 2026-11-05 a card on the balance lands on its product, not on the index
+// (owner's decision, see `components/public/catalog-strip.tsx`). The price risk above
+// is the same: the strip and the screen it opens must show one figure.
+//
 // Y LA MITAD QUE NO SE PUEDE PROBAR AQUÍ, dicho por delante: que el evento
 // `Catalog Opened From Share Link` llegue a Mixpanel. Esta suite no toca
 // `/api/share-catalog`, que es una ruta HTTP con su propia resolución de
