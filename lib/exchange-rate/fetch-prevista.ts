@@ -1,4 +1,5 @@
 import { todayInCaracas } from "@/lib/exchange-rate/rate-status";
+import type { DatedRate } from "@/lib/exchange-rate/dated-rate";
 
 // La próxima tasa publicada, leída desde el servidor para poder guardarla.
 //
@@ -18,7 +19,9 @@ const TIMEOUT_MS = 8_000;
 
 type Entrada = { promedio: number; fecha: string };
 
-export type PrevistaRemota = { fecha: string; usd: number; eur: number };
+// Since 2026-11-05 this is DolarApi's future-dated reading, one of three the resolver weighs
+// (resolve-rates.ts); DolarVZLA and the BCV page deliver theirs through their own providers.
+export type PrevistaRemota = DatedRate;
 
 async function traer(url: string): Promise<Entrada[]> {
   const controller = new AbortController();
@@ -50,7 +53,7 @@ export async function fetchPrevista(): Promise<PrevistaRemota | null> {
 
     const proxima = futuras[0];
     if (!proxima) return null;
-    return { fecha: proxima.fecha, usd: proxima.promedio, eur: eurPorFecha.get(proxima.fecha)! };
+    return { date: proxima.fecha, usd: proxima.promedio, eur: eurPorFecha.get(proxima.fecha)!, source: "dolarapi" };
   } catch (error) {
     console.error(
       "[bcv] no pudimos leer la tasa prevista:",

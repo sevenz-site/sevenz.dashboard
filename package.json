@@ -80,6 +80,8 @@
     "qa:documento": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/documento-duplicado.mjs",
     "qa:guiones": "node qa/guiones-con-entrada.mjs",
     "qa:tasa-euro": "node --experimental-strip-types --no-warnings qa/tasa-euro.mjs",
+    "qa:fuentes-tasa": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/fuentes-tasa.mjs",
+    "qa:diagnostico-tasas": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/diagnostico-tasas.mjs",
     "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",
     "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs",
