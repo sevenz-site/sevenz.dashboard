@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { track } from "@/lib/mixpanel";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
@@ -183,6 +184,7 @@ export function ReportesProductosSheet({
     // in one app is a bug nobody attributes to the search.
     return productos.filter((p) => foldForSearch(p.nombre).includes(q));
   }, [productos, query]);
+  useSearchEvent("report_products_sheet", query, visibles.length);
 
   return (
     <Sheet

@@ -307,6 +307,7 @@ export type EventProps = {
   "Catalog Preview Opened": Record<string, never>;
 
   "Order Opened": { order_id: string };
+  "Order Customer Contacted": { order_id: string };
   "Order Registration Started": FlowContext & { order_id: string };
   "Order Step Viewed": FlowContext & { order_id: string; step: "blocks" | "confirm" | "payment" | "client" };
   "Order Currency Registered": FlowContext & {
@@ -334,6 +335,7 @@ export type EventProps = {
   "Client Unflagged": { client_id: string };
   "Client Notices Changed": { client_id: string; enabled: boolean };
   "WhatsApp Consent Declared": { client_id: string; flow: ConsentFlow };
+  "WhatsApp Message Sent": { template: string; audience: "owner" | "client"; status: "sent" | "failed"; error_code?: string };
   "Business Profile Saved": {
     has_logo: boolean;
     has_whatsapp: boolean;

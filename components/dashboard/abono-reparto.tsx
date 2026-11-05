@@ -2,6 +2,7 @@
 
 import { track } from "@/lib/mixpanel";
 import { claimPaymentFlow, finishPaymentFlow } from "@/lib/analytics/flow-client";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import type { EntryPoint } from "@/lib/analytics/events";
 import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useCallback,
@@ -609,6 +610,7 @@ export function AbonoReparto({
       foldForSearch([...f.productos, f.descripcion ?? ""].join(" ")).includes(q),
     );
   }, [enOrden, buscaFiado]);
+  useSearchEvent("payment_fiados", buscaFiado, fiadosFiltrados.length);
 
   // ═══════════════════════════════════════════════════════════════════════
   // LO QUE LA PANTALLA ENSEÑA: TODOS LOS FIADOS DEL LIBRO, reciban o no

@@ -7,6 +7,7 @@ import { MetricTabs } from "@/components/admin/metric-tabs";
 import { ServiceHealth } from "@/components/admin/service-health";
 import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
 import { getSaludDelAsistente } from "@/lib/admin/asistente-salud";
+import { getRateHealth } from "@/lib/admin/rate-health";
 import { requireSuperadmin } from "@/lib/admin/guard";
 import { seccionDe } from "@/lib/admin/secciones";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -676,7 +677,7 @@ async function SeccionNegocios({ filters }: { filters: Filters }) {
 //
 // Not product metrics: the health of the money writes and of the pipelines.
 async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado: boolean }) {
-  const [health, cronWhatsapp, asistente] = await Promise.all([
+  const [health, cronWhatsapp, asistente, tasa] = await Promise.all([
     getHealth(filters),
     // SIN `filters` a propósito: el filtro de fechas acota el negocio, y esto
     // no es una métrica de negocio sino el pulso de una tubería. Preguntarle
@@ -688,6 +689,8 @@ async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado:
     // septiembre?» no se puede hacer nada con ello. La ventana la fija la
     // propia función en 7 días.
     getSaludDelAsistente(),
+    // WITHOUT `filters` too: the question is what the app shows today, never in a date range.
+    getRateHealth(),
   ]);
 
   return (
@@ -780,6 +783,21 @@ async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado:
           hint={asistente.detalle}
           alert={asistente.alarma}
           explica="Cuántos resúmenes del asistente de Reportes se tuvieron que resolver con el texto escrito a mano en lugar de con la IA, en los últimos 7 días. La cifra grande son las caídas; la línea de abajo dice de cuántos resúmenes y por qué motivo, que es lo que decide qué hacer: «cuota agotada» significa que el nivel gratuito de Gemini tocó techo y toca pasar a pago; «Gemini falló» es de Google y no hay nada que tocar aquí; «se agotó el tiempo» es que nuestro presupuesto de 12 segundos se quedó corto; «cifra inventada» es que el modelo escribió un número que no estaba en los datos y la app lo rechazó —el fallo funcionó—; y «sin clave» es que falta la variable de entorno. Se pone en rojo cuando más de un tercio de la semana se cayó, y solo con cinco resúmenes o más: con menos, un único fallo daría porcentajes que no significan nada."
+        />
+      </div>
+
+      {/* HOW TODAY'S RATE WAS DECIDED — owner's request of 2026-11-05 (PL-26). Not a probe:
+          the probe below says whether the sources answer now. This says what the app has been
+          showing, and since when, which is what stays invisible when a figure is held: the
+          shopkeeper sees yesterday's number with today's date. Red at 24 hours, the same line
+          that makes the GitHub check fail. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat
+          label="Tasa oficial"
+          value={tasa.status === "ok" ? `${tasa.sources.length} fuentes` : tasa.heldHours !== null ? "Retenida" : tasa.reviewRows ? "En revisión" : tasa.status === "warn" ? "1 fuente" : "Sin datos"}
+          hint={tasa.detail}
+          alert={tasa.status === "fail"}
+          explica="Qué fuentes respaldan la tasa que ven los tenderos. Si dice Retenida, las fuentes fallan o no coinciden y la app enseña la última cifra buena en vez de la de hoy: es correcto, pero esa cifra envejece. Después de 24 horas se pone en rojo y GitHub avisa al dueño de Sevenz."
         />
       </div>
 

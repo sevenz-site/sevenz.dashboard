@@ -2,6 +2,7 @@
 
 import { track } from "@/lib/mixpanel";
 import { pendingPayment, startPendingPayment } from "@/lib/analytics/flow-client";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import type { EntryPoint } from "@/lib/analytics/events";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -255,6 +256,7 @@ function ClientSearchDialogBody({
       .filter((c) => foldForSearch(c.name).includes(q) || (c.document_id ? foldForSearch(c.document_id).includes(q) : false))
       .slice(0, CLIENT_RESULT_LIMIT);
   }, [clients, query]);
+  useSearchEvent("payment_client", query, results.length);
 
   function selectExisting(id: string) {
     const flow = pendingPayment();

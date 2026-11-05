@@ -1,6 +1,7 @@
 "use client";
 
 import { track } from "@/lib/mixpanel";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Plus } from "lucide-react";
@@ -225,6 +226,7 @@ export function PlazosSheet({
     // rule changed everywhere at once on 2026-10-31, never here alone.
     return clientes.filter((c) => foldForSearch(c.nombre).includes(q));
   }, [clientes, query]);
+  useSearchEvent("report_terms_sheet", query, visibles.length);
 
   return (
     <>

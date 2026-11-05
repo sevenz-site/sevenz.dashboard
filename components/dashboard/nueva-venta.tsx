@@ -2,6 +2,7 @@
 
 import { track } from "@/lib/mixpanel";
 import { newFlowId } from "@/lib/analytics/flow-client";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import type { EntryPoint } from "@/lib/analytics/events";
 import {
   useEffect,
@@ -796,6 +797,7 @@ function PasoProducto({
   umbralDeStock: number;
 }) {
   const [query, setQuery] = useState("");
+  useSearchEvent("sale_products", query, catalogo?.productos.length ?? 0);
   const [cargando, setCargando] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [creando, setCreando] = useState(false);
@@ -1899,6 +1901,7 @@ function PasoCliente({
   // buscar. Las coincidencias aparecen al escribir.
   const texto = foldForSearch(query.trim());
   const encontrados = texto === "" ? [] : clientes.filter((c) => foldForSearch(c.name).includes(texto));
+  useSearchEvent("sale_client", query, encontrados.length);
 
   // ── YA ELEGIDO ──────────────────────────────────────────────────────
   //

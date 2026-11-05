@@ -1387,7 +1387,7 @@ no escribe nada.
 
 | Zona que toca el diff | Suites |
 |---|---|
-| Tasas y bolívares | `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
+| Tasas y bolívares | `qa:tasa-euro`, `qa:fuentes-tasa`, `qa:diagnostico-tasas`, `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
 | **Cualquier campo donde se teclee dinero** | **`qa:agrupado`** |
 | Papelera y restaurar | `qa:papelera` |
 | Libreta por foto | `qa:import`, `qa:reconcile` |
