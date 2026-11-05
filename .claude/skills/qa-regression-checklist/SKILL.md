@@ -1,7 +1,12 @@
 ---
 name: qa-regression-checklist
+model: claude-fable-5-1
 description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — merging dev into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
+
+**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04. Si la
+sesión usa otro modelo, se dice antes de empezar y se le pregunta al dueño, y el
+informe nombra con qué modelo se corrió.
 
 This is a manual checklist, not an automated test suite — this codebase
 has no automated tests. Walk through each item below, actually verifying
@@ -977,8 +982,8 @@ lanza».
 
 1. **Sale del alcance de la sección 1**: todo archivo tocado en `app/(app)/**`,
    `app/s/**`, `app/c/**` y `components/**` que cambie lo que se ve.
-2. **Tiene fila en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con su frame, su enlace
-   de Drive y la versión de su liberación.
+2. **Está en la entrada de esta liberación en `../docs/LIBERACIONES.md`**, con su
+   frame y su enlace de Drive.
 3. **Su Figma coincide con la app.** Leer los textos de los frames y compararlos con
    la pantalla, no suponerlo.
 4. **El documento es posterior al último cambio de copy.** Si no, hay que generarlo
@@ -987,7 +992,8 @@ lanza».
    final; sin eso no cuentan como documento final.
 5. **El ticket de la liberación la incluye.** Hay UN ticket por liberación,
    `Liberación vX.Y.Z · <de qué trata>`, con todos los enlaces de Drive y de Figma
-   dentro (decisión del dueño del 2026-11-04). Desde aquí no hay acceso a Trello: lo
+   dentro, y junto a cada uno el problema planteado y la solución (decisión del dueño
+   del 2026-11-04). Desde aquí no hay acceso a Trello: lo
    confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
 
 **Si falta algo, esa interfaz no se lanza.** Se le dice al dueño cuál falta y qué
@@ -996,6 +1002,25 @@ falta. **Quitarla del lanzamiento o darla por exenta es decisión suya.**
 **El conector de Drive puede no ver el archivo**: el 2026-11-04 no encontró el
 documento de las modales con la cuenta conectada. Si no se puede abrir, la fila del
 informe dice «sin comprobar, lo confirma el dueño», nunca «pasa».
+
+## 4h. El registro de liberaciones — PARADA DURA
+
+La regla está en `CLAUDE.md`, «Toda liberación queda en `LIBERACIONES.md`».
+
+**Antes de lanzar:**
+
+1. **La entrada existe** en `../docs/LIBERACIONES.md`, con su versión, y cada
+   funcionalidad que sale lleva problema, solución y enlaces. Un bug sin interfaz
+   lleva al menos su nota de problema y solución.
+2. **El último despliegue está registrado.** Compara
+   `git log --first-parent -1 origin/main` con la `Base` de la entrada. Si `main` tiene
+   un despliegue más nuevo que no está en el archivo, **es un arreglo sin anotar**:
+   se escribe su entrada antes de seguir.
+3. **El índice por funcionalidad** tiene una línea por cada funcionalidad que sale.
+
+**Después de lanzar**, y sin esto el lanzamiento no ha terminado: las horas reales de
+migraciones, `main` y `sevenz.site`, el commit, la etiqueta `vX.Y.Z` en `main`, y el
+estado de `POR SALIR` a `EN PRODUCCIÓN`.
 
 ## 5. Security checklist
 
@@ -1377,6 +1402,9 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 4h row is never skipped either**: it says whether the release's entry exists
+and whether the last deploy on `main` is the one the entry names as its base.
 
 **The 4g row is never skipped either**: it lists each interface in the release
 with its Figma and its Drive document, says whether the release's Trello ticket

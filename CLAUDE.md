@@ -953,7 +953,15 @@ lanzamiento a producción»*.
    interfaz que había pedido ese mismo día: *«como en una liberación podemos lanzar
    inumerables ajustes y por ende implicaría crear inumerables tickets, vamos a
    trabajar con un mismo ticket por liberación, el ticket tendrá la versión de la
-   liberación y dentro todo los archivos drive y figma que se trabajaron»*.
+   liberación y dentro todo los archivos drive y figma que se trabajaron»*. Junto a
+   cada enlace va el problema planteado y la solución, para leerlos sin abrir el
+   documento.
+
+**Los PDF van en la carpeta `Liberaciones` de Drive, una subcarpeta por
+funcionalidad, y esas carpetas se alimentan.** Si la funcionalidad ya tiene carpeta, el
+PDF entra ahí; solo se crea una si todavía no tiene. Antes de subir se listan las que
+hay. Decisión del dueño el 2026-11-04: *«si la funcionalidad no posee carpeta, se crea
+una nueva, pero si ya posee carpeta, el archivo pdf va dentro de la carpeta existente»*.
 
 **El nombre del ticket es `Liberación vX.Y.Z · <de qué trata>`.** La versión sube el
 número del medio en una liberación con funciones nuevas y el último en una de
@@ -964,9 +972,9 @@ nombre es la `v0.2.0`, porque `package.json` dice `0.1.0` y nunca se había usad
 los tres, no se lanza esa interfaz, y no se decide a solas que este cambio no lo
 necesita: se le pregunta al dueño.
 
-**El registro vive en `../docs/DOCUMENTOS-DE-INTERFAZ.md`**, con el enlace de cada
-documento y la versión de su liberación, porque este repo es público. Sin fila en ese
-registro, el documento no existe para el checklist. El ticket lo mantiene el dueño:
+**El registro vive en `../docs/LIBERACIONES.md`**, con el enlace de cada documento
+dentro de su liberación, porque este repo es público. Sin estar ahí, el documento no
+existe para el checklist. El ticket lo mantiene el dueño:
 desde aquí no hay acceso a Trello, así que se le pasa su contenido listo para pegar.
 
 **La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
@@ -1775,7 +1783,8 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 ## Skills that apply automatically
 
 - Before merging `dev` into `main`, or making any change to the production
-  Supabase project: run the `qa-regression-checklist` skill first, and
+  Supabase project: run the `qa-regression-checklist` skill first, always with
+  the Fable 5.1 model (owner's decision of 2026-11-04), and
   wait for the user's explicit confirmation before actually launching. An
   interface with no Figma, no Drive document, or missing from the release's
   Trello ticket blocks the launch (section 4g).
@@ -1915,6 +1924,32 @@ Esto salió de correr `new-api-risk-review` **después** de instalarla, el
 2026-09-15 — al revés de como lo pide la regla de arriba. La lección no es que
 la librería fuera mala: es que la reseña sí tenía algo que decir, y saltársela
 fue decidir de antemano que no lo tendría.
+
+## Toda liberación queda en `LIBERACIONES.md`
+
+**Pedido por el dueño el 2026-11-04**: *«trazar lo que se libera, cuando (fecha y
+hora), para en el futuro poder auditar qué se hizo, decisiones que se tomaron
+revisando los links (pdf y figma) y trabajar sobre esas bases y no en el aire»*.
+
+`../docs/LIBERACIONES.md` lleva una entrada por liberación y, arriba, un índice por
+funcionalidad. El formato está escrito en el propio archivo.
+
+1. **Antes de tocar una funcionalidad existente, se lee su línea del índice**: qué se
+   hizo, qué se decidió y qué quedó sin hacer. Un frame enseña cómo está hoy; lo que
+   salió lo dice el PDF.
+2. **Un lanzamiento no termina hasta que su entrada tiene las horas reales**, el
+   commit y la etiqueta `vX.Y.Z` en `main`. Las horas salen de git y de lo observado.
+3. **Un arreglo urgente también lleva entrada.** Un bug sin interfaz nueva no pide
+   Figma ni PDF, pero sí una nota con el problema y la solución, decisión del dueño
+   ese día.
+4. **Una liberación revertida no se borra.** Se marca `REVERTIDA`, con lo que quedó
+   eliminado, y lo mismo se comenta en sus PDF, en una versión nueva del archivo.
+   Decisión del dueño: *«no veo por qué borrarlo porque fué parte del historial»*.
+
+**Es una parada dura del `qa-regression-checklist`** (sección 4h): compara el último
+despliegue de git con la última entrada. Sin esa comparación, un arreglo urgente sin
+anotar deja el archivo diciendo que algo no cambió cuando sí cambió, y eso se lee como
+verdad.
 
 ## Después de cada liberación: la lista de lo abierto, y la ficha cerrada sin preguntar
 
