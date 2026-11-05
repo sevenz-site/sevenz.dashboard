@@ -977,6 +977,13 @@ dentro de su liberación, porque este repo es público. Sin estar ahí, el docum
 existe para el checklist. El ticket lo mantiene el dueño:
 desde aquí no hay acceso a Trello, así que se le pasa su contenido listo para pegar.
 
+**Y él confirma que lo creó; mientras no lo confirme, se le sigue preguntando.** Pedido
+por el dueño el 2026-11-05: *«debo siempre confirmarte que lo creé, sino lo confirmo lo
+sigues preguntando»*. Un ticket sin confirmar se nombra en el informe de cada liberación
+y al planificar la siguiente, hasta que él diga que existe. Solo entonces su fila de
+`LIBERACIONES.md` pasa a «creado por el dueño» con la fecha. No se da por creado porque
+se le haya pasado el texto.
+
 **La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
 genera con capturas de la app, después del último cambio de copy. El 2026-11-04 se
 compararon los textos de los frames contra los de la app; si el copy cambia después

@@ -1013,7 +1013,9 @@ lanza».
    `Liberación vX.Y.Z · <de qué trata>`, con todos los enlaces de Drive y de Figma
    dentro, y junto a cada uno el problema planteado y la solución (decisión del dueño
    del 2026-11-04). Desde aquí no hay acceso a Trello: lo
-   confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
+   confirma el dueño, y mientras no lo haga la fila dice «sin comprobar» y se le
+   sigue preguntando, también por los de liberaciones anteriores (decisión suya del
+   2026-11-05). Su confirmación queda en `LIBERACIONES.md`, con la fecha.
 
 **Si falta algo, esa interfaz no se lanza.** Se le dice al dueño cuál falta y qué
 falta. **Quitarla del lanzamiento o darla por exenta es decisión suya.**
