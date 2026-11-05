@@ -1,3 +1,5 @@
+import { eurIsPlausible } from "@/lib/exchange-rate/rate-guard";
+
 export type RateHistoryPoint = {
   date: string; // YYYY-MM-DD
   usd: number;
@@ -37,6 +39,8 @@ export function getRateHistory(): Promise<RateHistoryPoint[]> {
         const eurByDate = new Map(eurHistory.map((entry) => [entry.fecha, entry.promedio]));
         const merged = usdHistory
           .filter((entry) => eurByDate.has(entry.fecha))
+          // A day whose euro arrived broken is left out rather than shown: see rate-guard.ts.
+          .filter((entry) => eurIsPlausible(entry.promedio, eurByDate.get(entry.fecha)!))
           .map((entry) => ({
             date: entry.fecha,
             usd: entry.promedio,
