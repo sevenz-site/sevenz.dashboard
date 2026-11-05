@@ -79,6 +79,7 @@
     "qa:orden-letra": "node qa/orden-con-letra.mjs",
     "qa:documento": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/documento-duplicado.mjs",
     "qa:guiones": "node qa/guiones-con-entrada.mjs",
+    "qa:tasa-euro": "node --experimental-strip-types --no-warnings qa/tasa-euro.mjs",
     "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",
     "qa:venta-mixta-estados:fixture": "node qa/fixtures-venta-mixta-estados.mjs",
