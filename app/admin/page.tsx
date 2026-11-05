@@ -794,7 +794,7 @@ async function SeccionSalud({ filters, filtrado }: { filters: Filters; filtrado:
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat
           label="Tasa oficial"
-          value={tasa.status === "ok" ? `${tasa.sources.length} fuentes` : tasa.heldHours !== null ? "Retenida" : tasa.reviewRows ? "En revisión" : tasa.status === "warn" ? "1 fuente" : "Sin datos"}
+          value={tasa.label}
           hint={tasa.detail}
           alert={tasa.status === "fail"}
           explica="Qué fuentes respaldan la tasa que ven los tenderos. Si dice Retenida, las fuentes fallan o no coinciden y la app enseña la última cifra buena en vez de la de hoy: es correcto, pero esa cifra envejece. Después de 24 horas se pone en rojo y GitHub avisa al dueño de Sevenz."

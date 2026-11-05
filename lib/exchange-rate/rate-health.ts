@@ -25,6 +25,8 @@ export type RateRow = {
 
 export type RateHealth = {
   status: "ok" | "warn" | "fail";
+  // The card's big word, decided here so the card has no logic of its own to get wrong.
+  label: string;
   // What the app is showing: the newest row that was not sent to review.
   usd: number | null;
   eur: number | null;
@@ -58,12 +60,16 @@ function hoursText(hours: number): string {
 
 const NAME: Record<string, string> = { usd: "dólar", eur: "euro" };
 
+function readings(n: number): string {
+  return n === 1 ? "1 lectura" : `${n} lecturas`;
+}
+
 // `rows` come newest first. A streak is walked back from the newest row and ends at the first
 // row that breaks it, so a rate that was held last week and recovered says nothing today.
 export function assessRateHealth(rows: RateRow[], now = new Date()): RateHealth {
   const empty = { usd: null, eur: null, sources: [], heldCurrencies: [], heldSince: null, heldHours: null, reviewRows: 0, reviewSince: null };
   if (rows.length === 0) {
-    return { ...empty, status: "fail", hoursSinceFetch: null, detail: "No hay ninguna tasa guardada." };
+    return { ...empty, status: "fail", label: "Sin datos", hoursSinceFetch: null, detail: "No hay ninguna tasa guardada." };
   }
 
   const hoursSinceFetch = hoursBetween(rows[0].fetched_at, now);
@@ -98,22 +104,22 @@ export function assessRateHealth(rows: RateRow[], now = new Date()): RateHealth 
   };
 
   if (hoursSinceFetch > STALE_AFTER_HOURS) {
-    return { ...base, status: "fail", detail: `La tasa no se refresca hace ${hoursText(hoursSinceFetch)}: el cron dejó de correr.` };
+    return { ...base, status: "fail", label: "Detenida", detail: `La tasa no se refresca hace ${hoursText(hoursSinceFetch)}: el cron dejó de correr.` };
   }
   if (reviewHours !== null && reviewHours >= ALERT_AFTER_HOURS) {
-    return { ...base, status: "fail", detail: `${reviewRows} lecturas en revisión seguidas desde hace ${hoursText(reviewHours)}: ninguna fuente convence y no hay cifra que retener.` };
+    return { ...base, status: "fail", label: "En revisión", detail: `${readings(reviewRows)} en revisión seguidas desde hace ${hoursText(reviewHours)}: ninguna fuente convence y no hay cifra que retener.` };
   }
   if (heldHours !== null) {
     const what = heldCurrencies.map((c) => `el ${NAME[c] ?? c}`).join(" y ");
     const verb = heldCurrencies.length > 1 ? "llevan" : "lleva";
     const detail = `${what[0].toUpperCase()}${what.slice(1)} ${verb} ${hoursText(heldHours)} sin moverse: la app enseña la última cifra buena, no la de hoy.`;
-    return { ...base, status: heldHours >= ALERT_AFTER_HOURS ? "fail" : "warn", detail };
+    return { ...base, status: heldHours >= ALERT_AFTER_HOURS ? "fail" : "warn", label: "Retenida", detail };
   }
   if (reviewHours !== null) {
-    return { ...base, status: "warn", detail: `${reviewRows} lecturas en revisión desde hace ${hoursText(reviewHours)}.` };
+    return { ...base, status: "warn", label: "En revisión", detail: `${readings(reviewRows)} en revisión desde hace ${hoursText(reviewHours)}.` };
   }
   if (base.sources.length === 1) {
-    return { ...base, status: "warn", detail: `La tasa de hoy tiene un solo testigo (${base.sources[0]}).` };
+    return { ...base, status: "warn", label: "1 fuente", detail: `La tasa de hoy tiene un solo testigo (${base.sources[0]}).` };
   }
-  return { ...base, status: "ok", detail: `Al día, con ${base.sources.length} fuentes (${base.sources.join(", ")}).` };
+  return { ...base, status: "ok", label: `${base.sources.length} fuentes`, detail: `Al día, con ${base.sources.length} fuentes (${base.sources.join(", ")}).` };
 }

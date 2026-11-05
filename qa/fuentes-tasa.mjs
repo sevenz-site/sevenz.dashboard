@@ -156,6 +156,8 @@ Fecha Valor: <span  property="dc:date" datatype="xsd:dateTime" content="2026-11-
   igual("16i. el cron dejó de correr: alarma aunque la última fila sea buena", salud([fila(31, tres)]).status, "fail");
   igual("16j. un solo testigo: aviso", salud([fila(1, "dolarvzla")]).status, "warn");
   igual("16k. sin filas: alarma", salud([]).status, "fail");
+  igual("16l. la palabra de la tarjeta sale de cada caso", [salud([fila(1, tres)]).label, salud([fila(1, "dolarvzla+bcv")]).label, salud([fila(1, "dolarvzla")]).label, salud([fila(1, "dolarapi held:eur")]).label, salud([fila(1, "dolarapi", true), fila(2, tres)]).label, salud([fila(31, tres)]).label, salud([]).label], ["3 fuentes", "2 fuentes", "1 fuente", "Retenida", "En revisión", "Detenida", "Sin datos"]);
+  igual("16m. una sola lectura se escribe en singular", salud([fila(1, "dolarapi", true), fila(2, tres)]).detail.startsWith("1 lectura en revisión"), true);
 }
 
 const ok = filas.filter(Boolean).length;
