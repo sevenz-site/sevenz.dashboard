@@ -77,14 +77,13 @@ export function PapeleraTable({
   async function handleRestore(row: ClientSummaryAll) {
     if (guardia()) return;
     setBusyId(row.client_id);
-    const result = await restoreClient(row.client_id);
+    const result = await restoreClient(row.client_id, "papelera");
     setBusyId(null);
     if (result.error) {
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
       return;
     }
     toast.success(`${row.name} volvió a tus clientes`);
-    track("Client Restored", { client_id: row.client_id, source: "papelera" });
     router.refresh();
   }
 
@@ -92,7 +91,7 @@ export function PapeleraTable({
     if (!hiding) return;
     const row = hiding;
     setBusyId(row.client_id);
-    const result = await hideClientPermanently(row.client_id);
+    const result = await hideClientPermanently(row.client_id, "papelera");
     setBusyId(null);
     if (result.error) {
       if (!avisarCuentaPausada(result.error)) toast.error(result.error);
@@ -100,7 +99,6 @@ export function PapeleraTable({
     }
     setHiding(null);
     toast.success(`${row.name} quedó oculto definitivamente`);
-    track("Client Hidden Permanently", { client_id: row.client_id, source: "papelera" });
     router.refresh();
   }
 
@@ -165,6 +163,7 @@ export function PapeleraTable({
                 if (e.key !== "Enter" && e.key !== " ") return;
                 if (e.target !== e.currentTarget) return;
                 e.preventDefault();
+                track("Client Details Opened", { client_id: row.client_id, source: "papelera" });
                 router.push(clientHref(row.client_id, "papelera"));
               }}
             >

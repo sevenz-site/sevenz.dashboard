@@ -173,6 +173,7 @@ export async function enviarRecordatoriosDePlazo(): Promise<ResumenRecordatorios
 
     const envio = await enviarPlantilla({
       audience: "client",
+      ownerId: d.owner_id,
       to: objetivo.phone,
       plantilla: PLANTILLA,
       parametrosCuerpo: [

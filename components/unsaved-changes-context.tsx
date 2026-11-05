@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import {
   AlertDialog,
@@ -124,10 +125,24 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
     pendingRef.current = null;
   }
 
+  // WHO LEAVES WITH WORK UNSAVED, AND WHERE. The same dialog guards Mi negocio and the
+  // notebook review, so `screen` is what tells a lost setting from a lost notebook,
+  // which is the most expensive drop-off in the app. Filed under the owner.
+  function contarRespuesta(choice: "stay" | "leave" | "save_and_leave") {
+    track("Unsaved Changes Answered", { choice, screen: window.location.pathname });
+  }
+
   return (
     <UnsavedChangesContext.Provider value={{ setDirty, guard }}>
       {children}
-      <AlertDialog open={open} onOpenChange={(next) => !saving && setOpen(next)}>
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (saving) return;
+          if (!next) contarRespuesta("stay");
+          setOpen(next);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{texto.titulo}</AlertDialogTitle>
@@ -137,13 +152,21 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
             <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
             {sePuedeGuardar ? (
               <>
-                <Button variant="outline" disabled={saving} onClick={handleLeaveWithoutSaving}>
+                <Button
+                  variant="outline"
+                  disabled={saving}
+                  onClick={() => {
+                    contarRespuesta("leave");
+                    void handleLeaveWithoutSaving();
+                  }}
+                >
                   Salir sin guardar
                 </Button>
                 <AlertDialogAction
                   disabled={saving}
                   onClick={(e) => {
                     e.preventDefault();
+                    contarRespuesta("save_and_leave");
                     handleSaveAndLeave();
                   }}
                 >
@@ -155,6 +178,7 @@ export function UnsavedChangesProvider({ children }: { children: React.ReactNode
                 disabled={saving}
                 onClick={(e) => {
                   e.preventDefault();
+                  contarRespuesta("leave");
                   handleLeaveWithoutSaving();
                 }}
               >

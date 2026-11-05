@@ -1,5 +1,9 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { claimPaymentFlow, finishPaymentFlow } from "@/lib/analytics/flow-client";
+import { useSearchEvent } from "@/lib/analytics/use-search-event";
+import type { EntryPoint } from "@/lib/analytics/events";
 import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import { useCallback,
   useEffect,
@@ -98,6 +102,20 @@ export function AbonoReparto({
   // ahí, la flecha funcionaría hasta el primer reparto y luego no.
   desde: "cliente" | "buscar";
 }) {
+  // THE PAYMENT FUNNEL. Owner's request of 2026-11-04: *«entender dónde ocurren los
+  // drop-off de cada flujo»*. Started in the client search or here, on a profile.
+  // Comes back here from the amount screen with the same flow, and sends nothing.
+  const entrada: EntryPoint = desde === "cliente" ? "client_profile" : "register";
+  const flujoDelAbono = useCallback(() => {
+    const { flow, isNew } = claimPaymentFlow(clienteId, entrada);
+    const contexto = { flow_id: flow.id, entry_point: flow.entry };
+    if (isNew) track("Payment Started", { ...contexto, mode: "split" });
+    return contexto;
+  }, [clienteId, entrada]);
+  useEffect(() => {
+    flujoDelAbono();
+  }, [flujoDelAbono]);
+
   const router = useRouter();
   const [guardando, empezar] = useTransition();
 
@@ -592,6 +610,7 @@ export function AbonoReparto({
       foldForSearch([...f.productos, f.descripcion ?? ""].join(" ")).includes(q),
     );
   }, [enOrden, buscaFiado]);
+  useSearchEvent("payment_fiados", buscaFiado, fiadosFiltrados.length);
 
   // ═══════════════════════════════════════════════════════════════════════
   // LO QUE LA PANTALLA ENSEÑA: TODOS LOS FIADOS DEL LIBRO, reciban o no
@@ -705,7 +724,16 @@ export function AbonoReparto({
   const guardar = () => {
     setError(null);
     empezar(async () => {
+      // HOW MANY REACH THE BUTTON. The difference with `Payment Recorded` is what was
+      // refused. Filed under the owner.
+      const flujo = flujoDelAbono();
+      track("Payment Submitted", {
+        ...flujo,
+        split: Object.keys(aMano).length > 0 ? "manual" : "auto",
+        entry_currency: enBolivares ? "VES" : (libro ?? "COP"),
+      });
       const r = await registrarAbonoRepartido({
+        analitica: { flowId: flujo.flow_id, entryPoint: flujo.entry_point },
         clienteId,
         libro,
         // LA BANDERA QUE ABRE EL CAMINO NUEVO EN EL SERVIDOR. Solo con
@@ -750,6 +778,7 @@ export function AbonoReparto({
       // haría que volver a «Registrar abono» abriera la pantalla con el pago
       // que se acaba de hacer, como si estuviera pendiente.
       borrarBorrador(clienteId);
+      finishPaymentFlow(clienteId);
       // AL RESUMEN, no a la ficha. Es la pantalla de éxito del frame
       // `1524:10289`, y lee el grupo entero: enseña el total del billete y no
       // la línea por la que se entra. Sin movimiento devuelto —no debería
@@ -1117,7 +1146,7 @@ export function AbonoReparto({
             {clienteNombre} no tiene fiados abiertos, así que no hay nada a lo que abonar.
           </p>
           <Button asChild className="h-10 w-full">
-            <Link href={`/ventas/nueva?cliente=${clienteId}`}>Registrar venta</Link>
+            <Link href={`/ventas/nueva?cliente=${clienteId}&desde=abono`}>Registrar venta</Link>
           </Button>
         </div>
       ) : (
@@ -1523,6 +1552,9 @@ export function AbonoReparto({
               variant="outline"
               className="h-10 w-full"
               onClick={() => {
+                // IS THE AUTOMATIC SPLIT CORRECTED? If often, the default order is not
+                // the one a shopkeeper wants.
+                track("Payment Manual Split Opened", flujoDelAbono());
                 setBuscaFiado("");
                 setRepartiendo(true);
               }}

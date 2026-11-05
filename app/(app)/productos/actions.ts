@@ -1,5 +1,8 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
+import { flowContext, type FlowInput } from "@/lib/analytics/amounts";
+import type { ProductRejectionReason, ProductSource } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
@@ -116,6 +119,9 @@ const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
 export type FixedPrices = Partial<Record<PriceCurrency, string>>;
 
 export type ProductInput = {
+  // Which attempt this is and who called. Only for the funnels: this action has two
+  // doors, the wizard and the quick sheet inside a sale.
+  analitica?: FlowInput & { source?: ProductSource };
   name: string;
   unit: string | null;
   // Las monedas que maneja CADA ESCALÓN, y la PRIMERA de cada lista es su
@@ -440,19 +446,28 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const flujo = flowContext(input.analitica);
+  const source: ProductSource = input.analitica?.source === "quick_sheet" ? "quick_sheet" : "wizard";
+  // WHAT STOPS A PRODUCT FROM SAVING. A refusal left no trace before. Filed under
+  // the owner.
+  const rechazar = (reason: ProductRejectionReason, error: string): ProductResult => {
+    trackServer("Product Creation Rejected", user.id, { ...flujo, source, reason }, user.email);
+    return { error };
+  };
   // A BLOCKED ACCOUNT DOES NOT WRITE PRODUCTS (migration 170, plan of
   // 2026-10-31). The policy is the lock; this is the sign: asking first makes
   // the answer the paused-account message, not «No pudimos guardar».
-  if (!(await puedeEscribir(supabase, user.id))) return { error: MENSAJE_CUENTA_PAUSADA };
+  if (!(await puedeEscribir(supabase, user.id))) return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
 
   const checked = validate(input);
-  if ("error" in checked) return { error: checked.error };
+  if ("error" in checked) return rechazar("validation", checked.error);
 
   const photo = ownPhotoPath(input.photoPath, user.id);
-  if (photo && !(await storageFileExists("product-photos", photo))) return { error: PHOTO_GONE };
+  if (photo && !(await storageFileExists("product-photos", photo))) return rechazar("photo_gone", PHOTO_GONE);
 
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
-  if (!categoria.ok) return { error: CATEGORIA_AJENA };
+  if (!categoria.ok) return rechazar("foreign_category", CATEGORIA_AJENA);
 
   const { data, error } = await supabase
     .from("products")
@@ -462,11 +477,35 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
 
   if (error) {
     console.error("[createProduct]", error.message);
-    return { error: "No pudimos guardar el producto. Intenta de nuevo." };
+    return rechazar("db_error", "No pudimos guardar el producto. Intenta de nuevo.");
   }
 
   const aviso = await writeSatellites(supabase, data.id, checked, input);
   revalidatePath("/productos");
+
+  // HOW MANY PRODUCTS EACH BUSINESS CREATES, AND HOW COMPLETE. Owner's request of
+  // 2026-11-04: *«productos creados y sus eventos para funnel de creación de un
+  // producto»*. Decides whether a thin catalogue is a lack of products or of details.
+  // Only yes or no per field: a product's name or supplier never travels. Filed under
+  // the owner.
+  trackServer(
+    "Product Created",
+    user.id,
+    {
+      ...flujo,
+      product_id: data.id,
+      source,
+      has_cost: Boolean(input.cost?.trim()),
+      has_wholesale: Boolean(input.priceWholesale?.trim()),
+      has_photo: Boolean(photo),
+      has_description: Boolean(input.description?.trim()),
+      has_category: Boolean(categoria.value),
+      has_supplier: Boolean(input.supplier?.trim()),
+      published: input.publishedRetail || input.publishedWholesale,
+      satellites_failed: aviso != null,
+    },
+    user.email,
+  );
   return { error: aviso, id: data.id };
 }
 
@@ -487,13 +526,17 @@ export async function updateProduct(
     return { error: PHOTO_GONE };
   }
 
+  // WHAT WAS THERE BEFORE, only to name which columns changed.
+  const { data: antes } = await supabase.from("products").select("*").eq("id", productId).maybeSingle();
+  const fila = rowFrom(input, checked, user.id);
+
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
   if (!categoria.ok) return { error: CATEGORIA_AJENA };
 
   const { error } = await supabase
     .from("products")
     .update({
-      ...rowFrom(input, checked, user.id),
+      ...fila,
       ...(categoria.value === undefined ? {} : { category_id: categoria.value }),
       updated_at: new Date().toISOString(),
     })
@@ -507,6 +550,23 @@ export async function updateProduct(
 
   const aviso = await writeSatellites(supabase, productId, checked, input);
   revalidatePath("/productos");
+
+  // WHAT GETS EDITED MOST. If it is the price, a shortcut would save the whole
+  // wizard. Column names only, never their values. Filed under the owner.
+  const igual = (x: unknown, y: unknown) =>
+    x === y || (x == null && y == null) || (x != null && y != null && Number(x) === Number(y)) || String(x ?? "") === String(y ?? "");
+  trackServer(
+    "Product Updated",
+    user.id,
+    {
+      ...flowContext(input.analitica),
+      product_id: productId,
+      fields_changed: Object.entries(fila)
+        .filter(([columna, valor]) => !igual((antes as Record<string, unknown> | null)?.[columna], valor))
+        .map(([columna]) => columna),
+    },
+    user.email,
+  );
   return { error: aviso };
 }
 
@@ -541,6 +601,15 @@ export async function setProductPublished(
   }
 
   revalidatePath("/productos");
+
+  // DO THEY PUBLISH WHAT THEY CREATE? A catalogue with nothing published sells nothing,
+  // and this is the only way to tell that from one nobody shares. Filed under the owner.
+  trackServer(
+    "Product Publication Changed",
+    user.id,
+    { product_id: productId, published_retail: tiers.retail, published_wholesale: tiers.wholesale },
+    user.email,
+  );
   return { error: null };
 }
 
@@ -580,6 +649,9 @@ export async function trashProduct(productId: string): Promise<ProductResult> {
   });
   if (hideError) console.error("[trashProduct] product_hides insert failed", hideError.message);
 
+  // How many products get deleted, against those created. Filed under the owner.
+  trackServer("Product Deleted", user.id, { product_id: productId }, user.email);
+
   revalidatePath("/productos");
   revalidatePath("/notificaciones");
   return { error: null };
@@ -616,6 +688,10 @@ export async function restoreProduct(productId: string): Promise<ProductResult> 
     action: "restored",
   });
   if (hideError) console.error("[restoreProduct] product_hides insert failed", hideError.message);
+
+  // The notification is a deleted product's only way back (`CT-44`): this says whether
+  // that is enough. Filed under the owner.
+  trackServer("Product Restored", user.id, { product_id: productId }, user.email);
 
   revalidatePath("/productos");
   revalidatePath("/notificaciones");
@@ -776,6 +852,9 @@ export async function crearCategoria(nombre: string): Promise<CategoriaResult> {
     return { error: "No pudimos crear la categoría. Intenta de nuevo." };
   }
   revalidatePath("/productos");
+  // DO BUSINESSES USE CATEGORIES? They launched in v0.2.0, and this decides whether
+  // they get more work. The name never travels. Filed under the owner.
+  trackServer("Category Changed", user.id, { action: "create" }, user.email);
   return { categoria: data as Categoria };
 }
 
@@ -803,6 +882,7 @@ export async function renombrarCategoria(categoryId: string, nombre: string): Pr
     return { error: "No pudimos guardar el nombre. Intenta de nuevo." };
   }
   revalidatePath("/productos");
+  trackServer("Category Changed", user.id, { action: "rename" }, user.email);
   return { categoria: data as Categoria };
 }
 
@@ -832,5 +912,6 @@ export async function eliminarCategoria(categoryId: string): Promise<{ error: st
     return { error: "No pudimos eliminar la categoría. Intenta de nuevo." };
   }
   revalidatePath("/productos");
+  trackServer("Category Changed", user.id, { action: "delete" }, user.email);
   return { error: null };
 }

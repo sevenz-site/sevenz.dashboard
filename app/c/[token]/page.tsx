@@ -1,3 +1,4 @@
+import { CatalogOpenedEvent } from "@/components/public/public-event";
 import type { Metadata } from "next";
 import { StockBadge } from "@/components/stock-badge";
 import Image from "next/image";
@@ -297,6 +298,8 @@ export default async function CatalogoPublicoPage({
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
+      {/* The shopkeeper's own preview is not a visit. */}
+      {esVistaPrevia ? null : <CatalogOpenedEvent token={token} />}
       {/* LA CABECERA DEL FRAME `1190:5748`.
           
           Oscura y centrada, con el logotipo del negocio arriba y la marca de
@@ -376,6 +379,7 @@ export default async function CatalogoPublicoPage({
              El porqué de pasarlas hechas en vez de mover estas ~110 líneas a
              un componente de cliente está en `catalog-search-grid.tsx`. */
           <CatalogSearchGrid
+            analyticsToken={esVistaPrevia ? null : token}
             categorias={shared.categories ?? []}
             items={shared.products.map((p) => {
               return {

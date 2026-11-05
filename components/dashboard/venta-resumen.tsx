@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import Link from "next/link";
 import { CheckCircle2, Share2, User } from "lucide-react";
 import { toast } from "sonner";
@@ -39,12 +40,14 @@ import type { BloqueDelResumen, CompradorDelResumen } from "@/app/(app)/ventas/a
 // sigue escondido: empezar otra venta encima del resumen de la anterior no es
 // lo que el frame ofrece.
 export function VentaResumen({
+  saleId,
   comprador,
   bloques,
   rates,
   fecha,
   codigo,
 }: {
+  saleId: string;
   comprador: CompradorDelResumen | null;
   bloques: BloqueDelResumen[];
   rates: BolivarRates | null;
@@ -78,9 +81,13 @@ export function VentaResumen({
       if (navigator.canShare?.({ files: [fichero] })) {
         // Cerrar la hoja la rechaza. Eso es el tendero decidiendo no mandarlo,
         // no un fallo, así que no lleva aviso.
+        // IS THE RECEIPT WORTH ITS PLACE? A tap, not a confirmed send: the sheet can be
+        // closed and the file never leaves. Filed under the owner.
+        track("Sale Receipt Shared", { sale_id: saleId, method: "native" });
         void navigator.share({ files: [fichero] }).catch(() => {});
         return;
       }
+      track("Sale Receipt Shared", { sale_id: saleId, method: "download" });
       const url = URL.createObjectURL(blob);
       const enlace = document.createElement("a");
       enlace.href = url;
@@ -92,6 +99,7 @@ export function VentaResumen({
       return;
     }
 
+    track("Sale Receipt Shared", { sale_id: saleId, method: "text" });
     const texto = textoDelResumen(comprador, bloques, codigo);
     if (navigator.share) {
       void navigator.share({ text: texto }).catch(() => {});

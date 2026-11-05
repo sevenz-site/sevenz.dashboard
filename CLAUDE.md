@@ -1784,13 +1784,24 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 
 - Before merging `dev` into `main`, or making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, always with
-  the Fable 5.1 model (owner's decision of 2026-11-04), and
+  the Fable 5.1 model (owner's decision of 2026-11-04). **Before the first check,
+  ask the owner to switch the session to Fable 5.1 and stop there until he
+  confirms it is done** — even if the session already looks like Fable 5.1, since
+  the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
+  Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
+  confirme que ya cambié el modelo a Fable 5.1»*. Then
   wait for the user's explicit confirmation before actually launching. An
   interface with no Figma, no Drive document, or missing from the release's
   Trello ticket blocks the launch (section 4g).
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.
+- To create, edit or retire a Mixpanel event: run the `analytics-event` skill. It
+  keeps the code and `../docs/Sevenz-Eventos-Mixpanel.xlsx` in step. Section 4i of
+  the `qa-regression-checklist` checks every release for events it should add,
+  change or lost (owner's request of 2026-11-04). Every change goes in the workbook's
+  `Changelog` sheet, and each release uploads the workbook to its Drive folder (owner's
+  request of 2026-11-05).
 
 ## Code is written in English. Always.
 

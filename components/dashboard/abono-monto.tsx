@@ -1,7 +1,11 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
+import { newFlowId } from "@/lib/analytics/flow-client";
 import { leerUnaVezAlEntrar } from "@/lib/suscripcion-de-almacenamiento";
 import {
+  useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -113,6 +117,16 @@ export function AbonoMonto({
   // `desde` en `abono-reparto.tsx`.
   sufijoDelOrigen?: string;
 }) {
+  // THE DIRECTED PAYMENT, from «Pagar» on a fiado. Inside a split this screen saves
+  // nothing and belongs to that flow, so it sends nothing. Filed under the owner.
+  const [flujo] = useState(newFlowId);
+  const contado = useRef(false);
+  useEffect(() => {
+    if (contado.current || enReparto) return;
+    contado.current = true;
+    track("Payment Started", { flow_id: flujo, entry_point: "transaction_detail", mode: "directed" });
+  }, [flujo, enReparto]);
+
   const router = useRouter();
   const [guardando, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -306,8 +320,15 @@ export function AbonoMonto({
 
   function guardar() {
     setError(null);
+    track("Payment Submitted", {
+      flow_id: flujo,
+      entry_point: "transaction_detail",
+      split: "directed",
+      entry_currency: String(monedaTecleada),
+    });
     startTransition(async () => {
       const r = await registrarAbonoDirigido({
+        analitica: { flowId: flujo, entryPoint: "transaction_detail" },
         fiadoId,
         monto: escrito,
         monedaTecleada: monedaTecleada as "VES" | PriceCurrency,

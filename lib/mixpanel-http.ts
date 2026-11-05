@@ -50,9 +50,15 @@ async function post(endpoint: "track" | "engage", payload: unknown, label: strin
   }
 }
 
-// `source` distinguishes an event raised inside a server action from one a
+// `sent_from` distinguishes an event raised inside a server action from one a
 // browser posted to the proxy, so a future drop in "browser" events is
 // visible in Mixpanel itself rather than having to be inferred.
+//
+// IT WAS CALLED `source` UNTIL 2026-11-04, and that name was taken. From 2026-09-05,
+// when trusted fields moved below `...props`, it silently replaced the `source` of
+// every event that has one: `Client Details Opened` came from «cartera» or
+// «papelera» in the code and arrived as «browser». Found when a new event's own
+// `source` failed its test. Any field written below the spread is a reserved name.
 export async function sendEvent(
   event: string,
   distinctId: string,
@@ -64,41 +70,54 @@ export async function sendEvent(
   context?: EventContext,
 ): Promise<void> {
   if (!MIXPANEL_TOKEN) return;
-  await post(
-    "track",
-    [
-      {
-        event,
-        properties: {
-          // props FIRST, and everything trustworthy after it.
-          //
-          // This spread used to come last, which quietly handed the browser
-          // control of every field above it. app/api/track/route.ts passes the
-          // request body's props straight through, so a signed-in owner could
-          // post props:{distinct_id:"<another owner's id>"} and write events
-          // onto that owner's profile — exactly what the route's comment
-          // promises cannot happen. token (redirecting events to another
-          // project) and source (poisoning the browser-vs-server diagnostic)
-          // were overridable the same way.
-          //
-          // Ordering is the fix rather than key-stripping: there is no list of
-          // reserved names to keep in sync, and a new trusted field is safe by
-          // virtue of being written below.
-          ...props,
-          token: MIXPANEL_TOKEN,
-          distinct_id: distinctId,
-          time: Date.now(),
-          // Makes the event idempotent: if this ever gets retried, Mixpanel
-          // discards the duplicate instead of double-counting.
-          $insert_id: crypto.randomUUID(),
-          source,
-          ...context,
-          ...(profile ? { $set: profile } : {}),
-        },
+  const payload = [
+    {
+      event,
+      properties: {
+        // props FIRST, and everything trustworthy after it.
+        //
+        // This spread used to come last, which quietly handed the browser
+        // control of every field above it. app/api/track/route.ts passes the
+        // request body's props straight through, so a signed-in owner could
+        // post props:{distinct_id:"<another owner's id>"} and write events
+        // onto that owner's profile — exactly what the route's comment
+        // promises cannot happen. token (redirecting events to another
+        // project) and source (poisoning the browser-vs-server diagnostic)
+        // were overridable the same way.
+        //
+        // Ordering is the fix rather than key-stripping: there is no list of
+        // reserved names to keep in sync, and a new trusted field is safe by
+        // virtue of being written below.
+        ...props,
+        token: MIXPANEL_TOKEN,
+        distinct_id: distinctId,
+        // The owner as a plain property too, by the owner's decision of
+        // 2026-11-04: `distinct_id` cannot be used to break a report down, and
+        // this can. Written here, so no event can forget it or fake it.
+        ...(distinctId.startsWith("anonymous-") ? {} : { owner_id: distinctId }),
+        time: Date.now(),
+        // Makes the event idempotent: if this ever gets retried, Mixpanel
+        // discards the duplicate instead of double-counting.
+        $insert_id: crypto.randomUUID(),
+        sent_from: source,
+        ...context,
+        ...(profile ? { $set: profile } : {}),
       },
-    ],
-    `"${event}"`,
-  );
+    },
+  ];
+
+  // A LOCAL COPY OF EXACTLY WHAT WOULD BE SENT, FOR `qa/eventos-transacciones.mjs`.
+  // Without it no suite can see an event leave: a missing one fails nothing, which
+  // is how `Movement Added` went unnoticed. Set only on a dev server started for
+  // QA, and then nothing reaches Mixpanel. Production never has this variable.
+  if (process.env.ANALYTICS_QA_LOG && process.env.NODE_ENV !== "production") {
+    const { appendFile } = await import("node:fs/promises");
+    await appendFile(process.env.ANALYTICS_QA_LOG, `${JSON.stringify(payload[0])}
+`);
+    return;
+  }
+
+  await post("track", payload, `"${event}"`);
 }
 
 // Profile update with no accompanying event — the replacement for the browser

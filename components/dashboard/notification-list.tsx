@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { track } from "@/lib/mixpanel";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, ImageUp, CircleX, RotateCcw, Trash2, EyeOff, Package } from "lucide-react";
 import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
@@ -36,6 +37,16 @@ export function NotificationList({
 }) {
   const [items, setItems] = useState(notifications);
   const [lastGiven, setLastGiven] = useState(notifications);
+
+  // DO THEY OPEN THE NOTIFICATIONS? It decides whether the bell does its job, and with
+  // `Notification Tapped` which kinds lead to anything and which to stop sending. Once
+  // the list has arrived. Filed under the owner.
+  const contada = useRef(false);
+  useEffect(() => {
+    if (contada.current || !notifications) return;
+    contada.current = true;
+    track("Notifications Opened", { items_count: notifications.length });
+  }, [notifications]);
   const [viewingId, setViewingId] = useState<string | null>(null);
 
   if (notifications !== lastGiven) {
@@ -130,7 +141,10 @@ export function NotificationList({
                       variant="outline"
                       size="sm"
                       className="mt-1.5 h-7"
-                      onClick={() => setViewingId(n.id)}
+                      onClick={() => {
+                        track("Notification Tapped", { notification_type: "movement_deleted", action: "view" });
+                        setViewingId(n.id);
+                      }}
                     >
                       Ver
                     </Button>
@@ -163,7 +177,12 @@ export function NotificationList({
                       · <Fecha iso={n.occurredAt} formato="hora" />
                     </p>
                     <Button asChild type="button" variant="outline" size="sm" className="mt-1.5 h-7">
-                      <Link href={`/productos/${n.productId}`}>Ver producto</Link>
+                      <Link
+                        href={`/productos/${n.productId}`}
+                        onClick={() => track("Notification Tapped", { notification_type: "stock_alert", action: "view_product" })}
+                      >
+                        Ver producto
+                      </Link>
                     </Button>
                   </div>
                 </>
@@ -228,7 +247,12 @@ export function NotificationList({
                       <OrderRestoreRow orderId={n.orderId} />
                     ) : (
                     <Button asChild type="button" variant="outline" size="sm" className="mt-1.5 h-7">
-                      <Link href={`/productos/ordenes/${n.orderId}`}>Ver pedido</Link>
+                      <Link
+                        href={`/productos/ordenes/${n.orderId}`}
+                        onClick={() => track("Notification Tapped", { notification_type: "catalog_order", action: "view_order" })}
+                      >
+                        Ver pedido
+                      </Link>
                     </Button>
                     )}
                   </div>
@@ -279,7 +303,8 @@ function ClientHideRow({
 
   async function handleRestore() {
     setBusy(true);
-    const result = await restoreClient(n.clientId);
+    track("Notification Tapped", { notification_type: "client_hidden", action: "restore" });
+    const result = await restoreClient(n.clientId, "notification");
     setBusy(false);
     if (result.error) {
       toast.error(result.error);

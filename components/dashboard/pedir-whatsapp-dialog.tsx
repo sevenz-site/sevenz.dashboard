@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -64,6 +65,7 @@ export function PedirWhatsappDialog({
       return;
     }
     startTransition(async () => {
+      track("Share WhatsApp Dialog Answered", { choice: "save_and_share" });
       const r = await guardarWhatsappDeCliente(clientId, limpio);
       if ("error" in r) {
         toast.error(r.error);
@@ -76,7 +78,15 @@ export function PedirWhatsappDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(abierto) => {
+        // HOW MANY CLIENTS HAVE NO NUMBER WHEN THE LINK IS SHARED, and what the owner does
+        // then: it is the reason a link does not arrive. Filed under the owner.
+        if (!abierto) track("Share WhatsApp Dialog Answered", { choice: "dismissed" });
+        onOpenChange(abierto);
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{clientName} no tiene WhatsApp guardado</DialogTitle>
@@ -104,6 +114,7 @@ export function PedirWhatsappDialog({
             variant="outline"
             disabled={guardando}
             onClick={() => {
+              track("Share WhatsApp Dialog Answered", { choice: "other_way" });
               onOpenChange(false);
               onSeguirSinNumero();
             }}

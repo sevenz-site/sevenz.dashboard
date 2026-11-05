@@ -1,3 +1,4 @@
+import { trackServer } from "@/lib/mixpanel-server";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { readOwnerCountry } from "@/lib/owner-country";
@@ -98,7 +99,12 @@ export async function GET(request: Request) {
     hasta: url.searchParams.get("hasta"),
     clientId,
   });
-  if ("motivo" in r) return alError(request, r.motivo);
+  if ("motivo" in r) {
+    // HOW MANY DOWNLOADS FAIL. `Report Export Downloaded` fires on the tap, before
+    // anyone knows, so this is what makes that number honest. Filed under the owner.
+    trackServer("Report Export Failed", user.id, { que: "facturacion", reason: r.motivo }, user.email);
+    return alError(request, r.motivo);
+  }
 
   // EL NOMBRE DEL FICHERO VA DOS VECES, y no es redundancia: `filename=` en
   // ASCII para los lectores viejos, y `filename*=UTF-8''` con el nombre del

@@ -1,5 +1,6 @@
 "use client";
 
+import { yaEstaInstalada } from "@/lib/install-prompt";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { identifyOwner, track } from "@/lib/mixpanel";
@@ -24,6 +25,19 @@ export function MixpanelIdentify({
     // which is precisely the visit an owner checking one balance makes.
     identifyOwner(ownerId, { email, plan });
   }, [ownerId, email, plan]);
+
+  // HOW MANY USE THE INSTALLED APP. It is the only real signal on an iPhone, which never
+  // says it was installed. Once per tab session. Filed under the owner.
+  useEffect(() => {
+    if (!yaEstaInstalada()) return;
+    try {
+      if (sessionStorage.getItem("sevenz:instalada:vista")) return;
+      sessionStorage.setItem("sevenz:instalada:vista", "1");
+    } catch {
+      // Blocked storage: counted on every load, which still answers the question.
+    }
+    track("App Opened Installed", {});
+  }, []);
 
   useEffect(() => {
     // Replaces mixpanel-browser's `track_pageview: true`, which stopped

@@ -36,7 +36,7 @@ import type { ClientSummary, OwnerCountry } from "@/lib/types";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ nuevo?: string }>;
+  searchParams: Promise<{ nuevo?: string; origen?: string }>;
 }) {
   // Set by the mobile bar's "Agregar", which navigates here because this
   // is where the movement will appear and where the client list already
@@ -55,7 +55,7 @@ export default async function DashboardPage({
   //
   // Un valor desconocido no abre nada, que es lo que debe pasar con una URL
   // escrita a mano o con un marcador viejo guardado en un favorito.
-  const { nuevo } = await searchParams;
+  const { nuevo, origen } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -467,6 +467,7 @@ export default async function DashboardPage({
             <ClientSearchDialog
               clients={clients ?? []}
               autoOpen={nuevo === "abono"}
+              entryPoint={origen === "reporte" ? "report" : "register"}
             />
           </div>
         </HideWhileResults>

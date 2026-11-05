@@ -1,5 +1,11 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
+import type {
+  DeleteRejectionReason,
+  RestoreRejectionReason,
+  TransactionType,
+} from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
@@ -101,6 +107,9 @@ export async function getOrCreateShareLink(clientId: string): Promise<{ token: s
 // fiado NO devuelve sus abonos solo, y eso es a propósito: devolverlos juntos
 // exigiría recordar que se borraron juntos, que es un dato que esta tabla no
 // guarda. Dos avisos dicen la verdad; uno que restaura dos cosas, no.
+const transactionType = (type: string, isOldDebt: boolean): TransactionType =>
+  type === "payment" ? "payment" : type === "return" ? "return" : isOldDebt ? "old_debt" : "fiado";
+
 export async function deleteMovement(
   movementId: string,
   opciones?: { conAbonos?: boolean },
@@ -111,11 +120,18 @@ export async function deleteMovement(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
 
+  // WHAT STOPS A DELETE. The screen explains it to the shopkeeper; this says how
+  // often each block is hit, and so which sentence needs another look.
+  const rechazar = (reason: DeleteRejectionReason, error: string) => {
+    trackServer("Transaction Delete Rejected", user.id, { target: "movement", reason }, user.email);
+    return { error };
+  };
+
   // Borrar un movimiento es un update — el borrado es blando — y un update
   // que la política rechaza no da error: afecta a cero filas y se vería como
   // un borrado que funcionó. Por eso se pregunta antes.
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
   // THE OWNERSHIP CHECK, EXPLICIT AND NOT JUST RLS. `movementId` arrives from
@@ -129,33 +145,47 @@ export async function deleteMovement(
   // `confirmImport` and fixed both; this one was missed.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, type, transaction_code, clients!inner(owner_id)")
+    .select("id, client_id, type, transaction_code, is_old_debt, clients!inner(owner_id)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos esa transacción." };
+    return rechazar("not_found", "No encontramos esa transacción.");
   }
 
   // A RETURN GOES THROUGH ITS OWN FUNCTION (migration 185): its ledger lines,
   // the event and the shelf have to move together.
+  // HOW MUCH GETS DELETED AND OF WHAT KIND. Owner's request of 2026-11-04:
+  // *«Todas las transacciones deben tener eventos»*. Many deletes of one kind point
+  // at a mistake the screen keeps inviting. Filed under the owner.
+  const registrarBorrado = (abonos: number) =>
+    trackServer(
+      "Transaction Deleted",
+      user.id,
+      {
+        movement_id: movementId,
+        client_id: movement.client_id as string,
+        transaction_type: transactionType(movement.type as string, movement.is_old_debt as boolean),
+        payments_deleted: abonos,
+      },
+      user.email,
+    );
+
   if (movement.type === "return") {
     const { data, error } = await supabase.rpc("eliminar_devolucion", { p_movement_id: movementId });
-    if (error) return { error: mensajeDeError("eliminar la devolución", error, "deleteMovement") };
+    if (error) return rechazar("db_error", mensajeDeError("eliminar la devolución", error, "deleteMovement"));
     if (!(data as { ok: boolean }).ok) {
       // The page already says this with its button; this is for a saldo spent
       // after the page was opened.
-      return {
-        error:
-          (data as { code?: string }).code === "saldo_usado"
-            ? "Este saldo a favor ya se usó. Elimina primero la venta que lo gastó."
-            : "No pudimos eliminar la devolución.",
-      };
+      return (data as { code?: string }).code === "saldo_usado"
+        ? rechazar("credit_spent", "Este saldo a favor ya se usó. Elimina primero la venta que lo gastó.")
+        : rechazar("db_error", "No pudimos eliminar la devolución.");
     }
     revalidatePath("/dashboard");
     revalidatePath(`/clients/${movement.client_id}`);
+    registrarBorrado(0);
     return { error: null };
   }
 
@@ -174,7 +204,7 @@ export async function deleteMovement(
       .eq("client_id", movement.client_id)
       .eq("type", "return")
       .is("deleted_at", null);
-    if ((count ?? 0) > 0) return { error: "Este fiado tiene devoluciones. Elimínalas primero." };
+    if ((count ?? 0) > 0) return rechazar("has_returns", "Este fiado tiene devoluciones. Elimínalas primero.");
   }
 
   const borradoEn = new Date().toISOString();
@@ -200,7 +230,7 @@ export async function deleteMovement(
       .is("deleted_at", null)
       .select("id");
     if (abonosError) {
-      return { error: mensajeDeError("eliminar los abonos", abonosError, "deleteMovement") };
+      return rechazar("db_error", mensajeDeError("eliminar los abonos", abonosError, "deleteMovement"));
     }
     abonosBorrados = (abonos ?? []).map((a) => a.id as string);
   }
@@ -231,14 +261,14 @@ export async function deleteMovement(
   const { error: deleteError } = await borrar;
 
   if (deleteError) {
-    return { error: mensajeDeError("eliminar la transacción", deleteError, "deleteMovement") };
+    return rechazar("db_error", mensajeDeError("eliminar la transacción", deleteError, "deleteMovement"));
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
     p_client_id: movement.client_id,
   });
   if (recalcError) {
-    return { error: mensajeDeError("recalcular el saldo", recalcError, "recalc") };
+    return rechazar("db_error", mensajeDeError("recalcular el saldo", recalcError, "recalc"));
   }
 
   // UNA FILA POR MOVIMIENTO BORRADO. Ver la cabecera: dos avisos separados en
@@ -264,6 +294,7 @@ export async function deleteMovement(
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${movement.client_id}`);
+  registrarBorrado(abonosBorrados.length);
   return { error: null };
 }
 
@@ -276,11 +307,18 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar." };
 
+  // WHAT STOPS A RESTORE. Since v0.2.0 a client in the bin refuses it, so
+  // `client_trashed` says how often that new rule gets in the way.
+  const rechazar = (reason: RestoreRejectionReason, error: string) => {
+    trackServer("Transaction Restore Rejected", user.id, { reason }, user.email);
+    return { error };
+  };
+
   // Borrar un movimiento es un update — el borrado es blando — y un update
   // que la política rechaza no da error: afecta a cero filas y se vería como
   // un borrado que funcionó. Por eso se pregunta antes.
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
   // Same explicit ownership check as `deleteMovement` above, and for the same
@@ -288,14 +326,14 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   // money exactly as deleting does.
   const { data: movement, error: fetchError } = await supabase
     .from("movements")
-    .select("id, client_id, sale_id, type, transaction_code, deleted_at, clients!inner(owner_id, trashed_at, deleted_at)")
+    .select("id, client_id, sale_id, type, transaction_code, is_old_debt, deleted_at, clients!inner(owner_id, trashed_at, deleted_at)")
     .eq("id", movementId)
     .eq("clients.owner_id", user.id)
     .not("deleted_at", "is", null)
     .maybeSingle();
 
   if (fetchError || !movement) {
-    return { error: "No encontramos esa transacción eliminada." };
+    return rechazar("not_found", "No encontramos esa transacción eliminada.");
   }
 
   // NOTHING OF A CLIENT IN THE TRASH COMES BACK ON ITS OWN, finding B6 of the
@@ -309,32 +347,49 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   const dueno = movement.clients as unknown as { trashed_at: string | null; deleted_at: string | null };
   const queEs = movement.type === "return" ? "devolución" : "transacción";
   if (dueno.deleted_at) {
-    return { error: `Ese cliente se eliminó, así que esta ${queEs} no se puede restaurar.` };
+    return rechazar("client_deleted", `Ese cliente se eliminó, así que esta ${queEs} no se puede restaurar.`);
   }
   if (dueno.trashed_at) {
-    return { error: `Este cliente está en la papelera. Restáuralo primero y vuelve a restaurar esta ${queEs}.` };
+    return rechazar("client_trashed", `Este cliente está en la papelera. Restáuralo primero y vuelve a restaurar esta ${queEs}.`);
   }
 
   // A RETURN COMES BACK THROUGH ITS OWN FUNCTION, and it can refuse: the same
   // units may have been returned again in the meantime.
+  // DO RESTORES GET USED? The notification is the only way back, so this decides
+  // whether it is enough. Filed under the owner.
+  const registrarRestauracion = () =>
+    trackServer(
+      "Transaction Restored",
+      user.id,
+      {
+        movement_id: movementId,
+        client_id: movement.client_id as string,
+        transaction_type: transactionType(movement.type as string, movement.is_old_debt as boolean),
+        revived_sale: movement.type !== "return" && Boolean(movement.sale_id),
+        source: "notification",
+      },
+      user.email,
+    );
+
   if (movement.type === "return") {
     const { data, error } = await supabase.rpc("restaurar_devolucion", { p_movement_id: movementId });
-    if (error) return { error: mensajeDeError("restaurar la devolución", error, "restoreMovement") };
+    if (error) return rechazar("db_error", mensajeDeError("restaurar la devolución", error, "restoreMovement"));
     const result = data as { ok: boolean; code?: string };
     if (!result.ok) {
-      return {
-        error:
-          result.code === "ya_devuelto"
-            ? "Esas unidades ya se devolvieron otra vez, así que esta devolución no se puede restaurar."
-            : result.code === "fiado_eliminado"
-              ? "Su fiado ya no existe, así que esta devolución no se puede restaurar."
-              : result.code === "ya_no_cabe"
-                ? "Sus fiados ya no deben eso, así que esta devolución no se puede restaurar. Regístrala de nuevo."
-                : "No pudimos restaurar la devolución.",
-      };
+      if (result.code === "ya_devuelto") {
+        return rechazar("already_returned", "Esas unidades ya se devolvieron otra vez, así que esta devolución no se puede restaurar.");
+      }
+      if (result.code === "fiado_eliminado") {
+        return rechazar("fiado_deleted", "Su fiado ya no existe, así que esta devolución no se puede restaurar.");
+      }
+      if (result.code === "ya_no_cabe") {
+        return rechazar("no_longer_fits", "Sus fiados ya no deben eso, así que esta devolución no se puede restaurar. Regístrala de nuevo.");
+      }
+      return rechazar("db_error", "No pudimos restaurar la devolución.");
     }
     revalidatePath("/dashboard");
     revalidatePath(`/clients/${movement.client_id}`);
+    registrarRestauracion();
     return { error: null };
   }
 
@@ -394,20 +449,20 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
   const { data: restauradas, error: restoreError } = await restaurar.select("id");
 
   if (restoreError) {
-    return { error: mensajeDeError("restaurar la transacción", restoreError, "restoreMovement") };
+    return rechazar("db_error", mensajeDeError("restaurar la transacción", restoreError, "restoreMovement"));
   }
   // UN UPDATE QUE NO TOCA NADA NO ES UN ÉXITO. Desde que este filtro es más que
   // un id —el reparto, 2026-10-30— puede dejar de casar, y entonces la pantalla
   // diría «Transacción restaurada» con el dinero todavía fuera del saldo.
   if (!restauradas || restauradas.length === 0) {
-    return { error: "No pudimos restaurar esa transacción. Inténtalo de nuevo." };
+    return rechazar("db_error", "No pudimos restaurar esa transacción. Inténtalo de nuevo.");
   }
 
   const { error: recalcError } = await supabase.rpc("recalc_client_running_balance", {
     p_client_id: movement.client_id,
   });
   if (recalcError) {
-    return { error: mensajeDeError("recalcular el saldo", recalcError, "recalc") };
+    return rechazar("db_error", mensajeDeError("recalcular el saldo", recalcError, "recalc"));
   }
 
   await supabase
@@ -418,6 +473,7 @@ export async function restoreMovement(movementId: string): Promise<{ error: stri
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${movement.client_id}`);
+  registrarRestauracion();
   return { error: null };
 }
 

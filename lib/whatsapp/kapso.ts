@@ -1,4 +1,5 @@
 import "server-only";
+import { trackServer } from "@/lib/mixpanel-server";
 
 // La llamada cruda a Kapso, y nada más. Sin contador, sin reglas de negocio:
 // eso vive en send.ts, que es lo único que debería llamar a este archivo.
@@ -81,11 +82,33 @@ export type ResultadoKapso =
 // `owners.whatsapp` y `clients.whatsapp` lo guardan ya. No hay conversión que
 // escribir — y por eso mismo conviene comprobarlo en el primer envío real en
 // vez de darlo por cierto.
+// «¿Los recibos y avisos salen?» In October 12 of 12 receipts failed and nobody saw it: the
+// shopkeeper's screen said fine and the rejection sat in a `whatsapp_sends` row nobody read.
+// If `failed` appears, a template and the code have drifted apart (see `error_code`, Meta's
+// own number: 132018 was that one). Written from the one function every send goes through, on
+// the server, so it is an exact count and not a floor. Filed under the business, never with
+// the phone number or the message's parameters.
+function reportSend(
+  opciones: { ownerId: string; audience: Audience; plantilla: string },
+  resultado: ResultadoKapso,
+): ResultadoKapso {
+  const errorCode = resultado.ok ? undefined : resultado.error.match(/\b(1\d{5})\b/)?.[1];
+  trackServer("WhatsApp Message Sent", opciones.ownerId, {
+    template: opciones.plantilla,
+    audience: opciones.audience,
+    status: resultado.ok ? "sent" : "failed",
+    ...(errorCode ? { error_code: errorCode } : {}),
+  });
+  return resultado;
+}
+
 export async function enviarPlantilla(opciones: {
   // Sin valor por defecto a propósito: desde qué número sale un mensaje decide
   // qué reputación se arriesga, y eso no puede quedar en manos de una omisión
   // que nadie ve en el sitio de la llamada.
   audience: Audience;
+  // Whose business the message belongs to: what `WhatsApp Message Sent` is filed under.
+  ownerId: string;
   to: string;
   plantilla: string;
   parametrosCuerpo: ParametroPlantilla[];
@@ -155,17 +178,17 @@ export async function enviarPlantilla(opciones: {
   } catch (error) {
     // Red caída, DNS, timeout. El texto se guarda en whatsapp_sends.error y no
     // sale a ninguna respuesta HTTP.
-    return {
+    return reportSend(opciones, {
       ok: false,
       error: error instanceof Error ? error.message : "Error de red.",
       phoneNumberId,
-    };
+    });
   }
 
   const cuerpo = await respuesta.text();
 
   if (!respuesta.ok) {
-    return { ok: false, error: `HTTP ${respuesta.status}: ${cuerpo.slice(0, 500)}`, phoneNumberId };
+    return reportSend(opciones, { ok: false, error: `HTTP ${respuesta.status}: ${cuerpo.slice(0, 500)}`, phoneNumberId });
   }
 
   // El id del mensaje es informativo: sirve para rastrear una entrega con
@@ -173,8 +196,8 @@ export async function enviarPlantilla(opciones: {
   // debe contarse como fallido solo porque no encontramos el id.
   try {
     const json = JSON.parse(cuerpo) as { messages?: { id?: string }[] };
-    return { ok: true, messageId: json.messages?.[0]?.id ?? null, phoneNumberId };
+    return reportSend(opciones, { ok: true, messageId: json.messages?.[0]?.id ?? null, phoneNumberId });
   } catch {
-    return { ok: true, messageId: null, phoneNumberId };
+    return reportSend(opciones, { ok: true, messageId: null, phoneNumberId });
   }
 }

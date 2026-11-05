@@ -434,6 +434,7 @@ export const MANIFEST = {
   // Routes under app/api and what stops a stranger.
   routes: {
     "/api/cron/exchange-rate": "cron",
+    "/api/cron/rate-health": "cron",
     "/api/cron/storage-cleanup": "cron",
     "/api/cron/whatsapp": "cron",
     "/api/cron/whatsapp-cartera-attention": "cron",
@@ -446,6 +447,7 @@ export const MANIFEST = {
     "/api/track": "public",
     "/api/share-contact": "public",
     "/api/share-catalog": "public",
+    "/api/public-event": "public",
   },
 
   buckets: {

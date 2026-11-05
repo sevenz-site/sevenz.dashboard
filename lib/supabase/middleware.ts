@@ -40,7 +40,16 @@ export async function updateSession(request: NextRequest) {
     //
     // La ruta no se fía de que esto la proteja: solo admite un token y emite
     // un nombre de evento fijo. Ver app/api/share-contact/route.ts.
-    request.nextUrl.pathname === "/api/share-contact";
+    request.nextUrl.pathname === "/api/share-contact" ||
+    // The same event family, sent by the same anonymous client. It was missing
+    // from this list from the day the route was added, 2026-10-17, so every
+    // client's tap answered 307 and `Catalog Opened From Share Link` only ever
+    // counted people who happened to be signed in. The route guards itself the
+    // same way: a token in, a fixed event name out.
+    request.nextUrl.pathname === "/api/share-catalog" ||
+    // Every other event from `/s` and `/c`. Same reason, and the route guards itself:
+    // a code from a closed list in, nothing readable out.
+    request.nextUrl.pathname === "/api/public-event";
 
   // A public route's decision doesn't depend on who is asking, so skip the
   // session lookup entirely rather than paying for an answer nothing reads.

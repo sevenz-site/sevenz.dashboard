@@ -1,7 +1,9 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { PauseCircle } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import {
@@ -288,6 +290,13 @@ export function CuentaPausada() {
 // WITH A WAY BACK, on purpose: these flows are full-screen and have no app
 // header, so without the button the owner would be stuck on a dead screen.
 export function PantallaCuentaPausada() {
+  // HOW OFTEN A PAUSED ACCOUNT TRIES TO WORK, AND ON WHAT. It decides when and how to warn
+  // before the block. Filed under the owner.
+  const screen = usePathname();
+  useEffect(() => {
+    track("Account Paused Screen Viewed", { screen });
+  }, [screen]);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <CuentaPausada />

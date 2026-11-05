@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import { track } from "@/lib/mixpanel";
+import { newFlowId } from "@/lib/analytics/flow-client";
+import { useEffect, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
@@ -152,6 +154,22 @@ export function ProductoFlujo({
   const [saving, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // THE PRODUCT FUNNEL. Owner's request of 2026-11-04: *«productos creados y sus
+  // eventos para funnel de creación de un producto»*. The four steps are `useState`
+  // and `Page Viewed` cannot see them. Decides which step to shorten, and whether the
+  // price screen is where people give up. Gestures, so a floor. The count of products
+  // is `Product Created`, on the server, joined by this `flow_id`. Filed under the
+  // owner.
+  const [flujo] = useState(newFlowId);
+  const modo = product != null ? "edit" : "create";
+  const empezado = useRef(false);
+  useEffect(() => {
+    if (empezado.current) return;
+    empezado.current = true;
+    if (product) track("Product Edit Started", { flow_id: flujo, product_id: product.id });
+    else track("Product Creation Started", { flow_id: flujo });
+  }, [flujo, product]);
+
   // ── EL PASO, Y POR QUÉ NO ES UNA RUTA ────────────────────────────────
   //
   // Los cuatro pasos comparten UN formulario: lo que se teclea en el 1 tiene
@@ -215,6 +233,10 @@ export function ProductoFlujo({
     // THE NOTICE CLEARS ON THE WAY FORWARD. Without this, one screen's notice
     // hangs at the foot of the next one — half of what the owner reported.
     setError(null);
+    if (paso < 4) {
+      const step = paso === 1 ? "info" : paso === 2 ? "price" : "details";
+      track("Product Step Completed", { flow_id: flujo, mode: modo, step });
+    }
     setPaso((p) => Math.min(4, p + 1) as 1 | 2 | 3 | 4);
   }
 
@@ -604,9 +626,10 @@ export function ProductoFlujo({
   function save() {
     setError(null);
     startTransition(async () => {
+      const conFlujo = { ...input, analitica: { flowId: flujo, source: "wizard" as const } };
       const result = editing
-        ? await updateProduct(product!.id, input)
-        : await createProduct(input);
+        ? await updateProduct(product!.id, conFlujo)
+        : await createProduct(conFlujo);
 
       if (result.error) {
         if (avisarCuentaPausada(result.error)) return;

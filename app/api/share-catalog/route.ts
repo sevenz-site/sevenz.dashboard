@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       return new NextResponse(null, { status: 204 });
     }
 
-    const owner = data as { owner_id: string; owner_email: string | null } | null;
+    const owner = data as { owner_id: string; owner_email: string | null; client_id?: string } | null;
     // An unknown token resolves to null. Nothing is recorded: an event filed
     // under a guessed owner is worse than a missing one.
     if (!owner?.owner_id) return new NextResponse(null, { status: 204 });
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     trackServer(
       "Catalog Opened From Share Link",
       owner.owner_id,
-      { surface: "shared_balance" },
+      { surface: "shared_balance", ...(owner.client_id ? { client_id: owner.client_id } : {}) },
       owner.owner_email,
     );
   } catch (e) {

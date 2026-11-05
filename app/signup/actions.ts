@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
@@ -53,11 +54,18 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     referral_source: referralSource,
   };
 
+  // WHICH VALIDATION LOSES SOMEONE WHO WANTED IN. There is no user yet, so these go
+  // under one fixed id: they count reasons, not people.
+  const rechazar = (reason: string, error: string) => {
+    trackServer("Signup Rejected", "anonymous-signup", { reason });
+    return { error, success: false, values };
+  };
+
   if (!businessName || !firstName || !lastName || !whatsapp || !email || !password) {
-    return { error: "Completa todos los campos.", success: false, values };
+    return rechazar("fields_missing", "Completa todos los campos.");
   }
   if (country !== "CO" && country !== "VE") {
-    return { error: "Selecciona un país válido.", success: false, values };
+    return rechazar("country_invalid", "Selecciona un país válido.");
   }
   // Re-checked here even though the form disables submit until it is answered
   // — a raw POST to this action must not be able to skip it, same reason the
@@ -65,22 +73,22 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   // rather than stored: the trigger would drop it to null anyway, and the
   // owner would have "answered" a question the data never received.
   if (!isReferralSource(referralSource)) {
-    return { error: "Dinos cómo conociste Sevenz.", success: false, values };
+    return rechazar("referral_missing", "Dinos cómo conociste Sevenz.");
   }
   // Matches the password policy set in Supabase Auth (Sign In / Providers →
   // Email → "Password requirements") — checked here too so a mismatch is a
   // friendly Spanish message instead of Supabase's own raw rejection.
   const passwordError = validatePasswordComplexity(password);
   if (passwordError) {
-    return { error: passwordError, success: false, values };
+    return rechazar("password_weak", passwordError);
   }
   if (password !== confirmPassword) {
-    return { error: "Las contraseñas no coinciden.", success: false, values };
+    return rechazar("password_mismatch", "Las contraseñas no coinciden.");
   }
   // Re-checked here even though the form disables submit until this is
   // checked — a raw POST to this action must not be able to skip it.
   if (!acceptedTerms) {
-    return { error: "Debes aceptar los Términos y condiciones.", success: false, values };
+    return rechazar("terms_missing", "Debes aceptar los Términos y condiciones.");
   }
 
   const supabase = await createClient();
@@ -142,7 +150,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
     // Y esta pantalla no pide sesión, así que además era la única excepción que
     // se saltaba la regla de `CLAUDE.md` sobre no filtrar errores crudos en
     // superficies sin autenticar.
-    return { error: mensajeDeError("crear tu cuenta", error, "signup"), success: false, values };
+    return rechazar("auth_error", mensajeDeError("crear tu cuenta", error, "signup"));
   }
 
   // Supabase returns no error for a duplicate email when email confirmation is
@@ -150,6 +158,18 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
   // creating a new identity. That's the only signal we get, so check for it.
   if (data.user && data.user.identities && data.user.identities.length === 0) {
     return { error: "Ese correo ya tiene una cuenta.", success: false, alreadyRegistered: true, values };
+  }
+
+  // HOW MANY BUSINESSES SIGN UP, AND FROM WHERE. There was no way to read activation:
+  // nothing fired before the first screen inside the app. It decides which channel to
+  // keep. On the server because the browser has no session yet, and `/api/track`
+  // answers 307 here. Filed under the new owner's id.
+  if (data.user) {
+    trackServer("Signup Completed", data.user.id, {
+      country,
+      referral_source: referralSource,
+      email_confirmation_required: !data.session,
+    });
   }
 
   if (data.session) {

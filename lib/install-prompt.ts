@@ -1,3 +1,5 @@
+import { track } from "@/lib/mixpanel";
+
 // Saber si Sevenz se puede instalar en este teléfono, y si conviene ofrecerlo.
 //
 // La app es instalable desde agosto —manifest, service worker e iconos están
@@ -43,6 +45,9 @@ export function capturarEventoDeInstalacion() {
   });
   // Deja de ofrecerse en cuanto se instala, sin esperar a recargar.
   window.addEventListener("appinstalled", () => {
+    // THE ONLY REAL INSTALL SIGNAL ON ANDROID. iPhone sends nothing: there, `App Opened
+    // Installed` is the one. Filed under the owner.
+    track("App Installed", {});
     diferido = null;
     avisar();
   });
@@ -65,6 +70,9 @@ export async function instalar(): Promise<boolean> {
   avisar();
   await evento.prompt();
   const { outcome } = await evento.userChoice;
+  // WHAT THEY ANSWERED. `Install Prompt Accepted` fires before this dialog opens, so its
+  // name promises more than it knows; this is the answer.
+  track("Install Prompt Result", { outcome });
   return outcome === "accepted";
 }
 

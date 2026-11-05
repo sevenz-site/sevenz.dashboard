@@ -18,11 +18,21 @@ export default async function NuevaVentaPage({
   // SIN ÉL TAMBIÉN SE ENTRA, y esa es la novedad del 2026-10-18: se empieza
   // directamente por el producto y no se pregunta a quién hasta el paso 3, y
   // solo si algo queda fiado. Una venta de contado no necesita cliente.
-  searchParams: Promise<{ cliente?: string }>;
+  searchParams: Promise<{ cliente?: string; desde?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const { cliente: clienteId } = await searchParams;
+  const { cliente: clienteId, desde } = await searchParams;
+  // WHERE THE SALE STARTED. `?cliente=` alone does not say: the profile, a new client
+  // and a payment with no fiados all set it. Only for the funnels.
+  const entryPoint =
+    desde === "perfil"
+      ? "client_profile"
+      : desde === "nuevo_cliente"
+        ? "new_client"
+        : desde === "abono"
+          ? "payment_no_fiados"
+          : "register";
   const supabase = await createClient();
   const {
     data: { user },
@@ -97,6 +107,7 @@ export default async function NuevaVentaPage({
     if (data) {
       return (
         <NuevaVenta
+          entryPoint={entryPoint}
           umbralDeStock={umbralDeStock}
           clientes={clientes}
           inicial={{
@@ -115,6 +126,7 @@ export default async function NuevaVentaPage({
 
   return (
     <NuevaVenta
+      entryPoint={entryPoint}
       umbralDeStock={umbralDeStock}
       clientes={clientes}
       inicial={null}

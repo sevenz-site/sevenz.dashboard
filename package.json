@@ -104,6 +104,8 @@
     "qa:sesiones": "node qa/sesiones.mjs",
     "qa:storage-cleanup": "node qa/storage-cleanup.mjs",
     "qa:sale-rollback": "node qa/sale-rollback.mjs",
+    "qa:eventos-montos": "node --experimental-strip-types --no-warnings qa/eventos-montos.mjs",
+    "qa:eventos": "node qa/eventos-transacciones.mjs",
     "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs"
   },
   "dependencies": {

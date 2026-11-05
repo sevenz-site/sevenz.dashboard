@@ -1,5 +1,6 @@
 "use client";
 
+import { newFlowId } from "@/lib/analytics/flow-client";
 import { useCallback, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { fileToResizedDataUrlForOcr } from "@/lib/image";
@@ -46,6 +47,7 @@ export function ImportProvider({
   children: ReactNode;
 }) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [usage, setUsage] = useState<ImportUsage>(initialUsage);
 
   const updateJob = useCallback((id: string, patch: Partial<ImportJob>) => {
@@ -56,6 +58,17 @@ export function ImportProvider({
     (files: File[]) => {
       const selected = files.slice(0, MAX_IMPORT_PHOTOS);
       if (selected.length === 0) return;
+
+      // ONE ID PER BATCH, so the photos, the review and each client saved can be read
+      // as one attempt. Owner's request of 2026-11-04: *«Subir libreta: con su
+      // respectivo funnel»*. `photos_dropped` is here because the cap cuts silently.
+      const batch = newFlowId();
+      setBatchId(batch);
+      track("Import Photos Selected", {
+        batch_id: batch,
+        photos_count: selected.length,
+        photos_dropped: files.length - selected.length,
+      });
 
       // Aquí se recortaba la selección al cupo que quedaba del mes. Sin tope
       // desde el 2026-09-28, lo único que sigue limitando es MAX_IMPORT_PHOTOS
@@ -79,6 +92,7 @@ export function ImportProvider({
           const file = selected[i];
           const job = newJobs[i];
           updateJob(job.id, { status: "processing" });
+          let httpStatus: number | null = null;
           try {
             const dataUrl = await fileToResizedDataUrlForOcr(file);
             const response = await fetch("/api/extract", {
@@ -87,10 +101,17 @@ export function ImportProvider({
               body: JSON.stringify({ image: dataUrl }),
             });
             const data = await response.json();
+            httpStatus = response.status;
             if (!response.ok) throw new Error(data.error ?? "No pudimos leer la foto.");
             const movements = data.movements ?? [];
             updateJob(job.id, { status: "done", movements });
-            track("Import Photo Processed", { movements_count: movements.length });
+            track("Import Photo Processed", {
+              movements_count: movements.length,
+              batch_id: batch,
+              model: data.modelo ?? null,
+              degraded: data.degradado === true,
+              empty_result: movements.length === 0,
+            });
             void recordImportNotification({
               fileName: job.fileName,
               status: "done",
@@ -114,7 +135,9 @@ export function ImportProvider({
             // para quien está intentando subir su libreta.
             console.error("extract:", error);
             updateJob(job.id, { status: "error", error: message });
-            track("Import Photo Failed", { error: message });
+            // `error_code` and not only `error`: that one is a sentence and cannot be
+            // grouped. Kept because it is what the series has had since August.
+            track("Import Photo Failed", { error: message, error_code: httpStatus ?? "network", batch_id: batch });
             void recordImportNotification({
               fileName: job.fileName,
               status: "error",
@@ -143,7 +166,7 @@ export function ImportProvider({
   const isProcessing = jobs.some((j) => j.status === "queued" || j.status === "processing");
 
   return (
-    <ImportContext.Provider value={{ jobs, isProcessing, usage, startImport, removeJob, clearJobs }}>
+    <ImportContext.Provider value={{ batchId, jobs, isProcessing, usage, startImport, removeJob, clearJobs }}>
       {children}
     </ImportContext.Provider>
   );

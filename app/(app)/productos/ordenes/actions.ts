@@ -1,5 +1,6 @@
 "use server";
 
+import { flowContext, type FlowInput } from "@/lib/analytics/amounts";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 // LAS DOS SALEN DE `lib/` DESDE EL 2026-10-26, cuando `eliminarVenta` --que
@@ -93,6 +94,8 @@ export type PagoDeMonedaEntrada = {
 };
 
 export type RegistroDePedidoEntrada = {
+  // Which attempt this is. Only for the funnels.
+  analitica?: FlowInput;
   pedidoId: string;
   // WHICH BLOCK IS BEING REGISTERED. Everything else in the order is left
   // alone, including lines the shopkeeper has not got to yet.
@@ -133,7 +136,32 @@ export type ResultadoRegistroDePedido =
     }
   | { ok: false; error: string };
 
+// WHAT STOPS AN ORDER FROM BECOMING A SALE. A refusal that comes from the sale itself
+// also leaves `Sale Rejected` with its reason, under `origin = catalog_order`; this
+// one counts every door, the client and the order included, and its text is never
+// sent because it can name a product. Filed under the owner.
 export async function registrarPedidoComoVenta(
+  entrada: RegistroDePedidoEntrada,
+): Promise<ResultadoRegistroDePedido> {
+  const resultado = await registrarElPedido(entrada);
+  if (!resultado.ok) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      trackServer(
+        "Order Registration Rejected",
+        user.id,
+        { ...flowContext(entrada.analitica), order_id: entrada.pedidoId, currency: String(entrada.moneda ?? "") },
+        user.email,
+      );
+    }
+  }
+  return resultado;
+}
+
+async function registrarElPedido(
   entrada: RegistroDePedidoEntrada,
 ): Promise<ResultadoRegistroDePedido> {
   const supabase = await createClient();
@@ -375,6 +403,7 @@ export async function registrarPedidoComoVenta(
     pagos,
     credito,
     pedidoId: pedido.id,
+    analitica: entrada.analitica,
   });
 
   if (!resultado.ok) {
@@ -445,6 +474,21 @@ export async function registrarPedidoComoVenta(
   // escribirse en toda la app; las filas viejas que los tengan siguen
   // contando como pendientes, porque `isUnregistered` pregunta por
   // «registered» y no por «new».
+  // HOW MANY ORDERS STAY HALF DONE. `Catalog Order Registered` only sees the whole
+  // order closing, so a two-currency order with one registered was invisible.
+  trackServer(
+    "Order Currency Registered",
+    user.id,
+    {
+      ...flowContext(entrada.analitica),
+      order_id: pedido.id,
+      sale_id: resultado.saleId,
+      currency: moneda,
+      currencies_left: pendientes.length,
+    },
+    user.email,
+  );
+
   if (pendientes.length === 0) {
     const registradoEl = new Date().toISOString();
     const { error: errorSello } = await supabase
@@ -599,6 +643,7 @@ async function registrarAnalitica(
       ownerId,
       {
         order_id: datos.pedidoId,
+        closed_by: "registered",
         ventas: ids.length,
         monedas: totales.size,
         forma,
@@ -814,6 +859,15 @@ export async function quitarLineaDelPedido(
       console.error("[pedido] sello al quitar linea:", errorSello.message, { pedidoId: pedido.id });
     } else {
       pedidoCerrado = true;
+      // AN ORDER CAN ALSO CLOSE BY REMOVING ITS LAST PENDING PART, and until now
+      // that closure counted nowhere. Same event, with a smaller shape: no totals are
+      // computed for a closure that registered nothing new.
+      trackServer(
+        "Catalog Order Registered",
+        user.id,
+        { order_id: pedido.id, closed_by: "last_part_removed" },
+        user.email,
+      );
     }
   }
 
@@ -937,6 +991,15 @@ export async function quitarMonedaDelPedido(
       });
     } else {
       pedidoCerrado = true;
+      // AN ORDER CAN ALSO CLOSE BY REMOVING ITS LAST PENDING PART, and until now
+      // that closure counted nowhere. Same event, with a smaller shape: no totals are
+      // computed for a closure that registered nothing new.
+      trackServer(
+        "Catalog Order Registered",
+        user.id,
+        { order_id: pedido.id, closed_by: "last_part_removed" },
+        user.email,
+      );
     }
   }
 
@@ -1067,6 +1130,9 @@ export async function descartarPedido(
   // EL CONTADOR DE LA CAMPANA Y LA LISTA SE REHACEN. `layout` y no la ruta
   // sola: el número vive en la cabecera, que es otro árbol.
   revalidatePath("/", "layout");
+  // HOW MANY ORDERS ARE THROWN AWAY. Many point at prices or stock that were out of
+  // date when the customer asked. Filed under the owner.
+  trackServer("Order Status Changed", user.id, { order_id: pedidoId, action: "discard" }, user.email);
   return { ok: true };
 }
 
@@ -1116,5 +1182,6 @@ export async function restaurarPedido(
   }
 
   revalidatePath("/", "layout");
+  trackServer("Order Status Changed", user.id, { order_id: pedidoId, action: "restore" }, user.email);
   return { ok: true };
 }

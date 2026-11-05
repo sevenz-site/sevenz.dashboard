@@ -10,6 +10,7 @@ import {
 import { findOrderClient, partirDocumento } from "@/lib/orders/order-client-match";
 import { OrderClientMatchAlert } from "@/components/dashboard/order-client-card";
 import { OrderDraftReset } from "@/components/dashboard/order-draft-reset";
+import { OrderContactLink } from "@/components/dashboard/order-contact-link";
 import { OrderMoreMenu } from "@/components/dashboard/order-more-menu";
 import { OrderCurrencyRestoreCard } from "@/components/dashboard/order-currency-restore-card";
 import { bloquesDeMoneda } from "@/lib/orders/bloques-de-moneda";
@@ -427,10 +428,9 @@ export default async function OrdenPage({
           cart always composes one, so a real order has it; the raw number
           sits two lines above for the shopkeeper to compare. */}
       {whatsappDigits ? (
-        <a
+        <OrderContactLink
+          orderId={pedido.id}
           href={`https://wa.me/${whatsappDigits}?text=${encodeURIComponent(mensajeWhatsapp)}`}
-          target="_blank"
-          rel="noopener noreferrer"
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
         >
           Contactar vía WhatsApp
@@ -438,7 +438,7 @@ export default async function OrdenPage({
               the one on `/s/[token]`: the same deal seen from both sides, and
               mirroring them read as two different things. */}
           <WhatsappIcon className="size-4" />
-        </a>
+        </OrderContactLink>
       ) : null}
 
       {/* SUBTOTALS PER CURRENCY, NEVER ONE FIGURE. The owner's decision 4 of

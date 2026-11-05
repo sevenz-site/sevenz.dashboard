@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -110,6 +111,10 @@ export function ProductShareButton({
     // cliente recibe el enlace en un chat donde ya hay veinte enlaces, y «Mira
     // esto» sin decir de quién es no se abre.
     const mensaje = `${productName} en ${businessName}: ${url}`;
+
+    // WHOLE CATALOGUE OR SINGLE PRODUCTS? `sinServidor` is the customer's own screen,
+    // which has no session to send this with. Filed under the owner.
+    if (!sinServidor) track("Product Link Shared", { product_id: productId });
 
     if (navigator.share) {
       try {

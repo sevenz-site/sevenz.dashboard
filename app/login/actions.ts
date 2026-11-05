@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,11 +15,15 @@ export async function login(_prevState: AuthState, formData: FormData): Promise<
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     return { error: "Correo o contraseña incorrectos.", email };
   }
+
+  // HOW MANY COME BACK, and how many who signed up ever reach the app. Filed under the
+  // owner.
+  if (data.user) trackServer("Login Completed", data.user.id, {}, data.user.email);
 
   redirect("/dashboard");
 }

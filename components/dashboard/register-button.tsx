@@ -74,7 +74,7 @@ export function RegisterButton() {
         <Plus className="size-4" aria-hidden="true" />
         Registrar
       </Button>
-      <RegisterSheet open={abierta} onOpenChange={setAbierta} />
+      <RegisterSheet open={abierta} onOpenChange={setAbierta} surface="desktop_button" />
     </>
   );
 }

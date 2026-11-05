@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
@@ -179,7 +180,17 @@ export function ImportFlow({
   const showCurrency = ownerCountry === "VE";
   // Narrowed once here: the page hands this down as a plain string.
   const country: OwnerCountry = ownerCountry === "VE" ? "VE" : "CO";
-  const { jobs, isProcessing, startImport, removeJob, clearJobs } = useImportJobs();
+  const { jobs, isProcessing, startImport, removeJob, clearJobs, batchId } = useImportJobs();
+
+  // THE FIRST STEP OF THE NOTEBOOK FUNNEL. Every step below carries `batch_id`, which
+  // the provider creates when the photos are chosen. Gestures, so a floor; what was
+  // saved is `Import Confirmed`, on the server. Filed under the owner.
+  const contadoAlEntrar = useRef(false);
+  useEffect(() => {
+    if (contadoAlEntrar.current) return;
+    contadoAlEntrar.current = true;
+    track("Import Started", {});
+  }, []);
   const [confirming, setConfirming] = useState(false);
 
   // EL PERMISO DE WHATSAPP POR PERSONA (MS-34, tercer camino). La casilla vive
@@ -244,6 +255,12 @@ export function ImportFlow({
   // y separarlos es cómo uno se queda desincronizado: una barra escondida sin
   // nada que revisar, o un aviso de "sin guardar" cuando ya se guardó.
   function abrirRevision(movimientos: ExtractedMovement[]) {
+    track("Import Review Opened", {
+      batch_id: batchId ?? undefined,
+      rows_count: movimientos.length,
+      photos_ok: jobs.filter((j) => j.status === "done").length,
+      photos_failed: jobs.filter((j) => j.status === "error").length,
+    });
     setReviewMovements(movimientos);
     setRevisando(true);
     setDirty(true, undefined, consumirCentinela, TEXTO_SALIR_DE_LA_REVISION);
@@ -1653,6 +1670,8 @@ export function ImportFlow({
   async function subirClientes(nameKeys: string[], desdeDetalle = false) {
     if (guardia()) return;
     if (nameKeys.length === 0) return;
+    const door = desdeDetalle ? "detail" : "list";
+    track("Import Upload Tapped", { batch_id: batchId ?? undefined, door, clients_selected: nameKeys.length });
     setConfirming(true);
     const hechos: string[] = [];
     let movimientos = 0;
@@ -1665,6 +1684,7 @@ export function ImportFlow({
           desdeDetalle
             ? { seMostro: true, acepta: permisoLibreta[nameKey] === true }
             : undefined,
+          { batchId, door },
         );
         if (result.error) {
           // Se para en el primero que falla: seguir con los demas dejaria al
@@ -1698,6 +1718,12 @@ export function ImportFlow({
     // igual que antes. Si queda gente, NO se navega: el dueno sigue en la lista
     // con lo que falta.
     const quedan = clientesRevisados.some((c) => !subidosAhora.has(c.nameKey));
+    // THE GOAL OF THE FUNNEL: a notebook is finished when no client is left out.
+    track("Import Batch Finished", {
+      batch_id: batchId ?? undefined,
+      clients_uploaded: subidosAhora.size,
+      clients_left: clientesRevisados.filter((c) => !subidosAhora.has(c.nameKey)).length,
+    });
     if (quedan) {
       toast.success(
         `${movimientos} ${movimientos === 1 ? "transacción importada" : "transacciones importadas"}. Sigue con el resto.`,
@@ -1928,6 +1954,7 @@ export function ImportFlow({
               // todavía no hay nada ajustado a mano que pisar. Pasarle la
               // casilla haría que una reapertura posterior borrase correcciones
               // sin que nadie lo pidiera en esta pantalla.
+              track("Import Currency Chosen", { batch_id: batchId ?? undefined, choice: String(moneda) });
               applyCurrencyToAll(moneda);
               setModalMoneda(false);
             }}
@@ -2352,8 +2379,12 @@ export function ImportFlow({
       {borrador && !borradorDescartado && !reviewMovements && !hasJobs ? (
         <AvisoDeBorrador
           borrador={borrador}
-          onSeguir={retomarBorrador}
+          onSeguir={() => {
+            track("Import Draft Answered", { choice: "resume" });
+            retomarBorrador();
+          }}
           onDescartar={() => {
+            track("Import Draft Answered", { choice: "discard" });
             olvidarRevision();
             setBorradorDescartado(true);
           }}

@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TourTooltip } from "@/components/dashboard/tour-tooltip";
@@ -140,6 +141,14 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   }, [showing]);
 
   function finish() {
+    // IS THE TOUR FINISHED OR SKIPPED, AND WHERE? It decides whether it gets shorter.
+    // Filed under the owner.
+    const ultimo = step === null ? -1 : stepOrder.indexOf(step);
+    track("Tour Finished", {
+      outcome: ultimo === stepOrder.length - 1 ? "completed" : "skipped",
+      last_step: ultimo + 1,
+      steps_total: stepOrder.length,
+    });
     setStep(null);
     void completeOnboarding();
   }

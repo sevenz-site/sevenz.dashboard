@@ -1,6 +1,9 @@
 "use server";
 
 import { after } from "next/server";
+import { trackServer } from "@/lib/mixpanel-server";
+import { flowContext, moneyProps, settlesDebt, type FlowInput } from "@/lib/analytics/amounts";
+import type { PaymentRejectionReason } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { enviarReciboAlCliente, enviarReciboDeGrupo } from "@/lib/whatsapp/recibo-cliente";
@@ -58,6 +61,8 @@ import { formatBs } from "@/lib/exchange-rate/format";
 // copiado sería lo peligroso; esto es lo que queda.
 
 export type AbonoDirigidoEntrada = {
+  // Which attempt this is and where it started. Only for the funnels.
+  analitica?: FlowInput;
   // El fiado al que va. Llega del navegador, así que se comprueba entero.
   fiadoId: string;
   // Lo que el tendero escribió, en la moneda que eligió.
@@ -94,10 +99,18 @@ export async function registrarAbonoDirigido(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
 
+  const flujo = flowContext(entrada.analitica);
+  // WHY A PAYMENT DID NOT SAVE. See `Sale Rejected` in `ventas/actions.ts`: same
+  // question, same reasons to ask it.
+  const rechazar = (reason: PaymentRejectionReason, error: string): AbonoDirigidoResultado => {
+    trackServer("Payment Rejected", user.id, { ...flujo, mode: "directed", reason }, user.email);
+    return { ok: false, error };
+  };
+
   // La cuenta pausada se para aquí, antes de tocar nada. Un insert rechazado
   // por la política vuelve como «new row violates row-level security policy»,
   // que no se le puede enseñar a nadie.
-  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  if (!(await puedeEscribir(supabase, user.id))) return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
 
   // ── EL FIADO, Y LA PROPIEDAD COMPROBADA A TRAVÉS DEL CLIENTE ────────
   const { data: fiado } = await supabase
@@ -109,11 +122,11 @@ export async function registrarAbonoDirigido(
 
   const cliente = fiado?.clients as unknown as { id: string; name: string; owner_id: string } | null;
   if (!fiado || !cliente || cliente.owner_id !== user.id) {
-    return { ok: false, error: "No encontramos ese fiado." };
+    return rechazar("fiado_not_found", "No encontramos ese fiado.");
   }
   // Un abono no tiene a qué abonar. Llegar aquí con el id de uno solo puede ser
   // una petición escrita a mano.
-  if (fiado.type !== "charge") return { ok: false, error: "No encontramos ese fiado." };
+  if (fiado.type !== "charge") return rechazar("fiado_not_found", "No encontramos ese fiado.");
 
   // ── CUÁNTO LE QUEDA A ESE FIADO ─────────────────────────────────────
   //
@@ -131,7 +144,7 @@ export async function registrarAbonoDirigido(
   // REGLA DEL DUEÑO, 2026-10-19: *«se permite solo si ese fiado aún tiene saldo
   // pendiente por abonar, si no, no se permite»*.
   if (!abierto || Number(abierto.pending) <= HOLGURA) {
-    return { ok: false, error: "Ese fiado ya está saldado." };
+    return rechazar("fiado_settled", "Ese fiado ya está saldado.");
   }
   const pendiente = Number(abierto.pending);
 
@@ -144,7 +157,7 @@ export async function registrarAbonoDirigido(
     libro,
     entrada.usarPrevista === true,
   );
-  if (!resolucion.ok) return { ok: false, error: resolucion.error };
+  if (!resolucion.ok) return rechazar("rate_missing", resolucion.error);
   const sello = resolucion.snapshot;
 
   // Los bolívares se convierten con la MISMA tasa que se acaba de sellar —la
@@ -155,13 +168,13 @@ export async function registrarAbonoDirigido(
   let entryCurrency: "VES" | LedgerCurrency | null = sello.entryCurrency;
   if (entrada.monedaTecleada === "VES" && libro) {
     const convertido = convertirDesdeBolivares(monto, libro, sello);
-    if ("error" in convertido) return { ok: false, error: convertido.error };
+    if ("error" in convertido) return rechazar("conversion_failed", convertido.error);
     monto = convertido.monto;
     entryAmount = convertido.entryAmount;
     entryCurrency = "VES";
   }
 
-  if (!(monto > 0)) return { ok: false, error: "Escribe cuánto te pagó." };
+  if (!(monto > 0)) return rechazar("invalid_amount", "Escribe cuánto te pagó.");
 
   // REGLA DEL DUEÑO, 2026-10-19: *«no debe permitir abonar más de lo que debe,
   // pero sí puede abonar parcial»*. El tope es ESE fiado, no la deuda total.
@@ -170,10 +183,10 @@ export async function registrarAbonoDirigido(
   // tendero escribe bolívares y el fiado debe dólares, así que comparar antes
   // sería comparar dos monedas.
   if (monto - pendiente > HOLGURA) {
-    return {
-      ok: false,
-      error: `Ese fiado solo debe ${formatPriceAmount(pendiente, (libro ?? "COP") as PriceCurrency)}. Escribe esa cantidad o menos.`,
-    };
+    return rechazar(
+      "exceeds_fiado",
+      `Ese fiado solo debe ${formatPriceAmount(pendiente, (libro ?? "COP") as PriceCurrency)}. Escribe esa cantidad o menos.`,
+    );
   }
 
   const { data: creado, error: errorInsert } = await supabase
@@ -203,7 +216,7 @@ export async function registrarAbonoDirigido(
 
   if (errorInsert || !creado) {
     console.error("[abono] insert:", errorInsert?.message);
-    return { ok: false, error: "No pudimos guardar el abono. Vuelve a intentarlo." };
+    return rechazar("db_error", "No pudimos guardar el abono. Vuelve a intentarlo.");
   }
 
   // ── EL PERMISO DE WHATSAPP, SI LO PIDIÓ ─────────────────────────────
@@ -220,6 +233,7 @@ export async function registrarAbonoDirigido(
         ownerId: user.id,
         clientName: cliente.name,
         source: "owner_movement_form",
+        flow: "payment",
         seMostro: entrada.permisoMostrado !== false,
         acepta: entrada.avisarPorWhatsapp === true,
       });
@@ -258,6 +272,32 @@ export async function registrarAbonoDirigido(
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${cliente.id}`);
+
+  // HOW MANY PAYMENTS EACH BUSINESS RECORDS AND FOR HOW MUCH. With `Sale
+  // Completed` it answers whether a business collects more than it lends. Owner's
+  // request of 2026-11-04: *«Todas las transacciones deben tener eventos»*. Once
+  // per payment, here and not on the success screen, which can be reloaded. Filed
+  // under the owner.
+  trackServer(
+    "Payment Recorded",
+    user.id,
+    {
+      ...flujo,
+      movement_id: idDelAbono,
+      client_id: cliente.id,
+      mode: "directed",
+      lines: 1,
+      ...moneyProps("amount", [[libro, monto]]),
+      entry_currency: entryCurrency,
+      crosses_books: false,
+      settles_debt: settlesDebt(
+        (abiertos ?? []) as { currency?: string | null; pending?: number }[],
+        new Map([[libro, monto]]),
+      ),
+      consent_declared: entrada.avisarPorWhatsapp === true,
+    },
+    user.email,
+  );
 
   return { ok: true, movementId: idDelAbono, clientId: cliente.id };
 }
@@ -302,6 +342,8 @@ export async function registrarAbonoDirigido(
 // juntos; aquí es un movimiento que casualmente ocupa varias filas.
 
 export type AbonoRepartidoEntrada = {
+  // Which attempt this is and where it started. Only for the funnels.
+  analitica?: FlowInput;
   clienteId: string;
   // El libro en el que se reparte. `null` es el de pesos: un negocio
   // colombiano. Una sola moneda por reparto — decisión del dueño del
@@ -361,6 +403,15 @@ export type AbonoRepartidoResultado =
 // código crudo en pantalla no le dice nada a un tendero, y la regla de
 // `CLAUDE.md` sobre no filtrar detalle interno vale igual aunque esta puerta
 // exija sesión: «fiado_ajeno» no es un mensaje, es una pista.
+const REASON_OF_RPC_CODE: Record<string, PaymentRejectionReason> = {
+  excede_el_fiado: "exceeds_fiado",
+  fiado_saldado: "fiado_settled",
+  monedas_mezcladas: "mixed_currencies",
+  fiado_repetido: "duplicate_fiado",
+  fiado_ajeno: "fiado_not_found",
+  cuenta_pausada: "paused_account",
+};
+
 function mensajeDelCodigo(
   code: string | undefined,
   pendiente?: number,
@@ -650,7 +701,14 @@ export async function registrarAbonoRepartido(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
 
-  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  const flujo = flowContext(entrada.analitica);
+  // WHY A PAYMENT DID NOT SAVE. See `Sale Rejected` in `ventas/actions.ts`.
+  const rechazar = (reason: PaymentRejectionReason, error: string): AbonoRepartidoResultado => {
+    trackServer("Payment Rejected", user.id, { ...flujo, mode: "split", reason }, user.email);
+    return { ok: false, error };
+  };
+
+  if (!(await puedeEscribir(supabase, user.id))) return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
 
   // LA PROPIEDAD, EXPLÍCITA. El id llega del navegador; la regla de
   // `CLAUDE.md` es que la política es el respaldo y esto es el candado. La
@@ -662,7 +720,7 @@ export async function registrarAbonoRepartido(
     .eq("owner_id", user.id)
     .is("trashed_at", null)
     .maybeSingle();
-  if (!cliente) return { ok: false, error: "No encontramos ese cliente." };
+  if (!cliente) return rechazar("client_not_found", "No encontramos ese cliente.");
 
   // ── LOS FIADOS ABIERTOS, DE LA MISMA FUNCIÓN QUE LA PANTALLA ────────
   const { data: abiertos, error: errorAbiertos } = await supabase.rpc(
@@ -671,7 +729,7 @@ export async function registrarAbonoRepartido(
   );
   if (errorAbiertos) {
     console.error("[abono repartido] get_open_charges_for_client:", errorAbiertos.message);
-    return { ok: false, error: "No pudimos leer los fiados de este cliente." };
+    return rechazar("fiados_unreadable", "No pudimos leer los fiados de este cliente.");
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -697,7 +755,7 @@ export async function registrarAbonoRepartido(
       entrada,
       (abiertos ?? []) as Record<string, unknown>[],
     );
-    if ("error" in armado) return { ok: false, error: armado.error };
+    if ("error" in armado) return rechazar("split_invalid", armado.error);
     lineasRpc = armado.lineas;
     totalDelResultado = armado.totalBs;
     totalEnBolivares = true;
@@ -714,7 +772,7 @@ export async function registrarAbonoRepartido(
     }));
 
   if (delLibro.length === 0) {
-    return { ok: false, error: "Este cliente no tiene fiados abiertos en esa moneda." };
+    return rechazar("no_open_fiados", "Este cliente no tiene fiados abiertos en esa moneda.");
   }
 
   // ── LA TASA, SELLADA ANTES DE CONVERTIR NADA ────────────────────────
@@ -724,7 +782,7 @@ export async function registrarAbonoRepartido(
     entrada.libro,
     entrada.usarPrevista === true,
   );
-  if (!resolucion.ok) return { ok: false, error: resolucion.error };
+  if (!resolucion.ok) return rechazar("rate_missing", resolucion.error);
   const sello = resolucion.snapshot;
 
   let total = entrada.montoTecleado;
@@ -732,13 +790,13 @@ export async function registrarAbonoRepartido(
   let entryCurrency: "VES" | LedgerCurrency | null = sello.entryCurrency;
   if (entrada.monedaTecleada === "VES" && entrada.libro) {
     const convertido = convertirDesdeBolivares(total, entrada.libro, sello);
-    if ("error" in convertido) return { ok: false, error: convertido.error };
+    if ("error" in convertido) return rechazar("conversion_failed", convertido.error);
     total = convertido.monto;
     tecleadoEnBs = convertido.entryAmount;
     entryCurrency = "VES";
   }
 
-  if (!(total > 0)) return { ok: false, error: "Escribe cuánto te pagó." };
+  if (!(total > 0)) return rechazar("invalid_amount", "Escribe cuánto te pagó.");
 
   // EL TOPE DEL TOTAL. Decisión del dueño del 2026-10-21: *«El abono no puede
   // exceder el saldo total de lo que ese cliente debe»*. Se comprueba DESPUÉS
@@ -746,10 +804,10 @@ export async function registrarAbonoRepartido(
   // y los fiados deben dólares.
   const deuda = deudaDelLibro(delLibro);
   if (total - deuda > HOLGURA) {
-    return {
-      ok: false,
-      error: `Te debe ${formatPriceAmount(deuda, (entrada.libro ?? "COP") as PriceCurrency)} en esta moneda. Escribe esa cantidad o menos.`,
-    };
+    return rechazar(
+      "exceeds_debt",
+      `Te debe ${formatPriceAmount(deuda, (entrada.libro ?? "COP") as PriceCurrency)} en esta moneda. Escribe esa cantidad o menos.`,
+    );
   }
 
   // ── EL REPARTO ──────────────────────────────────────────────────────
@@ -781,13 +839,13 @@ export async function registrarAbonoRepartido(
   const reparto = repartir({ monto: total, fiados: delLibro, aMano: aManoAjustado });
   const lineas = reparto.lineas.filter((l) => l.asignado > HOLGURA);
 
-  if (lineas.length === 0) return { ok: false, error: "Escribe cuánto te pagó." };
+  if (lineas.length === 0) return rechazar("invalid_amount", "Escribe cuánto te pagó.");
 
   // No debería pasar: el tope de arriba lo impide. Se comprueba igual porque
   // si pasara, se guardaría MENOS de lo que el tendero escribió y la pantalla
   // le diría que todo bien.
   if (reparto.sinAsignar > HOLGURA) {
-    return { ok: false, error: "No pudimos repartir todo el abono. Revisa las cantidades." };
+    return rechazar("split_incomplete", "No pudimos repartir todo el abono. Revisa las cantidades.");
   }
 
   // LOS BOLÍVARES DE CADA LÍNEA, CON LA ÚLTIMA ABSORBIENDO EL RESTO.
@@ -869,12 +927,12 @@ export async function registrarAbonoRepartido(
 
   if (errorRpc) {
     console.error("[abono repartido] rpc:", errorRpc.message);
-    return { ok: false, error: "No pudimos guardar el abono. Vuelve a intentarlo." };
+    return rechazar("db_error", "No pudimos guardar el abono. Vuelve a intentarlo.");
   }
 
   const r = escrito as { ok?: boolean; code?: string; group_id?: string; pendiente?: number } | null;
   if (!r?.ok) {
-    return { ok: false, error: mensajeDelCodigo(r?.code, r?.pendiente, entrada.libro) };
+    return rechazar(REASON_OF_RPC_CODE[r?.code ?? ""] ?? "db_error", mensajeDelCodigo(r?.code, r?.pendiente, entrada.libro));
   }
 
   // ── EL PERMISO DE WHATSAPP, DESPUÉS Y SIN PODER TUMBAR EL PAGO ──────
@@ -885,6 +943,7 @@ export async function registrarAbonoRepartido(
         ownerId: user.id,
         clientName: cliente.name,
         source: "owner_movement_form",
+        flow: "payment",
         seMostro: entrada.permisoMostrado !== false,
         acepta: entrada.avisarPorWhatsapp === true,
       });
@@ -906,6 +965,41 @@ export async function registrarAbonoRepartido(
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${cliente.id}`);
+
+  // The same question as the directed payment above, once per payment and never
+  // once per line of the split. What it adds is `lines`, and the amounts read
+  // from what was written: a split that crosses books reports each book on its
+  // own, because `totalDelResultado` is in bolívares there.
+  const abiertosDelCliente = (abiertos ?? []) as {
+    movement_id: string;
+    currency?: string | null;
+    pending?: number;
+  }[];
+  const pagadoPorLibro = new Map<string | null, number>();
+  for (const linea of lineasRpc) {
+    const fiado = abiertosDelCliente.find((c) => c.movement_id === linea.fiado_id);
+    const libro = fiado?.currency ?? null;
+    pagadoPorLibro.set(libro, (pagadoPorLibro.get(libro) ?? 0) + Number(linea.amount ?? 0));
+  }
+  trackServer(
+    "Payment Recorded",
+    user.id,
+    {
+      ...flujo,
+      movement_id: (r as { movement_ids?: string[] }).movement_ids?.[0] ?? null,
+      group_id: grupo,
+      client_id: cliente.id,
+      mode: "split",
+      lines: lineasRpc.length,
+      ...moneyProps("amount", pagadoPorLibro),
+      entry_currency: (lineasRpc[0]?.entry_currency as string | null | undefined) ?? null,
+      crosses_books: entrada.cruzaLibros === true,
+      settles_debt: settlesDebt(abiertosDelCliente, pagadoPorLibro),
+      consent_declared: entrada.avisarPorWhatsapp === true,
+    },
+    user.email,
+  );
+
   return {
     ok: true,
     groupId: grupo,

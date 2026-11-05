@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/mixpanel";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
@@ -99,6 +100,9 @@ export function MovementTypeFilter({
                 size="sm"
                 className="justify-start"
                 onClick={() => {
+                  // WHICH HISTORY FILTERS GET USED. It measures the date filter that
+                  // launched in v0.2.0. Filed under the owner.
+                  track("History Filtered", { filter: "type", value: String(opt.value) });
                   setTipo(opt.value);
                   close();
                 }}
@@ -192,6 +196,7 @@ export function MovementStatusFilter({
               size="sm"
               className="justify-start"
               onClick={() => {
+                track("History Filtered", { filter: "status", value: String(opt.value) });
                 setEstado(opt.value);
                 close();
               }}
@@ -337,12 +342,14 @@ export function MovementDateFilter({
       onAbiertaChange={setAbierta}
       inicial={rango ? { from: rango.desde, to: rango.hasta } : undefined}
       onElegir={({ desde, hasta }) => {
+        track("History Filtered", { filter: "date" });
         setFecha({ desde: aISO(desde), hasta: aISO(hasta) });
         setAbierta(false);
       }}
       onQuitar={
         fecha
           ? () => {
+              track("History Filtered", { filter: "clear_date" });
               setFecha(null);
               setAbierta(false);
             }
@@ -395,6 +402,7 @@ export function MovementCurrencyFilter({
               size="sm"
               className="justify-start gap-2"
               onClick={() => {
+                track("History Filtered", { filter: "currency", value: String(opt) });
                 setMoneda(opt);
                 close();
               }}

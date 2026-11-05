@@ -184,6 +184,7 @@ async function enviarRecibo(
 
   const envio = await enviarPlantilla({
     audience: "client",
+    ownerId: objetivo.owner_id,
     to: objetivo.phone,
     plantilla: "abono_confirmation_v3",
     parametrosCuerpo: [

@@ -553,6 +553,7 @@ export default async function AbonoRegistradoPage({
           `rates` puede ser `null` en un negocio colombiano, y entonces la
           imagen simplemente no lleva la línea de bolívares. */}
       <AbonoCompartir
+        movementId={movementId}
         comprador={{
           nombre: cliente.name,
           documento: formatDocumentId(cliente.document_id, cliente.document_type),

@@ -81,6 +81,9 @@ export function ReportesAsistente() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: Nota) => {
         setNota(d);
+        // HOW MANY SEE THE SUMMARY, and how many get the fallback. It is the base to read
+        // `AI Report Rated` against. Filed under the owner.
+        track("AI Report Viewed", { degraded: d.degraded });
         // EL PULGAR QUE YA DIO, SI LO DIO. Sin esto el componente nace sin
         // memoria y vuelve a preguntar por una nota que el tendero ya
         // calificó: no era «una vez al día», era una vez por visita.

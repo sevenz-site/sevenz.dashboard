@@ -40,6 +40,7 @@ export default async function ResumenDeVentaPage({
 
   return (
     <VentaResumen
+      saleId={resumen.saleId}
       comprador={resumen.comprador}
       bloques={resumen.bloques}
       rates={resumen.rates}

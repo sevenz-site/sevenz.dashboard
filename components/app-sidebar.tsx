@@ -163,7 +163,7 @@ export function AppSidebar({ businessName }: { businessName: string }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <InstallAppDialog open={instalar} onOpenChange={setInstalar} />
+      <InstallAppDialog open={instalar} onOpenChange={setInstalar} entryPoint="sidebar" />
       <LogoutDialog open={logoutOpen} onOpenChange={setLogoutOpen} />
     </Sidebar>
   );

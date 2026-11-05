@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { track } from "@/lib/mixpanel";
+import { clearFlow } from "@/lib/analytics/flow-client";
+import { orderFlowKey } from "@/components/dashboard/order-flow-tracker";
+import { useEffect, useRef } from "react";
 import { borrarBorrador } from "@/lib/orders/borrador-de-registro";
 
 // SALIRSE DEL FLUJO TIRA LO EDITADO.
@@ -55,11 +58,19 @@ import { borrarBorrador } from "@/lib/orders/borrador-de-registro";
 // pedido, porque el que borraba era este componente. Lo que el dueño pidió es
 // que salirse del flujo reinicie ESE pedido, y eso es lo que hace ahora.
 export function OrderDraftReset({ pedidoId }: { pedidoId: string }) {
+  const contado = useRef<string | null>(null);
   useEffect(() => {
     // NO ES `setState` EN UN EFECTO: escribe en un almacén de fuera de React,
     // que es para lo que los efectos existen. El lint que prohíbe lo primero
     // --y que ya tiene en rojo a `feedback-banner.tsx`-- no aplica aquí.
     borrarBorrador(pedidoId);
+    // Back on the order means the attempt is over: the next one is a new flow.
+    clearFlow(orderFlowKey(pedidoId));
+    // HOW LONG AN ORDER WAITS TO BE LOOKED AT. This component mounts on every visit
+    // to the order, which is why the count lives here. Filed under the owner.
+    if (contado.current === pedidoId) return;
+    contado.current = pedidoId;
+    track("Order Opened", { order_id: pedidoId });
   }, [pedidoId]);
 
   return null;

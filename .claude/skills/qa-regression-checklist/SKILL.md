@@ -4,9 +4,28 @@ model: claude-fable-5-1
 description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — merging dev into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
 
-**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04. Si la
-sesión usa otro modelo, se dice antes de empezar y se le pregunta al dueño, y el
-informe nombra con qué modelo se corrió.
+**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04, y
+**no se empieza hasta que él confirme que ya lo cambió.** Ampliado por el dueño el
+2026-11-05: *«Antes de empezar a ejecutar el checklist me pedirás que cambie el modelo
+a Fable 5.1 y detendrás el inicio del QA checklist hasta que te confirme que ya
+cambié el modelo a Fable 5.1 y ese será el que usarás para las pruebas»*.
+
+El orden, sin excepción:
+
+1. Antes de la primera comprobación, se le pide en una línea que ponga el modelo en
+   Fable 5.1 (`/model claude-fable-5-1`). **Se pide aunque la sesión ya parezca estar
+   en Fable 5.1**: el modelo puede cambiar a mitad de sesión sin que nadie lo pida, y
+   pasó ese mismo día, a mitad de un checklist.
+2. **Se detiene ahí.** No se corre ninguna suite, no se lee ningún diff, no se abre
+   ningún navegador hasta que el dueño conteste que ya está.
+3. Si a mitad del checklist el modelo cambia, se para en ese punto, se le avisa y se
+   vuelve a pedir el cambio antes de seguir. El informe dice qué filas corrieron con
+   qué modelo.
+
+Por qué es una parada y no un aviso: el 2026-11-05 el checklist arrancó en Fable 5.1,
+pasó a Opus 5.5 a mitad y volvió a Fable 5.1 al final, y la única forma de saberlo
+fue leer el pie de los mensajes. Avisar después de empezar deja al dueño decidiendo si
+un resultado vale con una mezcla que no eligió.
 
 This is a manual checklist, not an automated test suite — this codebase
 has no automated tests. Walk through each item below, actually verifying
@@ -1022,6 +1041,62 @@ La regla está en `CLAUDE.md`, «Toda liberación queda en `LIBERACIONES.md`».
 migraciones, `main` y `sevenz.site`, el commit, la etiqueta `vX.Y.Z` en `main`, y el
 estado de `POR SALIR` a `EN PRODUCCIÓN`.
 
+## 4i. Los eventos contra este lanzamiento — `analytics-event`
+
+**Pedido por el dueño el 2026-11-04**: cada lanzamiento se analiza para identificar
+dónde debería incluirse un evento nuevo o actualizarse uno existente, si un flujo
+cambió. Crear o actualizar se hace con el skill `analytics-event`, nunca a mano.
+
+**Por qué existe.** El 2026-10-24 se borró `Movement Added` con su diálogo, y salió a
+producción al día siguiente sin que nadie lo notara. Durante dos semanas ninguna venta
+ni abono llegó a Mixpanel. El checklist pasó entero, porque ningún punto lo preguntaba.
+
+**Mira solo lo que trae este lanzamiento.** La lista de eventos planeados y sin
+construir de `../docs/Sevenz-Eventos-Mixpanel.xlsx` no se reporta aquí: una alarma que
+suena en cada lanzamiento deja de leerse.
+
+**1. Qué eventos se van.** Esto debe salir vacío:
+
+```sh
+git diff origin/main origin/dev -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
+```
+
+Cada línea es un evento que desaparece o que se movió. Si se movió, ya está. Si se
+perdió, **es una parada dura**: se sustituye en este lanzamiento, o el dueño dice que
+se pierde.
+
+**2. Qué acciones nuevas escriben sin contarlo.** Por cada acción de servidor nueva o
+cambiada, y cada ruta nueva:
+
+| Si el diff trae | Debe tener | Si no |
+|---|---|---|
+| Una escritura de dinero: venta, abono, devolución, borrar, restaurar | Evento de éxito y de rechazo en el servidor | **Parada dura** |
+| Otra escritura que concreta un flujo | Evento de éxito en el servidor | Se le pregunta al dueño |
+| Una pantalla, paso, hoja o diálogo nuevo dentro de un flujo con funnel | Su paso en `Funnels` | Se le pregunta al dueño |
+| Un flujo cambiado: pasos quitados, reordenados, otra puerta de entrada | El funnel y `entry_point` al día | Se actualiza con el skill |
+| Un buscador, filtro o botón de compartir nuevo | El `screen`, `filter` o `control` nuevo en el evento que ya existe | Se actualiza con el skill |
+| Una ruta pública nueva que manda un evento | Exenta en `lib/supabase/middleware.ts` y probada con `curl` sin sesión | **Parada dura** |
+
+No se decide a solas que un cambio no necesita evento: se le dice al dueño en una línea,
+como en la sección 4g.
+
+**3. El libro coincide con el código.** Cada evento del diff está en
+`../docs/Sevenz-Eventos-Mixpanel.xlsx`, con su `Implementation date`, y lleva pegada
+su pregunta de negocio (regla de `CLAUDE.md`).
+
+**4. Un evento se ve salir.** Los nuevos de este lanzamiento se comprueban en dev antes
+de reportarlos. Si no se pudo, la fila dice «no probado».
+
+**5. El `Changelog` del libro lleva su fila**, con la versión y lo añadido, cambiado o
+retirado. Pedido por el dueño el 2026-11-05. Si el lanzamiento no tocó ningún evento, no
+hace falta fila.
+
+**Después de lanzar**: los eventos `En dev` pasan a `Existe` con su fecha real, y el libro
+se sube a su carpeta de Drive. Sin eso el lanzamiento no ha terminado.
+
+En el informe va una fila por evento creado, cambiado o perdido. Si no hubo ninguno, una
+fila que lo diga: «sin eventos que crear ni actualizar», con la razón.
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
@@ -1312,7 +1387,7 @@ no escribe nada.
 
 | Zona que toca el diff | Suites |
 |---|---|
-| Tasas y bolívares | `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
+| Tasas y bolívares | `qa:tasa-euro`, `qa:fuentes-tasa`, `qa:diagnostico-tasas`, `qa:rate-status`, `qa:rate-fetch`, `qa:bolivares`, `qa:prevista`, `qa:habitual` |
 | **Cualquier campo donde se teclee dinero** | **`qa:agrupado`** |
 | Papelera y restaurar | `qa:papelera` |
 | Libreta por foto | `qa:import`, `qa:reconcile` |
@@ -1402,6 +1477,9 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 4i row is never skipped either**: it names each event created, changed or lost
+in this release, or says there were none and why.
 
 **The 4h row is never skipped either**: it says whether the release's entry exists
 and whether the last deploy on `main` is the one the entry names as its base.

@@ -186,6 +186,7 @@ export function ClientSearchCartera({
           <ClientResultList
             results={results}
             onSelect={(id) => {
+              track("Search Result Selected", { screen: "home", result_type: "client" });
               track("Client Details Opened", {
                 client_id: id,
                 source: "cartera",
@@ -195,7 +196,10 @@ export function ClientSearchCartera({
           />
           <TransactionResultList
             results={transactions.results}
-            onSelect={(r) => router.push(r.href)}
+            onSelect={(r) => {
+              track("Search Result Selected", { screen: "home", result_type: "transaction" });
+              router.push(r.href);
+            }}
           />
           {/* «SIN RESULTADOS» SOLO CUANDO NADIE TIENE NADA QUE DECIR: ni los
               clientes, ni las transacciones, ni una respuesta que todavía viene

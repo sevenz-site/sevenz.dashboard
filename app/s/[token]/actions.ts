@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { TEXTO_AVISOS_WHATSAPP_CLIENTE } from "@/lib/whatsapp-opt-in";
+import { trackLinkEvent } from "@/lib/analytics/link-owner";
 
 // Quotas for the two actions below, the only two anyone can reach without a
 // login. Both are per share token and generous enough that a real client will
@@ -82,7 +83,11 @@ export async function submitDocumentId(
     return { error: "Escribe tu número de cédula." };
   }
 
+  // DOES THE MANDATORY DOCUMENT STOP ANYONE? The dialog blocks the page, so a high
+  // share of `rejected` or none of these after `Balance Link Opened` means it is
+  // costing visits. The document itself never travels. Filed under the owner.
   if (!(await withinQuota(token, "document_id", DOCUMENT_ID_LIMIT))) {
+    await trackLinkEvent("balance", token, "Client Document Submitted", { result: "rate_limited" });
     return { error: "Demasiados intentos. Vuelve a intentarlo más tarde." };
   }
 
@@ -100,9 +105,11 @@ export async function submitDocumentId(
 
   const result = data as { error: string | null };
   if (result.error) {
+    await trackLinkEvent("balance", token, "Client Document Submitted", { result: "rejected" });
     return { error: result.error };
   }
 
+  await trackLinkEvent("balance", token, "Client Document Submitted", { result: "success" });
   return { error: null };
 }
 
@@ -122,7 +129,11 @@ export async function submitFeedback(token: string, message: string): Promise<Su
     return { error: "Escribe tu respuesta." };
   }
 
+  // DO CLIENTS ANSWER THE QUESTION ON THEIR LINK? If almost nobody does, the banner
+  // is taking room from the balance for nothing. The answer itself never travels:
+  // it stays in the database. Filed under the owner.
   if (!(await withinQuota(token, "feedback", FEEDBACK_LIMIT))) {
+    await trackLinkEvent("balance", token, "Client Feedback Answered", { result: "rate_limited" });
     return { error: "Ya recibimos tu respuesta. ¡Gracias!" };
   }
 
@@ -142,6 +153,7 @@ export async function submitFeedback(token: string, message: string): Promise<Su
     return { error: result.error };
   }
 
+  await trackLinkEvent("balance", token, "Client Feedback Answered", { result: "success" });
   return { error: null };
 }
 
@@ -190,6 +202,10 @@ export async function acceptWhatsappConsent(token: string): Promise<AcceptWhatsa
       return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
     }
 
+    // DO CLIENTS ACCEPT THE NOTICES? Only 28 of 290 had the permission when `MS-41`
+    // was written, and this says whether asking on the link moves that number. Filed
+    // under the owner.
+    await trackLinkEvent("balance", token, "Client WhatsApp Consent Answered", { decision: "accept" });
     return { error: null };
   } catch (error) {
     console.error(
@@ -230,6 +246,7 @@ export async function revokeWhatsappConsent(token: string): Promise<RevokeWhatsa
     if (data !== true) {
       return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
     }
+    await trackLinkEvent("balance", token, "Client WhatsApp Consent Answered", { decision: "revoke" });
     return { error: null };
   } catch (error) {
     console.error(

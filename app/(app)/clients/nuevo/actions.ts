@@ -9,6 +9,8 @@ import { isDocumentTypeFor } from "@/lib/document-id";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { trackServer } from "@/lib/mixpanel-server";
+import { flowContext, moneyProps } from "@/lib/analytics/amounts";
+import type { NewClientRejectionReason } from "@/lib/analytics/events";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { parseMoneyInput } from "@/lib/products/price";
@@ -179,7 +181,10 @@ export async function registrarCliente(formData: FormData): Promise<ResultadoAlt
   // validara después, el tendero se quedaría con un cliente guardado a medias y
   // al reintentar chocaría con su propia cédula.
   const leida = await leerDeudaAntigua(supabase, user.id, formData);
-  if (!leida.ok) return { ok: false, error: leida.error };
+  if (!leida.ok) {
+    trackServer("New Client Rejected", user.id, { ...flowOfForm(formData), reason: "invalid_debt" }, user.email);
+    return { ok: false, error: leida.error };
+  }
   const deuda = leida.deuda;
 
   return crearCliente({ supabase, user, name, whatsapp, address, documentId, documentTypeRaw, documentCountry, deuda, formData });
@@ -197,6 +202,9 @@ type ClienteComprobado = {
   documentCountry: string | null;
 };
 
+const flowOfForm = (formData: FormData) =>
+  flowContext({ flowId: formData.get("analytics_flow_id"), entryPoint: formData.get("analytics_entry_point") });
+
 async function comprobarCliente(
   formData: FormData,
 ): Promise<ClienteComprobado | Extract<ResultadoAlta, { ok: false }>> {
@@ -206,11 +214,20 @@ async function comprobarCliente(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
 
+  // WHAT STOPS A NEW CLIENT. Same reasons to ask as `Sale Rejected`: a refusal left
+  // no trace, so a funnel could not tell «se fue» from «no lo dejamos». Filed under
+  // the owner.
+  const flujo = flowOfForm(formData);
+  const rechazar = (reason: NewClientRejectionReason, error: string) => {
+    trackServer("New Client Rejected", user.id, { ...flujo, reason }, user.email);
+    return { ok: false as const, error };
+  };
+
   // La cuenta pausada se para AQUÍ, antes de tocar nada. La política de la 061
   // también lo pararía, pero un insert rechazado vuelve como «new row violates
   // row-level security policy» y eso no se le enseña a nadie.
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
   const name = String(formData.get("name") ?? "").trim();
@@ -223,8 +240,8 @@ async function comprobarCliente(
   const documentId = String(formData.get("document_id") ?? "").replace(/[^0-9]/g, "");
   const documentTypeRaw = String(formData.get("document_type") ?? "").trim();
 
-  if (!name) return { ok: false, error: "Escribe el nombre del cliente." };
-  if (!documentId) return { ok: false, error: "Escribe la cédula del cliente." };
+  if (!name) return rechazar("name_missing", "Escribe el nombre del cliente.");
+  if (!documentId) return rechazar("document_missing", "Escribe la cédula del cliente.");
 
   // EL PAÍS DEL DOCUMENTO SE HEREDA DEL NEGOCIO y no se pregunta en el
   // formulario: qué país emitió la cédula de un cliente es un asunto de la
@@ -268,6 +285,7 @@ async function comprobarCliente(
     tipoDelDocumento,
   );
   if (duplicado && !confirmado) {
+    trackServer("New Client Rejected", user.id, { ...flujo, reason: "duplicate_document" }, user.email);
     return {
       ok: false as const,
       error: mensajeDeDuplicado(duplicado),
@@ -336,6 +354,7 @@ async function crearCliente({
     .single();
 
   if (error || !nuevo) {
+    trackServer("New Client Rejected", user.id, { ...flowOfForm(formData), reason: "db_error" }, user.email);
     return { ok: false, error: mensajeDeError("crear el cliente", error, "registrarCliente") };
   }
 
@@ -405,7 +424,43 @@ async function crearCliente({
   // EN EL SERVIDOR Y NO EN EL NAVEGADOR, como todo lo que cuenta: en septiembre
   // de 2026 un dueño usó la app ocho de nueve días mientras Mixpanel lo daba
   // por perdido, porque los eventos salían de su iPhone y no llegaban.
-  trackServer("Client Created", user.id, { client_id: nuevo.id }, user.email);
+  // HOW MANY BUSINESSES BRING THE DEBTS THEY ALREADY HAD. Writing them down is the
+  // clearest sign a shopkeeper has left the paper notebook for good, and it decides
+  // how much the old-debt step deserves. It sits after the rollback above, so a debt
+  // that did not save is never counted. Filed under the owner.
+  if (deuda) {
+    trackServer(
+      "Old Debt Recorded",
+      user.id,
+      {
+        client_id: nuevo.id,
+        ...moneyProps("amount", [[deuda.sello.currency, deuda.amount]]),
+        has_term: deuda.plazoDias != null,
+        installments: deuda.cuotas ?? 0,
+      },
+      user.email,
+    );
+  }
+
+  // HOW MANY CLIENTS EACH BUSINESS CREATES, AND BY WHICH DOOR. `entry_point` matters
+  // because this also runs inside a sale, before that sale is saved: a client created
+  // there can exist with no sale, which is why this event is not «a new customer who
+  // bought». `has_document` and `has_phone` measure how complete the book is. Filed
+  // under the owner.
+  trackServer(
+    "Client Created",
+    user.id,
+    {
+      client_id: nuevo.id,
+      ...flowOfForm(formData),
+      has_document: Boolean(documentId),
+      has_phone: Boolean(whatsapp),
+      has_old_debt: deuda != null,
+      next_step: formData.get("analytics_next_step") === "sale" ? "continue_to_sale" : "finish",
+      consent_declared: formData.get(CONSENT_FIELD) != null,
+    },
+    user.email,
+  );
 
   // EL PERMISO DE WHATSAPP (MS-34). La casilla se enseña SIEMPRE en esta
   // pantalla, así que el cliente nace con `whatsapp_consent_asked_at` puesto y
@@ -419,6 +474,7 @@ async function crearCliente({
     ownerId: user.id,
     clientName: name,
     source: "owner_movement_form",
+        flow: "new_client",
     seMostro: formData.get(CONSENT_SHOWN_FIELD) != null,
     acepta: formData.get(CONSENT_FIELD) != null,
   });

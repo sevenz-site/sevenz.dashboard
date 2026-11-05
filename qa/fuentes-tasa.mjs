@@ -5,6 +5,7 @@
 import { resolveOfficialRates, describeSources } from "../lib/exchange-rate/resolve-rates.ts";
 import { parseVenezuelanNumber } from "../lib/exchange-rate/dated-rate.ts";
 import { parseBcvPage } from "../lib/exchange-rate/bcv-page-provider.ts";
+import { assessRateHealth } from "../lib/exchange-rate/rate-health.ts";
 
 const filas = [];
 const igual = (nombre, real, esperado) => {
@@ -132,6 +133,31 @@ Fecha Valor: <span  property="dc:date" datatype="xsd:dateTime" content="2026-11-
   let fallo = null;
   try { parseBcvPage(html.replace('id="euro"', 'id="eur"')); } catch (e) { fallo = e.message; }
   igual("15b. una página rediseñada falla con nombre, no devuelve nada a medias", fallo !== null && fallo.startsWith("la página del BCV no trae lo esperado"), true);
+}
+
+// 16. PL-25 and PL-26: what the card and the GitHub check read from the rows alone.
+{
+  const AHORA = new Date("2026-11-08T12:00:00Z");
+  const hace = (h) => new Date(AHORA.getTime() - h * 3_600_000).toISOString();
+  const fila = (h, source, needs_review = false) => ({ fetched_at: hace(h), usd: 894.8876, eur: 999.77, source, needs_review });
+  const tres = "dolarapi+dolarvzla+bcv";
+  const salud = (rows) => assessRateHealth(rows, AHORA);
+
+  igual("16a. tres fuentes al día: ok", salud([fila(1, tres), fila(2, tres)]).status, "ok");
+  igual("16b. retenida hace 3 h: aviso, no alarma", [salud([fila(1, "dolarapi+bcv held:eur"), fila(3, "dolarapi+bcv held:eur"), fila(4, tres)]).status], ["warn"]);
+  const dias = salud([fila(1, "dolarapi held:eur"), fila(12, "dolarapi held:eur"), fila(30, "dolarapi held:eur"), fila(31, tres)]);
+  igual("16c. retenida hace 30 h: alarma, con la fecha en que empezó", [dias.status, dias.heldCurrencies, dias.heldSince], ["fail", ["eur"], hace(30)]);
+  igual("16d. retenida antes y recuperada hoy: nada que avisar", salud([fila(1, tres), fila(26, "dolarapi held:eur"), fila(40, "dolarapi held:eur")]).status, "ok");
+  igual("16e. una fila vieja sin marca corta la racha, y no inventa días", salud([fila(1, "dolarapi held:eur"), fila(3, "dolarapi")]).heldSince, hace(1));
+  igual("16f. dólar y euro retenidos: los dos, y el texto nombra los dos", salud([fila(1, "ninguna held:usd,eur"), fila(26, "ninguna held:usd,eur")]).detail.startsWith("El dólar y el euro llevan"), true);
+  const revision = salud([fila(1, "dolarapi", true), fila(26, "dolarapi", true), fila(27, tres)]);
+  igual("16g. en revisión 26 h: alarma, y la cifra sigue siendo la última aceptada", [revision.status, revision.reviewRows, revision.eur], ["fail", 2, 999.77]);
+  igual("16h. en revisión 2 h: aviso", salud([fila(2, "dolarapi", true), fila(3, tres)]).status, "warn");
+  igual("16i. el cron dejó de correr: alarma aunque la última fila sea buena", salud([fila(31, tres)]).status, "fail");
+  igual("16j. un solo testigo: aviso", salud([fila(1, "dolarvzla")]).status, "warn");
+  igual("16k. sin filas: alarma", salud([]).status, "fail");
+  igual("16l. la palabra de la tarjeta sale de cada caso", [salud([fila(1, tres)]).label, salud([fila(1, "dolarvzla+bcv")]).label, salud([fila(1, "dolarvzla")]).label, salud([fila(1, "dolarapi held:eur")]).label, salud([fila(1, "dolarapi", true), fila(2, tres)]).label, salud([fila(31, tres)]).label, salud([]).label], ["3 fuentes", "2 fuentes", "1 fuente", "Retenida", "En revisión", "Detenida", "Sin datos"]);
+  igual("16m. una sola lectura se escribe en singular", salud([fila(1, "dolarapi", true), fila(2, tres)]).detail.startsWith("1 lectura en revisión"), true);
 }
 
 const ok = filas.filter(Boolean).length;

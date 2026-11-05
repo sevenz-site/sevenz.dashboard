@@ -1,3 +1,4 @@
+import { trackServer } from "@/lib/mixpanel-server";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -77,7 +78,12 @@ export async function GET(request: Request) {
   };
   const r =
     que === "inventario" ? await exportarInventario(comun) : await exportarProveedores(comun);
-  if ("motivo" in r) return alError(request, r.motivo);
+  if ("motivo" in r) {
+    // HOW MANY DOWNLOADS FAIL. `Report Export Downloaded` fires on the tap, before
+    // anyone knows, so this is what makes that number honest. Filed under the owner.
+    trackServer("Report Export Failed", user.id, { que: que, reason: r.motivo }, user.email);
+    return alError(request, r.motivo);
+  }
 
   const slug = ((owner?.business_name as string | undefined) ?? "negocio")
     .normalize("NFD")

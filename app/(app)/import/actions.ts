@@ -1,5 +1,7 @@
 "use server";
 
+import { flowContext } from "@/lib/analytics/amounts";
+import type { ImportRejectionReason } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { createClient } from "@/lib/supabase/server";
@@ -103,6 +105,8 @@ export type PermisoImportado = { seMostro: boolean; acepta: boolean };
 export async function confirmImport(
   rows: ImportRow[],
   permiso?: PermisoImportado,
+  // Only for the funnels: which batch, and through which door.
+  analitica?: { batchId?: unknown; door?: unknown },
 ): Promise<ConfirmImportState> {
   const supabase = await createClient();
   const {
@@ -110,13 +114,22 @@ export async function confirmImport(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", imported: 0 };
 
+  const batchId = flowContext({ flowId: analitica?.batchId }).flow_id;
+  // WHAT STOPS A NOTEBOOK. Until now only the exchange rate left a trace, and this is
+  // the most expensive drop-off in the app: the photo was read and the rows reviewed.
+  // Filed under the owner.
+  const rechazar = (reason: ImportRejectionReason, error: string) => {
+    trackServer("Import Rejected", user.id, { batch_id: batchId, reason }, user.email);
+    return { error, imported: 0 };
+  };
+
   // Una importacion son decenas de inserts en `clients` y `movements`. Con la
   // cuenta pausada la politica los rechaza uno a uno, asi que el tendero
   // acabaria con un resumen de cuarenta lineas en rojo. Se para entera y antes.
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { error: MENSAJE_CUENTA_PAUSADA, imported: 0 };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
-  if (rows.length === 0) return { error: "No hay transacciones para subir.", imported: 0 };
+  if (rows.length === 0) return rechazar("empty_batch", "No hay transacciones para subir.");
 
   // Resolved once per distinct currency in the batch, not once per row.
   //
@@ -150,7 +163,7 @@ export async function confirmImport(
         attemptedCurrency: currency,
         rowsAffected: rows.length,
       });
-      return { error: resolucion.error, imported: 0 };
+      return rechazar("rate_missing", resolucion.error);
     }
     snapshots.set(currency ?? "COP", resolucion.snapshot);
   }
@@ -211,6 +224,7 @@ export async function confirmImport(
     else sinConfirmar.push(nombre);
   }
   if (sinConfirmar.length > 0) {
+    trackServer("Import Rejected", user.id, { batch_id: batchId, reason: "hidden_client" }, user.email);
     return {
       error: `${sinConfirmar.join(", ")} está fuera de tu cartera. Vuelve a abrir la revisión y dinos si quieres recuperarlo con esta libreta.`,
       imported: 0,
@@ -301,14 +315,14 @@ export async function confirmImport(
 
     if (row.client_id) {
       if (!ownedClientIds.has(row.client_id)) {
-        return { error: `Cliente inválido para "${row.client_name}".`, imported: 0 };
+        return rechazar("invalid_client", `Cliente inválido para "${row.client_name}".`);
       }
       clientId = row.client_id;
       // Only require/persist a document_id here if this client didn't
       // already have one — never overwrite an existing value.
       if (!existingDocumentIds.get(clientId)) {
         if (!documentId) {
-          return { error: `Falta la cédula de "${row.client_name}".`, imported: 0 };
+          return rechazar("document_missing", `Falta la cédula de "${row.client_name}".`);
         }
         clientDocuments.push({ client_id: clientId, document_id: documentId });
         // Para que una segunda fila del mismo cliente no lo pida otra vez.
@@ -318,7 +332,7 @@ export async function confirmImport(
       clientKey = keyByName.get(cacheKey)!;
     } else {
       if (!documentId) {
-        return { error: `Falta la cédula de "${row.client_name}".`, imported: 0 };
+        return rechazar("document_missing", `Falta la cédula de "${row.client_name}".`);
       }
 
       const normalizedDocumentId = normalizeDocumentId(documentId);
@@ -344,6 +358,7 @@ export async function confirmImport(
       // creados a lo largo del tiempo, no dos renglones de la misma página.
       const otroDeLaTanda = choques.find((c) => c.enLaTanda);
       if (otroDeLaTanda) {
+        trackServer("Import Rejected", user.id, { batch_id: batchId, reason: "duplicate_in_batch" }, user.email);
         return {
           error: `"${row.client_name.trim()}" y "${otroDeLaTanda.name}" llevan la misma cédula en esta libreta. Cada persona necesita la suya.`,
           imported: 0,
@@ -356,6 +371,7 @@ export async function confirmImport(
       // hecho y esto no se vea nunca.
       if (choques.length > 0 && !row.confirm_duplicate) {
         const nombres = choques.map((c) => c.name).join(", ");
+        trackServer("Import Rejected", user.id, { batch_id: batchId, reason: "document_taken" }, user.email);
         return {
           error:
             choques.length === 1
@@ -454,6 +470,7 @@ export async function confirmImport(
     // dueño necesita saber cabe en media frase, y es justo lo que antes no se
     // le podía decir. El detalle va al log, no a la pantalla.
     console.error("import_libreta:", rpcError);
+    trackServer("Import Rejected", user.id, { batch_id: batchId, reason: "db_error" }, user.email);
     return {
       error: "No pudimos subir la libreta. No se guardó nada, puedes intentarlo otra vez.",
       imported: 0,
@@ -470,7 +487,7 @@ export async function confirmImport(
   };
 
   if (!resultado.ok) {
-    return { error: mensajeDeImportacion(resultado), imported: 0 };
+    return rechazar("refused", mensajeDeImportacion(resultado));
   }
 
   const imported = resultado.imported ?? 0;
@@ -480,10 +497,21 @@ export async function confirmImport(
   // completely inactive. One event per confirmed import rather than one per
   // row — the batch is the meaningful action, and per-row events would be a
   // burst of near-identical noise.
+  // A CLIENT THAT COMES BACK THROUGH A NOTEBOOK leaves the bin by this door, which never
+  // reached `restoreClient`. Filed under the owner.
+  for (const clientId of restoreClientIds) {
+    trackServer("Client Restored", user.id, { client_id: clientId, source: "import" }, user.email);
+  }
+
   trackServer(
     "Import Confirmed",
     user.id,
-    { movements_imported: imported, clients_created: resultado.clients_created ?? 0 },
+    {
+      movements_imported: imported,
+      clients_created: resultado.clients_created ?? 0,
+      batch_id: batchId,
+      door: analitica?.door === "detail" ? "detail" : "list",
+    },
     user.email,
   );
 
@@ -539,6 +567,7 @@ export async function confirmImport(
         ownerId: user.id,
         clientName: rows[0]?.client_name?.trim() ?? "",
         source: "owner_import",
+        flow: "import",
         seMostro: permiso.seMostro,
         acepta: permiso.acepta,
       });

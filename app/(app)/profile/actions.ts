@@ -1,5 +1,6 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
@@ -67,6 +68,15 @@ export async function updateBusinessSettings(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión expirada, vuelve a entrar.", success: false };
 
+  // WHAT STOPS THE BUSINESS FROM SAVING ITS OWN DATA. Filed under the owner.
+  const rechazar = (
+    reason: "required_field" | "invalid_whatsapp" | "invalid_country" | "logo_gone" | "db_error",
+    error: string,
+  ) => {
+    trackServer("Business Profile Rejected", user.id, { reason }, user.email);
+    return { error, success: false };
+  };
+
   const businessName = String(formData.get("business_name") ?? "").trim();
   const firstName = String(formData.get("first_name") ?? "").trim();
   const lastName = String(formData.get("last_name") ?? "").trim();
@@ -77,15 +87,15 @@ export async function updateBusinessSettings(
   const country = String(formData.get("country") ?? "CO");
 
   if (!businessName || !firstName || !lastName) {
-    return { error: "Completa nombre del negocio, nombre y apellido.", success: false };
+    return rechazar("required_field", "Completa nombre del negocio, nombre y apellido.");
   }
   // Required at signup, so "Mi negocio" can't be the place it gets cleared —
   // it's the number clients reach the business on from every share link.
   if (!whatsapp) {
-    return { error: "Escribe el WhatsApp del negocio.", success: false };
+    return rechazar("invalid_whatsapp", "Escribe el WhatsApp del negocio.");
   }
   if (country !== "CO" && country !== "VE") {
-    return { error: "País inválido.", success: false };
+    return rechazar("invalid_country", "País inválido.");
   }
 
   if (country === "VE") {
@@ -126,6 +136,7 @@ export async function updateBusinessSettings(
     logoUpdate.logo_path !== (before?.logo_path ?? null) &&
     !(await storageFileExists("logos", logoUpdate.logo_path))
   ) {
+    trackServer("Business Profile Rejected", user.id, { reason: "logo_gone" }, user.email);
     return {
       error: "El logo que subiste ya no está disponible. Vuelve a subirlo y guarda de nuevo.",
       success: false,
@@ -152,7 +163,7 @@ export async function updateBusinessSettings(
     .eq("id", user.id);
 
   if (error) {
-    return { error: mensajeDeGuardado(error), success: false };
+    return rechazar("db_error", mensajeDeGuardado(error));
   }
 
   // Remove the replaced file only after the new value is saved: deleting first
@@ -168,6 +179,20 @@ export async function updateBusinessSettings(
 
   revalidatePath("/profile");
   revalidatePath("/dashboard");
+
+  // DO BUSINESSES COMPLETE THEIR PROFILE? A logo and a WhatsApp are what the client sees.
+  // Yes or no per field: none of the values travels. Filed under the owner.
+  trackServer(
+    "Business Profile Saved",
+    user.id,
+    {
+      has_logo: "logo_path" in logoUpdate ? Boolean(logoUpdate.logo_path) : Boolean(before?.logo_path),
+      has_whatsapp: Boolean(whatsapp),
+      has_address: Boolean(address),
+      has_tax_id: Boolean(taxId),
+    },
+    user.email,
+  );
   return { error: null, success: true };
 }
 
@@ -229,6 +254,9 @@ export async function addPaymentMethod(body: string): Promise<PaymentMethodResul
   }
 
   revalidatePath("/profile");
+  // DO BUSINESSES WRITE DOWN HOW THEY GET PAID? The client sees it when paying. The
+  // text itself never travels. Filed under the owner.
+  trackServer("Payment Method Changed", user.id, { action: "add" }, user.email);
   return { error: null, method: data };
 }
 
@@ -253,6 +281,7 @@ export async function updatePaymentMethod(id: string, body: string): Promise<Pay
   if (!data) return { error: "Este método de pago ya no existe. Recarga la pantalla." };
 
   revalidatePath("/profile");
+  trackServer("Payment Method Changed", user.id, { action: "update" }, user.email);
   return { error: null, method: data };
 }
 
@@ -273,6 +302,7 @@ export async function deletePaymentMethod(id: string): Promise<{ error: string |
   if (!data?.length) return { error: "Este método de pago ya no existe. Recarga la pantalla." };
 
   revalidatePath("/profile");
+  trackServer("Payment Method Changed", user.id, { action: "delete" }, user.email);
   return { error: null };
 }
 
@@ -283,24 +313,42 @@ export async function changePassword(
   formData: FormData,
 ): Promise<PasswordState> {
   const supabase = await createClient();
+  // HOW MANY CHANGE THEIR PASSWORD, AND WHAT STOPS THEM. Filed under the owner.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const contar = (reason?: "complexity" | "mismatch" | "leaked" | "other") => {
+    if (user) {
+      trackServer(
+        "Password Change Attempted",
+        user.id,
+        reason ? { result: "rejected", reason } : { result: "success" },
+        user.email,
+      );
+    }
+  };
   const newPassword = String(formData.get("new_password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
 
   const passwordError = validatePasswordComplexity(newPassword);
   if (passwordError) {
+    contar("complexity");
     return { error: passwordError, success: false };
   }
   if (newPassword !== confirmPassword) {
+    contar("mismatch");
     return { error: "Las contraseñas no coinciden.", success: false };
   }
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
 
   if (error) {
+    contar(error.code === "weak_password" ? "leaked" : "other");
     if (error.code === "weak_password") return { error: LEAKED_PASSWORD_MESSAGE, success: false };
     return { error: "No pudimos actualizar tu contraseña. Intenta de nuevo.", success: false };
   }
 
+  contar();
   return { error: null, success: true };
 }
 
@@ -365,6 +413,8 @@ export async function guardarAvisosWhatsapp(
     return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
   }
 
+  // HOW MANY OWNERS ACCEPT THE WHATSAPP NOTICES. Filed under the owner.
+  trackServer("Owner Notices Changed", user.id, { enabled: activar }, user.email);
   revalidatePath("/profile");
   return { error: null };
 }
@@ -399,4 +449,6 @@ export async function registrarPreguntaAvisos(): Promise<void> {
     .eq("id", user.id);
 
   if (error) console.error("registrarPreguntaAvisos:", error);
+  // DOES THE QUESTION ON INICIO CONVINCE, AND AT WHICH TRY? It has a cap of three.
+  else trackServer("Owner Notices Prompt Shown", user.id, { ask_number: (owner?.whatsapp_prompt_count ?? 0) + 1 }, user.email);
 }

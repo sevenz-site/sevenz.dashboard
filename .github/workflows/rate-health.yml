@@ -1,0 +1,38 @@
+# Fails, and so makes GitHub notify the owner, when production has been showing a held
+# exchange rate for more than 24 hours. See app/api/cron/rate-health/route.ts for why this is
+# the channel. Runs after the 13:00 UTC rate cron; GitHub may start it some minutes late.
+#
+# Needs one repository secret, CRON_SECRET, with the same value Vercel has in production.
+# Without it the run fails on purpose: a check that cannot ask must not look healthy.
+name: Salud de la tasa
+
+on:
+  schedule:
+    - cron: "30 14 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Preguntar a produccion
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error title=Falta CRON_SECRET::El secreto del repositorio no esta puesto."
+            exit 1
+          fi
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://app.sevenz.site/api/cron/rate-health) || code=000
+          cat body.json 2>/dev/null || true
+          echo
+          if [ "$code" != "200" ]; then
+            detail=$(jq -r '.detail // .error // "sin detalle"' body.json 2>/dev/null || echo "sin respuesta")
+            echo "::error title=Tasa de Sevenz (HTTP $code)::$detail"
+            exit 1
+          fi

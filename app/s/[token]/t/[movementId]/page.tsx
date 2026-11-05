@@ -1,3 +1,4 @@
+import { PublicEventOnMount } from "@/components/public/public-event";
 import { ZonaDelNegocioProvider } from "@/components/fecha";
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
@@ -386,6 +387,15 @@ export default async function DetalleDelClientePage({
 
   return (
     <ZonaDelNegocioProvider country={shared.owner_country}>
+    <PublicEventOnMount
+      token={token}
+      code="client_transaction_opened"
+      onceKey={movementId}
+      props={{
+        transaction_type:
+          m.type === "payment" ? "payment" : m.type === "return" ? "return" : m.is_old_debt ? "old_debt" : "fiado",
+      }}
+    />
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-4 pb-10">
       {/* LA BARRA DE ARRIBA, SOLO CON LA FLECHA. El «⋮» del frame es del dueño;
           aquí no hay ninguna acción que ofrecer. */}

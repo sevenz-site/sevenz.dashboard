@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { eventContext } from "@/lib/mixpanel-context";
 import { mixpanelConfigured, sendEvent } from "@/lib/mixpanel-http";
+import type { EventName, EventProps } from "@/lib/analytics/events";
 
 // Server-side counterpart to lib/mixpanel.ts. The browser version depends on
 // the user's device being willing to reach api.mixpanel.com — iOS Safari,
@@ -31,10 +32,10 @@ import { mixpanelConfigured, sendEvent } from "@/lib/mixpanel-http";
 // one profile. The actual HTTP call lives in lib/mixpanel-http.ts, shared with
 // that route so there is a single implementation to keep correct.
 
-export function trackServer(
-  event: string,
+export function trackServer<E extends EventName>(
+  event: E,
   ownerId: string,
-  props?: Record<string, unknown>,
+  props?: EventProps[E],
   // Sent as $set so the profile stays current even for owners whose browser
   // never lets identifyOwner() run — that's what leaves "Updated at" stale.
   ownerEmail?: string | null,

@@ -498,7 +498,7 @@ try {
         libro: "EUR",
         cruzaLibros: true,
         // Todo lo que debe en los dos libros, en bolívares.
-        montoTecleado: Math.round((bsDelEuro + bsDelDolar) * 100) / 100,
+        montoTecleado: Math.round(bsDelEuro * 100) / 100 + Math.round(bsDelDolar * 100) / 100,
         monedaTecleada: "VES",
       });
       check(
