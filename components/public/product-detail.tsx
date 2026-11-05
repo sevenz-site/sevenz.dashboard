@@ -1,5 +1,6 @@
 "use client";
 
+import { PublicEventOnMount, sendPublicEvent } from "@/components/public/public-event";
 import { useMemo, useState } from "react";
 import { StockBadge } from "@/components/stock-badge";
 import { CircleCheck, Minus, Plus } from "lucide-react";
@@ -189,7 +190,7 @@ export function ProductDetail({
   rates: BolivarRates | null;
   stock: number | null;
 }) {
-  const { agregar } = useCarrito(token);
+  const { agregar, lineas: lineasDelCarrito } = useCarrito(token);
   const router = useRouter();
   const minimo = cantidadMinima(producto);
   // THE MINIMUM, UNLESS SOMEBODY IS COMING BACK TO A LINE THAT ALREADY HAS A
@@ -319,6 +320,14 @@ export function ProductDetail({
 
   return (
     <div className="flex flex-col gap-5">
+      {isPreview || alAgregar ? null : (
+        <PublicEventOnMount
+          token={token}
+          code="catalog_product_opened"
+          onceKey={productId}
+          props={{ product_id: productId }}
+        />
+      )}
       {/* EL DISPONIBLE, SIN CIFRA, igual que la etiqueta del catálogo.
           Decisión del dueño el 2026-10-15: dice si hay o no hay, nunca cuánto.
           El porqué está en `app/c/[token]/page.tsx`, donde vive la etiqueta.
@@ -618,6 +627,15 @@ export function ProductDetail({
                 currency: moneda,
                 comment: comentario.trim() === "" ? null : comentario.trim(),
               });
+              // HOW MANY GET AS FAR AS WANTING SOMETHING: the step of the catalogue
+              // funnel between looking and asking. This same screen also serves the
+              // shopkeeper's sale and preview, which return above or never get here.
+              if (!isPreview) {
+                sendPublicEvent(token, "catalog_product_added", {
+                  product_id: productId,
+                  cart_lines: lineasDelCarrito.length + (lineasDelCarrito.some((l) => l.productId === productId) ? 0 : 1),
+                });
+              }
               toast.success("Agregado a tu carrito", {
                 description: `${formatCantidad(n)} · ${total}`,
                 // ARRIBA. Abajo se solapaba con la píldora «Ver carrito», que es

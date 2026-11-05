@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { sendPublicEvent } from "@/components/public/public-event";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { defaultDocumentType, type DocumentType } from "@/lib/document-id";
 import type { OwnerCountry } from "@/lib/types";
@@ -150,6 +151,17 @@ export function CartScreen({
     .map((l) => l.productId)
     .sort()
     .join(",");
+
+  // HOW MANY WHO ADDED SOMETHING COME TO THE CART, AND HOW MANY OPEN THE FORM: the
+  // two steps of the catalogue funnel where the personal data starts to be asked
+  // for. Waits for the lines because the cart lives in `localStorage` and the first
+  // render is empty. Once per visit to this screen. Filed under the owner.
+  const carritoContado = useRef(false);
+  useEffect(() => {
+    if (carritoContado.current || lineas.length === 0) return;
+    carritoContado.current = true;
+    sendPublicEvent(token, "catalog_cart_opened", { lines: lineas.length });
+  }, [token, lineas.length]);
 
   useEffect(() => {
     // Con el carrito vacío no hay nada que pedir, y tampoco nada que mostrar:
@@ -450,7 +462,10 @@ export function CartScreen({
             disabled={
               cargando || estado.fase !== "listo" || huerfanas.length > 0
             }
-            onClick={() => setAbierto(true)}
+            onClick={() => {
+              sendPublicEvent(token, "catalog_order_form_opened", { lines: lineas.length });
+              setAbierto(true);
+            }}
           >
             <WhatsappIcon className="size-5" /> Completar orden
           </Button>

@@ -1,3 +1,4 @@
+import { PublicEventOnMount } from "@/components/public/public-event";
 import { ZonaDelNegocioProvider } from "@/components/fecha";
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
@@ -137,6 +138,12 @@ export default async function VentaDeContadoDelClientePage({
 
   return (
     <ZonaDelNegocioProvider country={shared.owner_country}>
+    <PublicEventOnMount
+      token={token}
+      code="client_transaction_opened"
+      onceKey={saleId}
+      props={{ transaction_type: "cash_sale" }}
+    />
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col gap-4 px-4 pb-10">
       {/* LA FILA DE VOLVER. Esta pantalla no lleva cabecera de app --el
           cliente no tiene menú ni sesión-- así que la flecha es la única

@@ -446,6 +446,7 @@ export const MANIFEST = {
     "/api/track": "public",
     "/api/share-contact": "public",
     "/api/share-catalog": "public",
+    "/api/public-event": "public",
   },
 
   buckets: {

@@ -9,6 +9,7 @@ import { isDocumentTypeFor } from "@/lib/document-id";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { CONSENT_FIELD, CONSENT_SHOWN_FIELD } from "@/lib/whatsapp-opt-in";
 import { trackServer } from "@/lib/mixpanel-server";
+import { moneyProps } from "@/lib/analytics/amounts";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { DOCUMENT_SOURCE } from "@/lib/types";
 import { parseMoneyInput } from "@/lib/products/price";
@@ -405,6 +406,24 @@ async function crearCliente({
   // EN EL SERVIDOR Y NO EN EL NAVEGADOR, como todo lo que cuenta: en septiembre
   // de 2026 un dueño usó la app ocho de nueve días mientras Mixpanel lo daba
   // por perdido, porque los eventos salían de su iPhone y no llegaban.
+  // HOW MANY BUSINESSES BRING THE DEBTS THEY ALREADY HAD. Writing them down is the
+  // clearest sign a shopkeeper has left the paper notebook for good, and it decides
+  // how much the old-debt step deserves. It sits after the rollback above, so a debt
+  // that did not save is never counted. Filed under the owner.
+  if (deuda) {
+    trackServer(
+      "Old Debt Recorded",
+      user.id,
+      {
+        client_id: nuevo.id,
+        ...moneyProps("amount", [[deuda.sello.currency, deuda.amount]]),
+        has_term: deuda.plazoDias != null,
+        installments: deuda.cuotas ?? 0,
+      },
+      user.email,
+    );
+  }
+
   trackServer("Client Created", user.id, { client_id: nuevo.id }, user.email);
 
   // EL PERMISO DE WHATSAPP (MS-34). La casilla se enseña SIEMPRE en esta

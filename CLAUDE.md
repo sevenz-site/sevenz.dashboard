@@ -1791,6 +1791,10 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 - Before adding any new third-party dependency, SDK, or external API: run
   the `new-api-risk-review` skill first, and wait for explicit approval
   before installing or integrating anything.
+- To create, edit or retire a Mixpanel event: run the `analytics-event` skill. It
+  keeps the code and `../docs/Sevenz-Eventos-Mixpanel.xlsx` in step. Section 4i of
+  the `qa-regression-checklist` checks every release for events it should add,
+  change or lost (owner's request of 2026-11-04).
 
 ## Code is written in English. Always.
 

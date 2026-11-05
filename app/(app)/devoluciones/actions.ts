@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { trackServer } from "@/lib/mixpanel-server";
+import { flowContext, moneyProps, type FlowInput } from "@/lib/analytics/amounts";
+import type { FlowContext, ReturnRejectionReason } from "@/lib/analytics/events";
 
 // REGISTERING A RETURN. All the rules live in `registrar_devolucion` (migration
 // 185), the one place that can write the ledger, the shelf and the event
@@ -22,6 +25,8 @@ export type ReturnInput = {
   fiados: { fiado_id: string; amount: number }[];
   aFavor: number;
   efectivo: number;
+  // Which attempt this is. Only for the funnels.
+  analitica?: FlowInput;
 };
 
 const REFUSALS: Record<string, string> = {
@@ -44,17 +49,91 @@ const REFUSALS: Record<string, string> = {
   sin_cliente: "Una venta sin cliente no puede dejar saldo a favor.",
 };
 
+const REASON_OF_RPC_CODE: Record<string, ReturnRejectionReason> = {
+  cuenta_pausada: "paused_account",
+  cantidad_invalida: "invalid_quantity",
+  fiado_ajeno: "not_found",
+  sin_productos: "no_products",
+  venta_eliminada: "sale_deleted",
+  linea_ajena: "not_found",
+  excede_la_cantidad: "quantity_exceeded",
+  excede_la_venta: "sale_value_exceeded",
+  sin_valor: "no_value",
+  fiado_saldado: "fiado_settled",
+  excede_el_fiado: "exceeds_fiado",
+  reparto_no_cuadra: "split_mismatch",
+  hay_deuda_en_esa_moneda: "debt_in_currency",
+  venta_ajena: "not_found",
+  tiene_fiado: "has_fiado",
+  sin_cliente: "no_client",
+};
+
+type ReturnResult = { ok: true; movementId: string } | { ok: false; error: string };
+
+// WHY A RETURN DID NOT SAVE. The flow launched in v0.2.0 with cases nobody has
+// walked in production, pesos among them, so a refusal that keeps coming back is
+// the first sign of a case that needs looking at. Filed under the owner.
+function refuse(
+  ownerId: string,
+  email: string | undefined,
+  context: FlowContext & { sale_kind: "fiado" | "cash" },
+  reason: ReturnRejectionReason,
+  error: string,
+): ReturnResult {
+  trackServer("Return Rejected", ownerId, { ...context, reason }, email);
+  return { ok: false, error };
+}
+
+// HOW MANY RETURNS THERE ARE AND WHERE THE MONEY WENT. Owner's request of
+// 2026-11-04: *«Todas las transacciones deben tener eventos»*. It decides where
+// the next return work goes: mostly fiado or mostly cash, and whether shopkeepers
+// hand money back or leave it as saldo. Everything comes from what the function
+// wrote, never from what the browser asked for. Filed under the owner.
+async function recordReturn(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  email: string | undefined,
+  context: FlowContext & { sale_kind: "fiado" | "cash" },
+  input: { lineId: string; quantity: number },
+  clientId: string,
+  result: RpcResult,
+) {
+  const { data: line } = await supabase.from("sale_lines").select("currency").eq("id", input.lineId).maybeSingle();
+  const currency = (line?.currency as string | null | undefined) ?? null;
+  trackServer(
+    "Return Recorded",
+    ownerId,
+    {
+      ...context,
+      return_id: result.return_id ?? null,
+      movement_id: result.movement_id ?? null,
+      client_id: clientId,
+      quantity: input.quantity,
+      ...moneyProps("value", [[currency, Number(result.amount ?? 0)]]),
+      ...moneyProps("to_own", [[currency, Number(result.to_own ?? 0)]]),
+      ...moneyProps("to_fiados", [[currency, Number(result.to_fiados ?? 0)]]),
+      ...moneyProps("to_credit", [[currency, Number(result.to_credit ?? 0)]]),
+      ...moneyProps("to_cash", [[currency, Number(result.to_cash ?? 0)]]),
+    },
+    email,
+  );
+}
+
 export async function registrarDevolucion(
   input: ReturnInput,
-): Promise<{ ok: true; movementId: string } | { ok: false; error: string }> {
+): Promise<ReturnResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: REFUSALS.sin_sesion };
 
+  const context = { ...flowContext(input.analitica), sale_kind: "fiado" as const };
+  const rechazar = (reason: ReturnRejectionReason, error: string) =>
+    refuse(user.id, user.email, context, reason, error);
+
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
   const { data: fiado } = await supabase
@@ -65,10 +144,10 @@ export async function registrarDevolucion(
     .eq("type", "charge")
     .is("deleted_at", null)
     .maybeSingle();
-  if (!fiado) return { ok: false, error: REFUSALS.fiado_ajeno };
+  if (!fiado) return rechazar("not_found", REFUSALS.fiado_ajeno);
 
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
-    return { ok: false, error: REFUSALS.cantidad_invalida };
+    return rechazar("invalid_quantity", REFUSALS.cantidad_invalida);
   }
 
   const { data, error } = await supabase.rpc("registrar_devolucion", {
@@ -81,20 +160,31 @@ export async function registrarDevolucion(
   });
 
   if (error) {
-    return { ok: false, error: mensajeDeError("registrar la devolución", error, "registrarDevolucion") };
+    return rechazar("db_error", mensajeDeError("registrar la devolución", error, "registrarDevolucion"));
   }
 
   const result = data as RpcResult;
-  if (!result.ok) return { ok: false, error: refusalOf(result) };
+  if (!result.ok) return rechazar(REASON_OF_RPC_CODE[result.code ?? ""] ?? "db_error", refusalOf(result));
 
   revalidatePath("/dashboard");
   revalidatePath("/productos");
   revalidatePath(`/clients/${fiado.client_id}`);
   revalidatePath(`/transacciones/${input.movementId}`);
+  await recordReturn(supabase, user.id, user.email, context, input, fiado.client_id as string, result);
   return { ok: true, movementId: result.movement_id as string };
 }
 
-type RpcResult = { ok: boolean; code?: string; movement_id?: string };
+type RpcResult = {
+  ok: boolean;
+  code?: string;
+  movement_id?: string;
+  return_id?: string;
+  amount?: number;
+  to_own?: number;
+  to_fiados?: number;
+  to_credit?: number;
+  to_cash?: number;
+};
 
 const refusalOf = (result: RpcResult) =>
   REFUSALS[result.code ?? ""] ?? "No pudimos registrar la devolución. Vuelve a intentarlo.";
@@ -103,15 +193,19 @@ const refusalOf = (result: RpcResult) =>
 // because there is no fiado to start from: everything hangs from the sale.
 export async function registrarDevolucionDeContado(
   input: Omit<ReturnInput, "movementId"> & { saleId: string },
-): Promise<{ ok: true; movementId: string } | { ok: false; error: string }> {
+): Promise<ReturnResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: REFUSALS.sin_sesion };
 
+  const context = { ...flowContext(input.analitica), sale_kind: "cash" as const };
+  const rechazar = (reason: ReturnRejectionReason, error: string) =>
+    refuse(user.id, user.email, context, reason, error);
+
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
   const { data: venta } = await supabase
@@ -121,10 +215,10 @@ export async function registrarDevolucionDeContado(
     .eq("owner_id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
-  if (!venta) return { ok: false, error: REFUSALS.venta_ajena };
+  if (!venta) return rechazar("not_found", REFUSALS.venta_ajena);
 
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
-    return { ok: false, error: REFUSALS.cantidad_invalida };
+    return rechazar("invalid_quantity", REFUSALS.cantidad_invalida);
   }
 
   const { data, error } = await supabase.rpc("registrar_devolucion_contado", {
@@ -137,14 +231,15 @@ export async function registrarDevolucionDeContado(
   });
 
   if (error) {
-    return { ok: false, error: mensajeDeError("registrar la devolución", error, "registrarDevolucionDeContado") };
+    return rechazar("db_error", mensajeDeError("registrar la devolución", error, "registrarDevolucionDeContado"));
   }
 
   const result = data as RpcResult;
-  if (!result.ok) return { ok: false, error: refusalOf(result) };
+  if (!result.ok) return rechazar(REASON_OF_RPC_CODE[result.code ?? ""] ?? "db_error", refusalOf(result));
 
   revalidatePath("/dashboard");
   revalidatePath("/productos");
   revalidatePath(`/clients/${venta.client_id}`);
+  await recordReturn(supabase, user.id, user.email, context, input, venta.client_id as string, result);
   return { ok: true, movementId: result.movement_id as string };
 }

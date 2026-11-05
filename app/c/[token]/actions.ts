@@ -1,5 +1,7 @@
 "use server";
 
+import { trackLinkEvent } from "@/lib/analytics/link-owner";
+import type { CatalogOrderRejectionReason } from "@/lib/analytics/events";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { trackServer } from "@/lib/mixpanel-server";
@@ -159,6 +161,22 @@ const MOTIVOS: Record<string, string> = {
   sin_tasa: "Ahora mismo no podemos calcular ese precio. Prueba con otra moneda.",
 };
 
+const REASON_OF_ORDER_REFUSAL: Record<string, CatalogOrderRejectionReason> = {
+  enlace_invalido: "invalid_link",
+  demasiadas_ordenes: "too_many_orders",
+  nombre_invalido: "invalid_name",
+  documento_invalido: "invalid_document",
+  whatsapp_invalido: "invalid_whatsapp",
+  sin_productos: "empty_cart",
+  demasiados_productos: "too_many_products",
+  producto_invalido: "product_gone",
+  cantidad_invalida: "invalid_quantity",
+  cantidad_bajo_el_minimo: "below_minimum",
+  sin_precio: "price_missing",
+  moneda_invalida: "currency_invalid",
+  sin_tasa: "rate_missing",
+};
+
 export async function crearOrden(
   token: string,
   datos: DatosDeLaOrden,
@@ -195,6 +213,13 @@ export async function crearOrden(
       // `error` sin traducción es el comodín de la función para lo que no
       // previó, y ya quedó en el log del servidor con su detalle real.
       console.error("[orden] rechazada:", motivo);
+      // WHY AN ORDER DID NOT GO THROUGH. Until now this stopped at the log above. A
+      // customer who filled the cart and got refused is the most expensive drop-off
+      // in the catalogue funnel: `product_gone` or `price_missing` point at the shop's
+      // catalogue, `invalid_document` at the form. Filed under the owner.
+      await trackLinkEvent("catalog", token, "Catalog Order Rejected", {
+        reason: REASON_OF_ORDER_REFUSAL[motivo] ?? "db_error",
+      });
       return {
         ok: false,
         error: MOTIVOS[motivo] ?? "No pudimos enviar tu pedido. Intenta de nuevo.",

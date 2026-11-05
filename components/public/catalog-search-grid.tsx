@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { sendPublicEvent } from "@/components/public/public-event";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -47,7 +48,10 @@ import type { Categoria } from "@/lib/products/categories";
 export function CatalogSearchGrid({
   items,
   categorias = [],
+  analyticsToken = null,
 }: {
+  // `null` in the shopkeeper's preview, which is not a customer browsing.
+  analyticsToken?: string | null;
   items: { id: string; name: string; categoryId?: string | null; card: ReactNode }[];
   // Migration 184: already filtered by the database to those with a
   // published product, so no chip here can lead to an empty grid.
@@ -75,6 +79,24 @@ export function CatalogSearchGrid({
     for (const i of items) if (i.categoryId) conteo.set(i.categoryId, (conteo.get(i.categoryId) ?? 0) + 1);
     return categorias.map((c) => ({ id: c.id, name: c.name, productos: conteo.get(c.id) ?? 0 }));
   }, [items, categorias]);
+
+  // DOES THE CUSTOMER SEARCH, OR USE THE CHIPS? It decides whether categories earn
+  // their room on this screen. Once per search, after a pause and never per letter,
+  // and the text itself never travels: it can be anything. Filed under the owner.
+  const cuantos = visibles.length;
+  useEffect(() => {
+    if (!analyticsToken || !query.trim()) return;
+    const espera = setTimeout(() => {
+      sendPublicEvent(analyticsToken, "catalog_filtered", { filter: "search", results_count: cuantos });
+    }, 1500);
+    return () => clearTimeout(espera);
+  }, [analyticsToken, query, cuantos]);
+  useEffect(() => {
+    if (!analyticsToken || !categoryId) return;
+    sendPublicEvent(analyticsToken, "catalog_filtered", { filter: "category", results_count: cuantos });
+    // Only when the chip changes: the count follows it and must not send a second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyticsToken, categoryId]);
 
   return (
     <div className="flex flex-col gap-4">

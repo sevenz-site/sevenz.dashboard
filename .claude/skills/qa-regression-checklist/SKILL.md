@@ -1022,6 +1022,55 @@ La regla está en `CLAUDE.md`, «Toda liberación queda en `LIBERACIONES.md`».
 migraciones, `main` y `sevenz.site`, el commit, la etiqueta `vX.Y.Z` en `main`, y el
 estado de `POR SALIR` a `EN PRODUCCIÓN`.
 
+## 4i. Los eventos contra este lanzamiento — `analytics-event`
+
+**Pedido por el dueño el 2026-11-04**: cada lanzamiento se analiza para identificar
+dónde debería incluirse un evento nuevo o actualizarse uno existente, si un flujo
+cambió. Crear o actualizar se hace con el skill `analytics-event`, nunca a mano.
+
+**Por qué existe.** El 2026-10-24 se borró `Movement Added` con su diálogo, y salió a
+producción al día siguiente sin que nadie lo notara. Durante dos semanas ninguna venta
+ni abono llegó a Mixpanel. El checklist pasó entero, porque ningún punto lo preguntaba.
+
+**Mira solo lo que trae este lanzamiento.** La lista de eventos planeados y sin
+construir de `../docs/Sevenz-Eventos-Mixpanel.xlsx` no se reporta aquí: una alarma que
+suena en cada lanzamiento deja de leerse.
+
+**1. Qué eventos se van.** Esto debe salir vacío:
+
+```sh
+git diff origin/main origin/dev -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
+```
+
+Cada línea es un evento que desaparece o que se movió. Si se movió, ya está. Si se
+perdió, **es una parada dura**: se sustituye en este lanzamiento, o el dueño dice que
+se pierde.
+
+**2. Qué acciones nuevas escriben sin contarlo.** Por cada acción de servidor nueva o
+cambiada, y cada ruta nueva:
+
+| Si el diff trae | Debe tener | Si no |
+|---|---|---|
+| Una escritura de dinero: venta, abono, devolución, borrar, restaurar | Evento de éxito y de rechazo en el servidor | **Parada dura** |
+| Otra escritura que concreta un flujo | Evento de éxito en el servidor | Se le pregunta al dueño |
+| Una pantalla, paso, hoja o diálogo nuevo dentro de un flujo con funnel | Su paso en `Funnels` | Se le pregunta al dueño |
+| Un flujo cambiado: pasos quitados, reordenados, otra puerta de entrada | El funnel y `entry_point` al día | Se actualiza con el skill |
+| Un buscador, filtro o botón de compartir nuevo | El `screen`, `filter` o `control` nuevo en el evento que ya existe | Se actualiza con el skill |
+| Una ruta pública nueva que manda un evento | Exenta en `lib/supabase/middleware.ts` y probada con `curl` sin sesión | **Parada dura** |
+
+No se decide a solas que un cambio no necesita evento: se le dice al dueño en una línea,
+como en la sección 4g.
+
+**3. El libro coincide con el código.** Cada evento del diff está en
+`../docs/Sevenz-Eventos-Mixpanel.xlsx`, con su `Implementation date`, y lleva pegada
+su pregunta de negocio (regla de `CLAUDE.md`).
+
+**4. Un evento se ve salir.** Los nuevos de este lanzamiento se comprueban en dev antes
+de reportarlos. Si no se pudo, la fila dice «no probado».
+
+En el informe va una fila por evento creado, cambiado o perdido. Si no hubo ninguno, una
+fila que lo diga: «sin eventos que crear ni actualizar», con la razón.
+
 ## 5. Security checklist
 
 From the full security audit done 2026-08-28. Two cadences: **re-check
@@ -1402,6 +1451,9 @@ table" rule) — one row per section above, not prose alone:
 
 | Section | Skill/tool used | Result |
 |---------|-----------------|--------|
+
+**The 4i row is never skipped either**: it names each event created, changed or lost
+in this release, or says there were none and why.
 
 **The 4h row is never skipped either**: it says whether the release's entry exists
 and whether the last deploy on `main` is the one the entry names as its base.

@@ -1,5 +1,7 @@
 "use client";
 
+import type { EventName, EventProps } from "@/lib/analytics/events";
+
 // Browser-side analytics, posted to this app's own /api/track rather than to
 // Mixpanel directly.
 //
@@ -50,6 +52,6 @@ export function identifyOwner(_ownerId: string, props: { email: string; plan: st
   post({ profile: { $email: props.email, plan: props.plan } });
 }
 
-export function track(event: string, props?: Record<string, unknown>) {
+export function track<E extends EventName>(event: E, props?: EventProps[E]) {
   post({ event, props });
 }

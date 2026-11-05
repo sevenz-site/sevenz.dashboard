@@ -1,5 +1,8 @@
 "use server";
 
+import { trackServer } from "@/lib/mixpanel-server";
+import { flowContext, moneyProps, paymentForm, type FlowInput } from "@/lib/analytics/amounts";
+import type { DeleteRejectionReason, SaleRejectionReason } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
@@ -900,6 +903,9 @@ export type VentaEntrada = {
   // También sella `sale_id` y `registered_at` en el pedido cuando la venta
   // queda escrita, que es lo que impide registrarlo dos veces.
   pedidoId?: string;
+  // Which attempt this is and where it started. Only for the funnels: see
+  // `flowContext`, which drops anything that is not the expected shape.
+  analitica?: FlowInput;
 };
 
 export type ResultadoVenta =
@@ -932,6 +938,21 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar y repite la venta." };
 
+  const flujo = flowContext(entrada.analitica);
+  const origin = entrada.pedidoId ? "catalog_order" : "wizard";
+  // WHY A SALE DID NOT SAVE. Until now a refusal left no trace: the shopkeeper
+  // read the red message and the attempt never happened, as far as anyone could
+  // tell. Owner's request of 2026-11-04: *«entender dónde ocurren los drop-off de
+  // cada flujo»*.
+  //
+  // What it decides: a reason that keeps coming back is a rule or a screen to
+  // change. Without it a funnel cannot tell «se fue» from «no lo dejamos». Filed
+  // under the owner. It runs on the server, so it does not depend on the browser.
+  const rechazar = (reason: SaleRejectionReason, error: string): ResultadoVenta => {
+    trackServer("Sale Rejected", user.id, { ...flujo, origin, reason }, user.email);
+    return { ok: false, error };
+  };
+
   // ── LA CUENTA PAUSADA NO ESCRIBE ────────────────────────────────────
   //
   // FALTABA, y es un hueco que entró con esta acción el 2026-10-17: todas las
@@ -951,11 +972,11 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   // se guardó—. Preguntando antes, los dos casos dicen lo mismo y en
   // castellano.
   if (!(await puedeEscribir(supabase, user.id))) {
-    return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+    return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
-  if (entrada.lineas.length === 0) return { ok: false, error: "Agrega al menos un producto a la venta." };
-  if (entrada.lineas.length > 60) return { ok: false, error: "Son demasiados productos para una sola venta." };
+  if (entrada.lineas.length === 0) return rechazar("empty_sale", "Agrega al menos un producto a la venta.");
+  if (entrada.lineas.length > 60) return rechazar("too_many_lines", "Son demasiados productos para una sola venta.");
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
   // solo por RLS -- la regla de `CLAUDE.md` para toda fila que se lee por un id
@@ -967,10 +988,10 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     .eq("owner_id", user.id)
     .is("trashed_at", null)
     .maybeSingle();
-  if (!cliente) return { ok: false, error: "No encontramos ese cliente." };
+  if (!cliente) return rechazar("client_not_found", "No encontramos ese cliente.");
 
   const contexto = await contextoDeVenta(supabase, user.id);
-  if (!contexto.ok) return { ok: false, error: contexto.error };
+  if (!contexto.ok) return rechazar("context_unavailable", contexto.error);
   const { rates, monedasDelLibro } = contexto;
 
   // ── LOS PRECIOS SE VUELVEN A CALCULAR AQUÍ ──────────────────────────
@@ -983,7 +1004,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     .in("id", ids);
   if (errorProductos) {
     console.error("registrarVenta productos:", errorProductos.message);
-    return { ok: false, error: "No pudimos leer tus productos. Vuelve a intentarlo." };
+    return rechazar("products_unreadable", "No pudimos leer tus productos. Vuelve a intentarlo.");
   }
 
   const productos = await armarProductos(supabase, (filas ?? []) as FilaDeProducto[]);
@@ -1011,7 +1032,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       .eq("id", entrada.pedidoId)
       .eq("owner_id", user.id)
       .maybeSingle();
-    if (!pedido) return { ok: false, error: "No encontramos ese pedido." };
+    if (!pedido) return rechazar("order_not_found", "No encontramos ese pedido.");
     // ── LA PARADA DURA, AHORA POR MONEDA Y NO POR PEDIDO ──────────────
     //
     // Sigue siendo la que vale: las pantallas ya tienen la suya, pero una
@@ -1042,7 +1063,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     }
     const repetida = entrada.lineas.find((l) => monedasVendidas.has(String(l.currency)));
     if (repetida) {
-      return { ok: false, error: "Esa parte del pedido ya se registró." };
+      return rechazar("order_part_registered", "Esa parte del pedido ya se registró.");
     }
     const { data: lineasDelPedido } = await supabase
       .from("catalog_order_items")
@@ -1076,17 +1097,17 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     // en `filas`: el filtro por `owner_id` es el que lo dejó fuera. No se
     // distingue de «no existe», que es lo mismo que hace la vista previa del
     // catálogo con un id al azar.
-    if (!producto) return { ok: false, error: "Uno de los productos ya no está disponible." };
+    if (!producto) return rechazar("product_gone", "Uno de los productos ya no está disponible.");
 
     if (!Number.isFinite(linea.quantity) || linea.quantity <= 0) {
-      return { ok: false, error: `Revisa la cantidad de ${producto.name}.` };
+      return rechazar("invalid_quantity", `Revisa la cantidad de ${producto.name}.`);
     }
     if (!monedasDelLibro.includes(linea.currency)) {
-      return { ok: false, error: `No puedes cobrar ${producto.name} en esa moneda.` };
+      return rechazar("currency_not_allowed", `No puedes cobrar ${producto.name} en esa moneda.`);
     }
 
     const tier = escalonParaCantidad(producto.producto, linea.quantity);
-    if (!tier) return { ok: false, error: `La cantidad de ${producto.name} es menor que el mínimo que vendes.` };
+    if (!tier) return rechazar("below_minimum", `La cantidad de ${producto.name} es menor que el mínimo que vendes.`);
 
     // ── EL PRECIO SELLADO MANDA MIENTRAS NADIE TOQUE LA LÍNEA ───────
     //
@@ -1128,7 +1149,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     // esa moneda no se cobra a cero, se rechaza. Pasa de verdad cuando el
     // negocio es venezolano y ahora mismo no hay tasa para convertir.
     if (unitPrice == null) {
-      return { ok: false, error: `No tenemos precio de ${producto.name} en esa moneda.` };
+      return rechazar("price_missing", `No tenemos precio de ${producto.name} en esa moneda.`);
     }
 
     lineasResueltas.push({
@@ -1160,10 +1181,10 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
 
   for (const pago of entrada.pagos) {
     if (!monedasDelLibro.includes(pago.currency)) {
-      return { ok: false, error: "Ese pago está en una moneda que tu negocio no maneja." };
+      return rechazar("payment_currency_invalid", "Ese pago está en una moneda que tu negocio no maneja.");
     }
     if (!totales.has(pago.currency)) {
-      return { ok: false, error: "Hay un pago en una moneda que esta venta no cobra." };
+      return rechazar("payment_currency_invalid", "Hay un pago en una moneda que esta venta no cobra.");
     }
 
     let rateUsed: number | null = null;
@@ -1190,19 +1211,19 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     // cuadre al céntimo con `amount` no es una incoherencia: es el redondeo del
     // tendero, y conviene que quede escrito.
     if (pago.entryCurrency === "VES") {
-      if (!rates) return { ok: false, error: "Ahora mismo no tenemos la tasa del BCV para convertir los bolívares." };
+      if (!rates) return rechazar("rate_missing", "Ahora mismo no tenemos la tasa del BCV para convertir los bolívares.");
       if (!pago.entryAmount || !Number.isFinite(pago.entryAmount) || pago.entryAmount <= 0) {
-        return { ok: false, error: "Revisa el monto en bolívares." };
+        return rechazar("invalid_amount", "Revisa el monto en bolívares.");
       }
       const tasa = pago.currency === "USD" ? rates.usd : rates.eur;
       if (!tasa || tasa <= 0) {
-        return { ok: false, error: "Ahora mismo no tenemos la tasa del BCV para convertir los bolívares." };
+        return rechazar("rate_missing", "Ahora mismo no tenemos la tasa del BCV para convertir los bolívares.");
       }
       rateUsed = tasa;
     }
 
     if (!Number.isFinite(pago.amount) || pago.amount <= 0) {
-      return { ok: false, error: "Revisa el monto del pago." };
+      return rechazar("invalid_amount", "Revisa el monto del pago.");
     }
 
     const enElLibro = redondear(pago.amount);
@@ -1222,7 +1243,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   for (const [currency, total] of totales) {
     const abonado = pagado.get(currency) ?? 0;
     if (abonado - total > HOLGURA) {
-      return { ok: false, error: "Estás cobrando más de lo que suma la venta en esa moneda." };
+      return rechazar("overpayment", "Estás cobrando más de lo que suma la venta en esa moneda.");
     }
     const resto = redondear(total - abonado);
     if (resto > HOLGURA) restos.push({ currency, amount: resto });
@@ -1233,20 +1254,20 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   // sería la deuda de «todos los que pasaron por la caja». Nadie podría cobrar
   // eso, y el saldo de ese cliente crecería para siempre.
   if (restos.length > 0 && cliente.is_walk_in) {
-    return { ok: false, error: "Para dejar algo fiado tienes que elegir o crear un cliente." };
+    return rechazar("walk_in_debt", "Para dejar algo fiado tienes que elegir o crear un cliente.");
   }
 
   // THE SALDO IS READ HERE, never taken from the browser's word: a figure sent
   // from outside would write a charge nobody can settle.
   const usoDeSaldo = new Map<PriceCurrency, number>();
   if ((entrada.saldoAFavor ?? []).length > 0) {
-    if (cliente.is_walk_in) return { ok: false, error: "Elige un cliente para usar su saldo a favor." };
+    if (cliente.is_walk_in) return rechazar("walk_in_credit", "Elige un cliente para usar su saldo a favor.");
     const disponible = await saldoUsable(supabase, cliente.id);
     for (const uso of entrada.saldoAFavor ?? []) {
       if (!Number.isFinite(uso.amount) || uso.amount <= 0) continue;
       const resto = restos.find((r) => r.currency === uso.currency)?.amount ?? 0;
       if (uso.amount - (disponible[uso.currency] ?? 0) > HOLGURA || uso.amount - resto > HOLGURA) {
-        return { ok: false, error: "El saldo a favor de este cliente cambió. Revísalo y vuelve a intentarlo." };
+        return rechazar("credit_changed", "El saldo a favor de este cliente cambió. Revísalo y vuelve a intentarlo.");
       }
       usoDeSaldo.set(uso.currency, redondear(uso.amount));
     }
@@ -1260,12 +1281,12 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   for (const resto of restos) {
     const credito = creditoPorMoneda.get(resto.currency);
     if (!credito && cubiertoConSaldo(resto)) continue;
-    if (!credito) return { ok: false, error: "Falta decir en cuánto tiempo te pagan lo que queda." };
+    if (!credito) return rechazar("term_missing", "Falta decir en cuánto tiempo te pagan lo que queda.");
     if (
       credito.plazoDias != null &&
       (!Number.isInteger(credito.plazoDias) || credito.plazoDias < 1 || credito.plazoDias > 365)
     ) {
-      return { ok: false, error: "El plazo tiene que estar entre 1 y 365 días." };
+      return rechazar("term_invalid", "El plazo tiene que estar entre 1 y 365 días.");
     }
     // Las cuotas van de 2 a 36 y NECESITAN PLAZO para dividirlo: las dos cosas
     // son el `check` de la migración `118`, comprobadas aquí para que el
@@ -1273,10 +1294,10 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     // como null, que es lo mismo y es el comportamiento de siempre.
     if (credito.cuotas != null) {
       if (!Number.isInteger(credito.cuotas) || credito.cuotas < 2 || credito.cuotas > 36) {
-        return { ok: false, error: "Las cuotas van de 2 a 36." };
+        return rechazar("installments_invalid", "Las cuotas van de 2 a 36.");
       }
       if (credito.plazoDias == null) {
-        return { ok: false, error: "Para pactar cuotas hace falta un plazo que repartir." };
+        return rechazar("installments_invalid", "Para pactar cuotas hace falta un plazo que repartir.");
       }
     }
   }
@@ -1317,7 +1338,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     .single();
   if (errorVenta || !venta) {
     console.error("registrarVenta sales:", errorVenta?.message);
-    return { ok: false, error: "No pudimos guardar la venta. Vuelve a intentarlo." };
+    return rechazar("db_error", "No pudimos guardar la venta. Vuelve a intentarlo.");
   }
 
   const deshacer = async (motivo: string, detalle: string | undefined) => {
@@ -1341,7 +1362,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   );
   if (errorLineas) {
     await deshacer("sale_lines", errorLineas.message);
-    return { ok: false, error: "No pudimos guardar los productos de la venta. Vuelve a intentarlo." };
+    return rechazar("db_error", "No pudimos guardar los productos de la venta. Vuelve a intentarlo.");
   }
 
   if (pagosResueltos.length > 0) {
@@ -1359,7 +1380,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     );
     if (errorPagos) {
       await deshacer("sale_payments", errorPagos.message);
-      return { ok: false, error: "No pudimos guardar el pago. Vuelve a intentarlo." };
+      return rechazar("db_error", "No pudimos guardar el pago. Vuelve a intentarlo.");
     }
   }
 
@@ -1374,7 +1395,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     );
     if (!snapshot.ok) {
       await deshacer("tasa", snapshot.reason);
-      return { ok: false, error: snapshot.error };
+      return rechazar("rate_missing", snapshot.error);
     }
     const sello = snapshot.snapshot;
 
@@ -1433,7 +1454,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       // tendero volvería a guardar la venta entera.
       for (const hecho of fiado) await supabase.from("movements").delete().eq("id", hecho.movementId);
       await deshacer("movements", errorMovimiento?.message);
-      return { ok: false, error: "No pudimos guardar lo que queda fiado. Vuelve a intentarlo." };
+      return rechazar("db_error", "No pudimos guardar lo que queda fiado. Vuelve a intentarlo.");
     }
     fiado.push({ currency: resto.currency, amount: resto.amount, movementId: movimiento.id });
   }
@@ -1477,6 +1498,47 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${cliente.id}`);
+
+  // HOW MANY SALES AND FIADOS EACH BUSINESS RECORDS, IN WHAT FORM AND FOR HOW MUCH.
+  // Owner's request of 2026-11-04: *«Todas las transacciones deben tener
+  // eventos»*. It replaces `Movement Added`, lost with its dialog on 2026-10-24:
+  // from then until this event, no sale reached Mixpanel at all.
+  //
+  // What it decides: with `Payment Recorded`, whether a business collects more
+  // than it lends, and which businesses have stopped recording. Fiados are read
+  // as `payment_form` = fiado, partial or mixed; there is no separate event,
+  // because one sale can be both.
+  //
+  // ONCE PER SALE, HERE AND NOT ON THE SUCCESS SCREEN, which can be reloaded. An
+  // order registers through this same action, so `origin` keeps the two apart.
+  // Filed under the owner. Supabase stays the source of truth for money.
+  const adeudado = new Map(
+    restos.map((r) => [r.currency, redondear(r.amount - (usoDeSaldo.get(r.currency) ?? 0))] as const),
+  );
+  trackServer(
+    "Sale Completed",
+    user.id,
+    {
+      ...flujo,
+      sale_id: venta.id,
+      client_id: cliente.id,
+      origin,
+      payment_form: paymentForm({ totals: totales, collected: pagado, owed: adeudado }),
+      client_kind: cliente.is_walk_in ? "walk_in" : "named",
+      lines: lineasResueltas.length,
+      units: lineasResueltas.reduce((suma, l) => suma + l.quantity, 0),
+      currencies_count: totales.size,
+      ...moneyProps("total", totales),
+      ...moneyProps("collected", pagado),
+      ...moneyProps("owed", adeudado),
+      ...moneyProps("credit_used", usoDeSaldo),
+      charges_count: fiado.length,
+      used_credit: usoDeSaldo.size > 0,
+      has_term: entrada.credito.some((c) => c.plazoDias != null),
+      installments: Math.max(0, ...entrada.credito.map((c) => c.cuotas ?? 0)),
+    },
+    user.email,
+  );
 
   return {
     ok: true,
@@ -1819,7 +1881,12 @@ export async function eliminarVenta(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Tu sesión se cerró. Vuelve a entrar." };
 
-  if (!(await puedeEscribir(supabase, user.id))) return { ok: false, error: MENSAJE_CUENTA_PAUSADA };
+  const rechazar = (reason: DeleteRejectionReason, error: string) => {
+    trackServer("Transaction Delete Rejected", user.id, { target: "sale", reason }, user.email);
+    return { ok: false as const, error };
+  };
+
+  if (!(await puedeEscribir(supabase, user.id))) return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
 
   // LA PROPIEDAD, EN CÓDIGO. `sales` lleva `owner_id` directo y aun así se
   // compara aquí: es la regla de `CLAUDE.md` para toda fila que se toca por un
@@ -1834,7 +1901,7 @@ export async function eliminarVenta(
     .maybeSingle();
 
   if (!venta || venta.owner_id !== user.id) {
-    return { ok: false, error: "No encontramos esa venta." };
+    return rechazar("not_found", "No encontramos esa venta.");
   }
 
   // A SALE WITH A LIVE RETURN STAYS until the return goes. Deleting it gives
@@ -1846,7 +1913,7 @@ export async function eliminarVenta(
     .eq("sale_id", saleId)
     .is("deleted_at", null);
   if ((devoluciones ?? 0) > 0) {
-    return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
+    return rechazar("has_returns", "Esta venta tiene devoluciones. Elimínalas primero.");
   }
 
   // AND ITS FIADOS, which may have received money from another return (188). The
@@ -1865,7 +1932,7 @@ export async function eliminarVenta(
       .eq("type", "return")
       .is("deleted_at", null);
     if ((recibidas ?? 0) > 0) {
-      return { ok: false, error: "Esta venta tiene devoluciones. Elimínalas primero." };
+      return rechazar("has_returns", "Esta venta tiene devoluciones. Elimínalas primero.");
     }
   }
 
@@ -1912,7 +1979,7 @@ export async function eliminarVenta(
       .update({ deleted_at: ahora })
       .eq("id", m.id);
     if (error) {
-      return { ok: false, error: mensajeDeError("eliminar la venta", error, "eliminarVenta") };
+      return rechazar("db_error", mensajeDeError("eliminar la venta", error, "eliminarVenta"));
     }
     // EL RASTRO QUE HACE QUE SE PUEDA RESTAURAR. Es la misma tabla que usa
     // `deleteMovement`, así que el fiado sale en la misma notificación de
@@ -1939,7 +2006,7 @@ export async function eliminarVenta(
     .eq("owner_id", user.id);
 
   if (errorVenta) {
-    return { ok: false, error: mensajeDeError("eliminar la venta", errorVenta, "eliminarVenta") };
+    return rechazar("db_error", mensajeDeError("eliminar la venta", errorVenta, "eliminarVenta"));
   }
 
   // UN RECÁLCULO FALLIDO TAMBIÉN DEVUELVE ERROR. Si esto no corre, el saldo
@@ -1950,7 +2017,7 @@ export async function eliminarVenta(
     p_client_id: venta.client_id,
   });
   if (errorRecalc) {
-    return { ok: false, error: mensajeDeError("recalcular el saldo", errorRecalc, "recalc") };
+    return rechazar("db_error", mensajeDeError("recalcular el saldo", errorRecalc, "recalc"));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1985,5 +2052,22 @@ export async function eliminarVenta(
 
   revalidatePath("/dashboard");
   revalidatePath(`/clients/${venta.client_id}`);
+
+  // HOW MANY SALES ARE DELETED, and how many of those cannot come back. A sale
+  // with no fiado leaves nothing to restore (`CT-105`), so `restorable` measures
+  // what closing that ficha is worth. Filed under the owner.
+  const cuantos = (movimientos ?? []).length;
+  trackServer(
+    "Sale Deleted",
+    user.id,
+    {
+      sale_id: saleId,
+      client_id: venta.client_id as string,
+      charges_deleted: cuantos,
+      from_order: Boolean(venta.catalog_order_id),
+      restorable: cuantos > 0,
+    },
+    user.email,
+  );
   return { ok: true };
 }
