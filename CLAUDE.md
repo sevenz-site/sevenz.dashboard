@@ -1784,7 +1784,12 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 
 - Before merging `dev` into `main`, or making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, always with
-  the Fable 5.1 model (owner's decision of 2026-11-04), and
+  the Fable 5.1 model (owner's decision of 2026-11-04). **Before the first check,
+  ask the owner to switch the session to Fable 5.1 and stop there until he
+  confirms it is done** — even if the session already looks like Fable 5.1, since
+  the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
+  Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
+  confirme que ya cambié el modelo a Fable 5.1»*. Then
   wait for the user's explicit confirmation before actually launching. An
   interface with no Figma, no Drive document, or missing from the release's
   Trello ticket blocks the launch (section 4g).

@@ -4,9 +4,28 @@ model: claude-fable-5-1
 description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — merging dev into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
 
-**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04. Si la
-sesión usa otro modelo, se dice antes de empezar y se le pregunta al dueño, y el
-informe nombra con qué modelo se corrió.
+**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04, y
+**no se empieza hasta que él confirme que ya lo cambió.** Ampliado por el dueño el
+2026-11-05: *«Antes de empezar a ejecutar el checklist me pedirás que cambie el modelo
+a Fable 5.1 y detendrás el inicio del QA checklist hasta que te confirme que ya
+cambié el modelo a Fable 5.1 y ese será el que usarás para las pruebas»*.
+
+El orden, sin excepción:
+
+1. Antes de la primera comprobación, se le pide en una línea que ponga el modelo en
+   Fable 5.1 (`/model claude-fable-5-1`). **Se pide aunque la sesión ya parezca estar
+   en Fable 5.1**: el modelo puede cambiar a mitad de sesión sin que nadie lo pida, y
+   pasó ese mismo día, a mitad de un checklist.
+2. **Se detiene ahí.** No se corre ninguna suite, no se lee ningún diff, no se abre
+   ningún navegador hasta que el dueño conteste que ya está.
+3. Si a mitad del checklist el modelo cambia, se para en ese punto, se le avisa y se
+   vuelve a pedir el cambio antes de seguir. El informe dice qué filas corrieron con
+   qué modelo.
+
+Por qué es una parada y no un aviso: el 2026-11-05 el checklist arrancó en Fable 5.1,
+pasó a Opus 5.5 a mitad y volvió a Fable 5.1 al final, y la única forma de saberlo
+fue leer el pie de los mensajes. Avisar después de empezar deja al dueño decidiendo si
+un resultado vale con una mezcla que no eligió.
 
 This is a manual checklist, not an automated test suite — this codebase
 has no automated tests. Walk through each item below, actually verifying
