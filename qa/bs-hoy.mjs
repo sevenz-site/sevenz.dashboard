@@ -26,6 +26,8 @@ for (const ruta of [...archivos("app"), ...archivos("components"), ...archivos("
     if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("{/*")) return;
     if (/(\}|\)|•) hoy\b/.test(linea)) aMano.push(`${ruta}:${i + 1}`);
     if (/al día del? pago/.test(linea)) aMano.push(`${ruta}:${i + 1}`);
+    // The other two spellings the Figma file had: «Hoy:» in front, and a capital «Hoy» after.
+    if (/[`"']Hoy: |Hoy: \$\{|(\}|\)) Hoy/.test(linea)) aMano.push(`${ruta}:${i + 1}`);
     // A rate of the sale (`exchangeRateUsed`) is sealed and must not say «hoy».
     if (/format(Bs|PriceAmount)\([^)]*\*\s*tasa\b/.test(linea) && !/(formatBsHoy|conHoy)\(/.test(linea)) sinPalabra.push(`${ruta}:${i + 1}`);
   });

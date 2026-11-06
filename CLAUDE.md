@@ -1628,7 +1628,9 @@ periodo sin «hoy», y como una misma pantalla decía «al día del pago» y «a
 sin la palabra.
 
 **La vista del cliente lleva el mismo estándar**, decisión del dueño el 2026-11-06: el carrito y
-el detalle de producto dicen «hoy». Queda fuera la imagen del comprobante del pedido: es una
+el detalle de producto dicen «hoy». **Y los frames de Figma no son la referencia para esta
+palabra**: el archivo la escribía de tres formas («Bs. … hoy», «Bs. … Hoy», «Hoy: Bs. …») y el
+formulario de producto copió la tercera. Un frame que la escriba distinto se corrige al frame. Queda fuera la imagen del comprobante del pedido: es una
 foto que se comparte y se lee días después, y ahí «hoy» sería falso. El detalle de diseño está en `DESIGN-SYSTEM.md`.
 
 ### Lo que sigue sin congelarse, dicho para que nadie lo redescubra
