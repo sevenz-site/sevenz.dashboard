@@ -10,7 +10,8 @@
 // Colombian, sells through the real action with the owner's session, reads the reports with
 // that same session, and removes everything at the end. No client has a number, so nothing
 // leaves for WhatsApp.
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { costoParaCongelar, cuentasPorProducto } from "../lib/reports/ganancia.ts";
 import { cargarDevoluciones, lineasDevueltas } from "../lib/reports/devoluciones.ts";
@@ -34,8 +35,6 @@ const TASAS = { usd: 100, eur: 120, usdt: null };
   check("1a. el caso de la harina: gana 100 aunque hoy el costo sea 1,50", casi(conCosto.ganancia.USD, 100), JSON.stringify(conCosto));
   const sinCosto = cuentasPorProducto([{ ...vendida, unitCost: null }], costoHoy, TASAS).get("p");
   check("1b. una línea sin costo guardado sigue con el costo de hoy", casi(sinCosto.ganancia.USD, 50), JSON.stringify(sinCosto));
-  const antigua = cuentasPorProducto([vendida], costoHoy, TASAS).get("p");
-  check("1c. una línea que ni trae el campo se comporta igual", casi(antigua.ganancia.USD, 50));
   const nada = cuentasPorProducto([{ ...vendida, unitCost: null }], new Map([["p", { costo: null, monedaCosto: null }]]), TASAS).get("p");
   check("1d. sin costo guardado ni costo hoy: sin ganancia, nunca cero", nada.ganancia.USD === undefined && nada.lineasSinCosto === 1, JSON.stringify(nada));
 
@@ -51,6 +50,28 @@ const TASAS = { usd: 100, eur: 120, usdt: null };
   check("1k. sin tasas y con monedas distintas: no se guarda", costoParaCongelar({ costo: 4, monedaCosto: "USD" }, "EUR", null) === null);
   check("1l. Colombia, sin tasas y en su moneda: sí se guarda", costoParaCongelar({ costo: 4000, monedaCosto: "COP" }, "COP", null) === 4000);
   check("1m. el costo nulo de moneda se lee como dólares, igual que el capital", costoParaCongelar({ costo: 4, monedaCosto: null }, "USD", TASAS) === 4);
+}
+
+// ── Part 1b: nothing writes a sale line without its cost ─────────────────────
+// CLAUDE.md, «Una cifra del pasado no se calcula con datos de hoy». A second writer that
+// forgets the column leaves its lines on today's cost and nothing says so.
+{
+  const archivos = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const ruta = join(dir, e.name);
+    if (e.isDirectory()) return archivos(ruta);
+    return /\.tsx?$/.test(e.name) ? [ruta] : [];
+  });
+  const escrituras = [];
+  for (const ruta of [...archivos("app"), ...archivos("lib")]) {
+    const texto = readFileSync(ruta, "utf8");
+    for (const m of texto.matchAll(/\.from\("sale_lines"\)\s*\.(insert|upsert)\(/g)) {
+      escrituras.push({ ruta, trozo: texto.slice(m.index, m.index + 700) });
+    }
+  }
+  check("1n. hay una sola escritura de líneas de venta en el código", escrituras.length === 1, escrituras.map((e) => e.ruta).join(", "));
+  check("1o. esa escritura guarda el costo", escrituras.every((e) => e.trozo.includes("unit_cost")), escrituras.map((e) => e.ruta).join(", "));
+  const sql = readdirSync("supabase").filter((f) => /^\d/.test(f) && /insert\s+into\s+public\.sale_lines/i.test(readFileSync(join("supabase", f), "utf8")));
+  check("1p. ninguna función de la base escribe líneas de venta por su cuenta", sql.length === 0, sql.join(", "));
 }
 
 // ── Part 2: DEV ──────────────────────────────────────────────────────────────

@@ -106,6 +106,14 @@ export const PLANTILLAS_ESPERADAS = {
     boton: null,
   },
 
+  // Goes to the owner of Sevenz, not to a shopkeeper (PL-25). Approved, and compared on
+  // 2026-11-06 against the Kapso preview: body and footer match, no button. The code does
+  // not send it yet; `/api/cron/rate-health` is where it will be wired.
+  tasa_retenida_aviso: {
+    cuerpo: ["currency", "hours", "held_rate", "since_date"],
+    boton: null,
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

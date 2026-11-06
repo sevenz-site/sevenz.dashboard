@@ -1492,6 +1492,121 @@ del cliente. **Si una pantalla enseña un importe, la pregunta es siempre la
 misma: ¿esto es lo que alguien escribió, o lo que yo calculé a partir de lo que
 escribió?** Si es lo segundo y existe lo primero, está mal.
 
+## Un tendero recibe dos mensajes a la semana
+
+**Regla del dueño, 2026-11-06**: *«un mismo tendero solo recibe dos mensajes a la semana,
+un tercer mensaje en casos extraordinario»*. Su razón: *«mi temor es que seamos muy
+invasivos y caigamos en spam y terminen bloqueándonos o nos convirtamos en invisibles por
+tanto mensaje»*.
+
+**La regla, entera:**
+
+1. **Dos citas fijas, y nada más.** Lunes, el resumen. Jueves, lo que requiere atención.
+   Una plantilla por cita, y el código elige cuál según el estado de la cuenta.
+2. **El tercero es extraordinario, no un cupo mensual.** Solo sale si la cuenta puede
+   perder algo por no saberlo. Hoy eso es uno: `prueba_por_vencer`. Antes de declarar otro
+   se le pregunta al dueño.
+3. **Lo que no es extraordinario ocupa una cita o espera.** `cierre_mensual` toma un jueves
+   que iba a salir callado, y `primera_semana` sustituye a su lunes.
+4. **El tope se cuenta por TELÉFONO, no por negocio.** Nada impide que dos negocios
+   compartan número, y entonces recibiría el doble.
+5. **El jueves solo sale con novedad**, comparando clientes y productos, no cifras. Máximo
+   dos jueves callados seguidos si sigue habiendo algo pendiente.
+6. **Toda plantilla nueva dice en su ficha qué cita ocupa.** Si no ocupa ninguna, hay que
+   justificar por qué es extraordinaria.
+
+**No cuentan para el tope**: el código de acceso, el aviso de aparato nuevo y el de cambio
+de número o correo. Los pide el propio dueño o protegen su cuenta, y no pueden esperar.
+
+**Por qué merece regla propia.** Cada mensaje nuevo se justifica solo y el total no lo
+mira nadie. Una calificación baja afecta al número entero, así que el que bloquea por
+fastidio no se pierde a sí mismo: daña el canal de los que sí lo aprecian.
+
+## UNA CIFRA DEL PASADO NO SE CALCULA CON DATOS DE HOY
+
+**Pedido por el dueño el 2026-11-06**, después de ver el caso del costo: *«guardemos el
+costo al día de la venta, ajústalo también en reportes»*, y *«que no vuelva a ocurrir el
+error en ningún otro lado donde necesitemos el cálculo»*.
+
+**La regla, entera**: lo que ya pasó se calcula con lo que valía cuando pasó. Si una
+cifra habla de una venta, un abono o un periodo cerrado, cada dato que entra en la
+cuenta tiene que estar **guardado en esa transacción**. Nunca se lee de una ficha que el
+tendero puede editar mañana, ni de la tasa de hoy.
+
+### Por qué merece regla propia
+
+La venta guardaba el precio y no el costo, así que Reportes restaba el costo de HOY.
+Marta compra harina a $1, vende 100 a $2 y gana $100. El día 30 actualiza el costo a
+$1,50 y su mes pasa a decir $50, igual que todos los anteriores. **Nada falla y nada se
+pone en rojo**: sale una cifra creíble y falsa, y cambia sola con cada edición.
+
+### La pregunta que decide, antes de escribir el cálculo
+
+**¿Esta cifra habla de algo que ya pasó, o de lo que hay hoy?**
+
+| Cifra | Habla de | Con qué se calcula |
+|---|---|---|
+| Ganancia de un periodo | Lo que ya pasó | `sale_lines.unit_cost`, congelado |
+| Margen real de un proveedor | Lo que ya pasó | Igual |
+| Capital en mercancía, por agotarse | Lo que hay hoy | `products.cost`, y está bien |
+| Precio sugerido, margen de la ficha | Lo que hay hoy | `products.cost`, y está bien |
+| Por cobrar, saldo en bolívares «hoy» | Lo que hay hoy | Tasa de hoy, y el rótulo lo dice |
+
+Si la respuesta es «lo que hay hoy», leer el valor actual es lo correcto, y **el rótulo
+tiene que decirlo**. El problema nunca fue usar datos de hoy, sino usarlos sin decirlo
+para hablar del pasado.
+
+### Qué hay que hacer
+
+1. **Se guarda al ocurrir, en el servidor.** Nunca se toma del navegador.
+2. **Se guarda lo que hace falta para no volver a calcular.** Por eso `unit_cost` va ya
+   en la moneda de la línea y con la tasa de esa venta: un costo crudo se seguiría
+   convirtiendo con la tasa de hoy, y el pasado se seguiría moviendo.
+3. **Vacío no es cero.** `null` quiere decir «no se pudo congelar», y se usa el valor
+   actual o se dibuja «—». Un cero inventa una ganancia igual al precio entero.
+4. **No se rellena el pasado con datos de hoy.** Nadie sabe qué costaba un producto ese
+   día, y escribirlo presentaría una suposición como un registro.
+5. **Una sola puerta para cada lado.** Se escribe con `costoParaCongelar` y se lee con
+   `cuentasPorProducto`, los dos en `lib/reports/ganancia.ts`. `LineaVendida.unitCost` es
+   obligatorio, así que una pantalla nueva que olvide leerlo **no compila**.
+6. **Si falla la lectura del dato, la venta sigue.** Una cifra de reporte no vale perder
+   una venta con el cliente delante.
+
+### La auditoría se hace por dato, no por pantalla
+
+Es la misma lección que la de los montos tecleados. Antes de dar por bueno un cálculo
+sobre el pasado, se busca por lo que puede cambiar:
+
+- `products.cost`, `cost_currency`, los precios y márgenes de la ficha.
+- La tasa: `rates`, `effectiveRate`, `tasa` junto a un importe de algo ya registrado.
+- Cualquier atributo editable de un producto o cliente que agrupe cifras viejas.
+
+Lo que ya se guarda en la transacción, y no hay que volver a buscar: nombre, precio,
+moneda y costo en `sale_lines`; lo tecleado y su tasa en `sale_payments` y `movements`.
+
+### Lo que sigue sin congelarse, dicho para que nadie lo redescubra
+
+Medido el 2026-11-06:
+
+- **Proveedores agrupa por el proveedor ACTUAL del producto.** Si el tendero cambia el
+  proveedor de un producto, sus ventas pasadas se mudan al nuevo. Es esta misma clase de
+  error. No se arregló: hace falta decidir si la línea guarda también su proveedor.
+- **Un margen que cruza dos monedas** se pesa con la tasa de hoy, porque un porcentaje
+  necesita una unidad común. Mueve poco, pero se mueve.
+- **La hoja de productos de Reportes enseña los bolívares de un total del periodo con la
+  tasa de hoy y sin decirlo.** `reportes-facturacion.tsx` escribe «hoy» junto a la cifra;
+  `LineaEnBs`, en `reportes-productos-sheet.tsx`, no. Falta ese rótulo.
+- **Las ventas anteriores a la migración `194`** usan el costo actual.
+- **Un costo mal escrito y vendido** se queda mal en esa línea. Todavía no hay cómo
+  corregirlo (`CT-168`).
+
+**`qa:costo-congelado` vigila esto**: que la ganancia no se mueva al cambiar un costo, y
+que toda escritura de `sale_lines` guarde su costo. Es parada dura si el diff toca la
+venta o Reportes.
+
+**Es la hermana de «SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO».** Aquella protege lo
+que alguien escribió; esta, lo que valía cuando lo escribió.
+
 ## Toda plantilla de WhatsApp lleva el pie antifraude
 
 ```

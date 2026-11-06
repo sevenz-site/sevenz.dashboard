@@ -117,10 +117,14 @@ export type LineaVendida = {
   unitPrice: number;
   quantity: number;
   /**
-   * `sale_lines.unit_cost`: what one unit cost the day it was sold, in `currency`.
-   * Absent or null when nothing was frozen; the product's current cost is used then.
+   * `sale_lines.unit_cost`: what one unit cost the day it was sold, in `currency`. Null
+   * when nothing was frozen, and the product's current cost is used then.
+   *
+   * REQUIRED ON PURPOSE. Optional, a new report that forgets to read the column compiles
+   * and goes back to rewriting the past with today's cost, in silence. Owner's request of
+   * 2026-11-06: *«que no vuelva a ocurrir el error en ningún otro lado»*.
    */
-  unitCost?: number | null;
+  unitCost: number | null;
 };
 
 /** Lo que de un producto hace falta para saber qué le costó. */
