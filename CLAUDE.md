@@ -1651,6 +1651,37 @@ venta o Reportes.
 **Es la hermana de «SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO».** Aquella protege lo
 que alguien escribió; esta, lo que valía cuando lo escribió.
 
+## Toda plantilla de WhatsApp tiene su ficha en la carpeta de Drive
+
+**Regla del dueño, 2026-11-06**: *«todos los templates deben subirse a esa carpeta»*, con un
+documento para las que ya existen y otro por cada familia nueva, *«para subirlo en el ticket»*.
+
+**La carpeta**: `Liberaciones / Plantillas de WhatsApp` en el Drive de Sevenz. Los dos
+documentos de ese día son `Plantillas-de-WhatsApp-existentes.pdf` y
+`Plantillas-de-WhatsApp-familia-del-negocio.pdf`; el guion que los genera es
+`scripts/ayuda/raw/plantillas-pdf.py`, con el mismo estilo que los documentos de liberación.
+
+**Cada plantilla lleva, escrito en el documento**, en este orden y sin saltarse ninguno:
+
+1. El problema que resuelve.
+2. La fecha en que se implementó: aprobación de Meta y primer envío.
+3. El usuario al que va dirigido: dueño del negocio, cliente del negocio o dueño de Sevenz.
+4. Cuándo se dispara.
+5. Las condiciones para que se dispare, incluidos los topes y los interruptores.
+6. La liberación en la que salió.
+
+Y además su categoría y estado en Meta, el texto tal como se aprobó, el pie, el botón con su
+dirección, y las variables con sus ejemplos.
+
+**Cuándo se actualiza**: al aprobar Meta una plantilla, al cambiar su disparo o sus
+condiciones, al retirarla, y en cada liberación que la toque. Se genera una versión nueva del
+PDF, nunca se edita el anterior, y el enlace va en `../docs/LIBERACIONES.md` dentro de su
+liberación y en `../docs/WHATSAPP-PLANTILLAS.md`, que sigue siendo la fuente de verdad técnica.
+
+**Por qué merece regla propia.** Lo aprobado vivía repartido entre Kapso, el código y un
+documento técnico largo. Nadie podía leer en un sitio, por cada plantilla, a quién le llega y
+bajo qué condiciones, y es justo lo que un ticket de liberación tiene que enseñar.
+
 ## Las plantillas dicen cada cifra por moneda
 
 **Regla del dueño, 2026-11-06**, al leer `Plazos vencidos: 4 clientes, por $120,00 y €30,00`:
