@@ -1657,8 +1657,8 @@ que alguien escribió; esta, lo que valía cuando lo escribió.
 documento para las que ya existen y otro por cada familia nueva, *«para subirlo en el ticket»*.
 
 **La carpeta**: `Liberaciones / Plantillas de WhatsApp` en el Drive de Sevenz. Los documentos
-vigentes son `Plantillas-de-WhatsApp-existentes-v2.pdf` y
-`Plantillas-de-WhatsApp-familia-del-negocio-v2.pdf`; el guion que los genera es
+vigentes son `Plantillas-de-WhatsApp-existentes-v3.pdf` y
+`Plantillas-de-WhatsApp-familia-del-negocio-v3.pdf`; el guion que los genera es
 `scripts/ayuda/raw/plantillas-pdf.py`, con el mismo estilo que los documentos de liberación.
 
 **Cada plantilla lleva, escrito en el documento**, en este orden y sin saltarse ninguno:
@@ -1686,6 +1686,25 @@ liberación y en `../docs/WHATSAPP-PLANTILLAS.md`, que sigue siendo la fuente de
 **Por qué merece regla propia.** Lo aprobado vivía repartido entre Kapso, el código y un
 documento técnico largo. Nadie podía leer en un sitio, por cada plantilla, a quién le llega y
 bajo qué condiciones, y es justo lo que un ticket de liberación tiene que enseñar.
+
+## Las plantillas van con viñetas `•` y punto final
+
+**Regla del dueño, 2026-11-06**, al ver los borradores en Kapso: *«siempre pongas viñetas con
+bullets en tus templates»*, y *«debe haber punto y aparte en cada salto de línea en las viñetas»*.
+
+- **Cada línea después del saludo lleva `• `**, el punto como carácter, seguido de un espacio.
+- **Nunca `* ` ni `- `.** WhatsApp puede convertirlos en lista, pero depende de la versión de
+  cada teléfono, y la vista previa de Kapso enseñó el asterisco tal cual. Una plantilla aprobada
+  no se edita, así que no se apuesta a cómo lo dibuje cada aparato.
+- **Cada viñeta termina en punto**, también la que acaba en una variable:
+  `• Por cobrar: {{amount_due}}.`
+
+```
+Hola {{owner_name}}, este es el resumen de tu negocio en Sevenz.
+
+• Por cobrar: {{amount_due}}.
+• Plazos vencidos: {{overdue_summary}}.
+```
 
 ## Las plantillas dicen cada cifra por moneda
 
