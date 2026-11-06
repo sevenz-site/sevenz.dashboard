@@ -89,14 +89,26 @@ function check(nombre, pasa, detalle) {
 const HOLGURA = 0.005;
 
 // ── LA SUMA DE VERDAD, movimiento a movimiento ──────────────────────────
-const { data: movs, error: eMovs } = await admin
-  .from("movements")
-  .select("client_id, type, amount, currency, payment_group_id")
-  .is("deleted_at", null);
-
-if (eMovs) {
-  check("se pueden leer los movimientos", false, eMovs.message);
-  process.exit(1);
+// PAGINATED, AND THAT IS NOT A DETAIL. A plain `select` returns at most 1,000 rows (the
+// API's page size), silently. Found on 2026-11-05, the first time dev crossed that line
+// (1,862 movements after the k6 write test): the suite summed the first thousand, said 263
+// balances were wrong, and every one of them was right. A hard stop of the release checklist
+// that would have gone red on its own the day production reached 1,000 movements.
+const movs = [];
+const PAGINA = 1000;
+for (let desde = 0; ; desde += PAGINA) {
+  const { data, error: eMovs } = await admin
+    .from("movements")
+    .select("client_id, type, amount, currency, payment_group_id")
+    .is("deleted_at", null)
+    .order("id")
+    .range(desde, desde + PAGINA - 1);
+  if (eMovs) {
+    check("se pueden leer los movimientos", false, eMovs.message);
+    process.exit(1);
+  }
+  movs.push(...(data ?? []));
+  if (!data || data.length < PAGINA) break;
 }
 
 const sumaReal = new Map();

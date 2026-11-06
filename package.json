@@ -111,7 +111,10 @@
     "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs",
     "qa:segundo-factor": "node --experimental-strip-types --no-warnings qa/segundo-factor.mjs",
     "qa:carga-sesiones": "node qa/carga/sesiones.mjs",
-    "qa:carga-lectura": "k6 run -e BASE_URL=https://dev.sevenz.site qa/carga/lectura.js"
+    "qa:carga-lectura": "k6 run -e BASE_URL=https://dev.sevenz.site qa/carga/lectura.js",
+    "qa:carga-cuentas": "node qa/carga/cuentas.mjs",
+    "qa:carga-acciones": "node qa/carga/acciones.mjs",
+    "qa:carga-escritura": "k6 run -e BASE_URL=http://localhost:3100 qa/carga/escritura.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
