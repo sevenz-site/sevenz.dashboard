@@ -214,6 +214,9 @@ try {
       base_currency: "USD",
       price_retail: 5,
       published_retail: true,
+      cost: 2,
+      cost_currency: "USD",
+      supplier: `${MARCA} proveedor`,
     })
     .select("id")
     .single();
@@ -380,12 +383,20 @@ try {
 
   const { data: lineasA } = await admin
     .from("sale_lines")
-    .select("unit_price, quantity, currency")
+    .select("unit_price, quantity, currency, unit_cost, supplier")
     .eq("sale_id", rA.saleId ?? VACIO);
   check(
     "1b. se cobra el PRECIO SELLADO (5) y no el del catálogo de hoy (9)",
     lineasA?.length === 1 && Number(lineasA[0].unit_price) === 5,
     `unit_price = ${lineasA?.[0]?.unit_price}`,
+  );
+  // The price is sealed on the order, but cost and supplier are read when the sale is
+  // registered, and this is the second door into `sale_lines`. Promised in `CT-168`: without
+  // it, a sale born from an order could reach Reportes with today's cost.
+  check(
+    "1c. la venta de un pedido congela el costo y el proveedor del día",
+    Number(lineasA?.[0]?.unit_cost) === 2 && lineasA?.[0]?.supplier === `${MARCA} proveedor`,
+    `unit_cost = ${lineasA?.[0]?.unit_cost}, supplier = ${lineasA?.[0]?.supplier}`,
   );
 
   // ═══ 2. EL CONTADO NO TOCA EL LIBRO ═══════════════════════════════════

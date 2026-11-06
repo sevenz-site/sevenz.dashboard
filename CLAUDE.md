@@ -1706,6 +1706,24 @@ Hola {{owner_name}}, este es el resumen de tu negocio en Sevenz.
 • Plazos vencidos: {{overdue_summary}}.
 ```
 
+## Las plantillas se nombran en inglés
+
+**Regla del dueño, 2026-11-06, y era la segunda vez.** El 2026-10-09 renombró él mismo las
+primeras: *«Cambié los nombres de los templates a inglés»*. El 2026-11-06 encontró diez borradores
+con nombre en español: *«siempre deben ser los títulos en inglés»*.
+
+- **El nombre y sus variables van en inglés**, en `snake_case`: `trial_ending_soon`, no
+  `prueba_por_vencer`. El texto del mensaje sigue en español, porque lo lee el tendero.
+- **Se comprueba antes de pasarle la plantilla al dueño**: en su ficha, en el documento y en
+  `lib/whatsapp/destinos.ts`. Después ya hay un borrador creado con ese nombre.
+- **Lo que ya está en Meta no se renombra solo por esto.** El nombre de una plantilla enviada no
+  se edita ni se reutiliza. Las diez de la familia del negocio, creadas en español el 2026-11-06,
+  se quedan así por decisión del dueño ese día: *«Lo que ya está en español en draft así se queda»*.
+
+**Por qué merece regla propia.** Es la regla de los valores guardados de «Code is written in
+English», y aquí sale más cara: el nombre queda en Meta, en `whatsapp_sends` y en Kapso, así que
+equivocarse se corrige con una plantilla nueva y su espera de aprobación.
+
 ## Las plantillas dicen cada cifra por moneda
 
 **Regla del dueño, 2026-11-06**, al leer `Plazos vencidos: 4 clientes, por $120,00 y €30,00`:
