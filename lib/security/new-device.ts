@@ -44,6 +44,13 @@ import {
 
 export type LoginDeviceResult = { isNew: boolean; alerted: boolean };
 
+/** The hash of this browser's `sz_device` cookie, or null when it carries none. What the
+ *  second factor (C1) asks about BEFORE a session exists: only the cookie counts there. */
+export async function currentDeviceHash(): Promise<string | null> {
+  const raw = (await cookies()).get(DEVICE_COOKIE)?.value ?? "";
+  return /^[A-Za-z0-9_-]{32,}$/.test(raw) ? sha256(raw) : null;
+}
+
 const SILENT: LoginDeviceResult = { isNew: false, alerted: false };
 
 function sha256(value: string): string {

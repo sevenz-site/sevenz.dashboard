@@ -179,6 +179,8 @@ createServer(async (req, res) => {
     else if (q.op === "eval") out = await evaluate(q.expr);
     else if (q.op === "shot") out = await shot(q);
     else if (q.op === "sleep") out = await sleep(q.ms);
+    // C1 walk: forget every cookie, so the next sign-in is «a device Sevenz does not know».
+    else if (q.op === "clear") { await send("Network.clearBrowserCookies"); out = "ok"; }
     else if (q.op === "relogin") { for (const [name, value] of await sessionCookies()) await send("Network.setCookie", { name, value, url: BASE }); out = "ok"; }
     else throw new Error(`unknown op ${q.op}`);
     res.end(JSON.stringify({ ok: true, out }));

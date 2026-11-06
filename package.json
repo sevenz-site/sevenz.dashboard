@@ -108,7 +108,8 @@
     "qa:sale-rollback": "node qa/sale-rollback.mjs",
     "qa:eventos-montos": "node --experimental-strip-types --no-warnings qa/eventos-montos.mjs",
     "qa:eventos": "node qa/eventos-transacciones.mjs",
-    "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs"
+    "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs",
+    "qa:segundo-factor": "node --experimental-strip-types --no-warnings qa/segundo-factor.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

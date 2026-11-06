@@ -195,6 +195,9 @@ export const MANIFEST = {
     owner_devices: { via: "none" },
     owner_security_state: { via: "none" },
     owner_security_tokens: { via: "none" },
+    // 193 (C1 of PL-22): the second-factor codes and the access audit. Server only.
+    owner_login_codes: { via: "none" },
+    owner_security_audit: { via: "none" },
     plans: { via: "none" },
     product_currencies: { via: "product" },
     product_hides: { via: "owner" },
@@ -247,6 +250,19 @@ export const MANIFEST = {
     consume_not_me_token: "service",
     clear_must_reset_password: "service",
     my_security_state: "owner",
+    // 193 (C1 of PL-22): the codes, the switch, the gate before a session, the admin's two
+    // actions. Only `my_second_factor` answers a session, and only about itself.
+    create_login_code: "service",
+    mark_login_code_delivered: "service",
+    verify_login_code: "service",
+    login_code_recently_verified: "service",
+    set_second_factor: "service",
+    my_second_factor: "owner",
+    second_factor_gate: "service",
+    owner_security_facts: "service",
+    log_security_audit: "service",
+    admin_cuenta_seguridad: "service",
+    admin_set_owner_email: "service",
     admin_cuenta_historial: "service",
     admin_cuentas_lista: "service",
     admin_dar_demo: "service",
@@ -370,6 +386,27 @@ export const MANIFEST = {
     // qa:new-device drives the function it calls with an invented, a used and an expired
     // token, and proves anon cannot call it; the action adds no decision of its own.
     "app/cuenta/no-fui-yo/[token]/actions.ts#confirmNotMe": "cubierta: qa:new-device, token inventado, usado y caducado; anon sin permiso",
+    // C1 of PL-22. The code screen's actions read a ten-minute ticket cookie and nothing
+    // else; qa:segundo-factor drives the functions they call (wrong code, five misses, an
+    // expired one, a forged ticket, a resend without the chain) and proves anon cannot.
+    "app/login/codigo/actions.ts#verifyLoginCode": "cubierta: qa:segundo-factor, código malo, cinco fallos, caducado, ticket ajeno",
+    "app/login/codigo/actions.ts#resendLoginCode": "cubierta: qa:segundo-factor, reenvío sin la cadena del ticket → bad_ticket",
+    "app/login/codigo/actions.ts#abandonLoginCode": "excluida: borra una cookie propia y vuelve a /login; no lee ni escribe nada",
+    // The owner's security actions: each re-reads the session and writes only its own rows;
+    // the password ones go through verifyPassword (5 per 15 min) and the code ones through
+    // verify_login_code. qa:segundo-factor covers the functions; the session half is the
+    // same `getUser()` every action of the app starts with.
+    "app/(app)/profile/security-actions.ts#startSecondFactorEnable": "cubierta: qa:segundo-factor, el código de prueba y su tope por hora",
+    "app/(app)/profile/security-actions.ts#confirmSecondFactorEnable": "cubierta: qa:segundo-factor, verify_login_code y set_second_factor",
+    "app/(app)/profile/security-actions.ts#disableSecondFactor": "cubierta: qa:segundo-factor, contraseña mala y el tope de 5 intentos",
+    "app/(app)/profile/security-actions.ts#startNumberChange": "cubierta: qa:segundo-factor, contraseña mala, mismo número, tope",
+    "app/(app)/profile/security-actions.ts#confirmNumberChange": "cubierta: qa:segundo-factor, el número guardado es el del código, no el del formulario",
+    "app/(app)/profile/security-actions.ts#startPasswordChangeCode": "cubierta: qa:segundo-factor, sin factor no manda nada",
+    // The admin's: requireSuperadmin() first, then the same functions.
+    "app/admin/cuentas/security-actions.ts#accionReenviarRecuperacion": "cubierta: qa:attack-actions (un dueño recibe 404 en /admin), y el correo lo manda Supabase",
+    "app/admin/cuentas/security-actions.ts#accionEnviarCodigoAdmin": "cubierta: qa:segundo-factor, purpose admin_email",
+    "app/admin/cuentas/security-actions.ts#accionVerificarCodigoAdmin": "cubierta: qa:segundo-factor, verify_login_code",
+    "app/admin/cuentas/security-actions.ts#accionCambiarCorreo": "cubierta: qa:segundo-factor, admin_set_owner_email rechaza un correo ya usado y exige la verificación reciente",
     "app/(app)/actions.ts#completeOnboarding": "atacada",
     "app/(app)/actions.ts#getNotifications": "atacada",
     "app/(app)/actions.ts#getUnreadNotificationCount": "atacada",

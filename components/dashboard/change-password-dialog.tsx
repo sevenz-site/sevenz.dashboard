@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { ChangePasswordForm } from "@/components/dashboard/change-password-form";
 
-export function ChangePasswordDialog() {
+export function ChangePasswordDialog({ secondFactor }: { secondFactor: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,7 +25,7 @@ export function ChangePasswordDialog() {
         <DialogHeader>
           <DialogTitle>Cambiar contraseña</DialogTitle>
         </DialogHeader>
-        <ChangePasswordForm onSuccess={() => setOpen(false)} />
+        <ChangePasswordForm secondFactor={secondFactor} onSuccess={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );

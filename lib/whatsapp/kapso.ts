@@ -115,15 +115,21 @@ export async function enviarPlantilla(opciones: {
   // Sufijo variable del botón de URL, cuando la plantilla lleva uno. Las dos
   // de dueño no llevan; las de cliente sí.
   parametroBoton?: ParametroPlantilla;
+  // AN AUTHENTICATION TEMPLATE (Meta's OTP category, C1 of PL-22) is POSITIONAL: its
+  // body has one `{{1}}` that Meta writes itself, so the parameter travels WITHOUT
+  // `parameter_name`, and the copy-code button is sent as `sub_type: "url"` carrying the
+  // same code again. Meta's own docs, read 2026-11-05: «this value must appear twice in
+  // the payload». `parametroBoton` is still what carries it, so one code path serves both.
+  cuerpoPosicional?: boolean;
 }): Promise<ResultadoKapso> {
   const componentes: unknown[] = [
     {
       type: "body",
-      parameters: opciones.parametrosCuerpo.map((p) => ({
-        type: "text",
-        parameter_name: p.nombre,
-        text: p.texto,
-      })),
+      parameters: opciones.parametrosCuerpo.map((p) =>
+        opciones.cuerpoPosicional
+          ? { type: "text", text: p.texto }
+          : { type: "text", parameter_name: p.nombre, text: p.texto },
+      ),
     },
   ];
 

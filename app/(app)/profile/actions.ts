@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { storageFileExists } from "@/lib/storage-file-exists";
+import { logSecurityAudit, securityFacts, verifyCode } from "@/lib/security/second-factor";
+import { normalizeCode, rejectionText } from "@/lib/security/code-text";
 
 export type ProfileState = { error: string | null; success: boolean };
 
@@ -80,7 +82,6 @@ export async function updateBusinessSettings(
   const businessName = String(formData.get("business_name") ?? "").trim();
   const firstName = String(formData.get("first_name") ?? "").trim();
   const lastName = String(formData.get("last_name") ?? "").trim();
-  const whatsapp = String(formData.get("whatsapp") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
   const taxId = String(formData.get("tax_id") ?? "").trim();
   const logoPath = String(formData.get("logo_path") ?? "").trim();
@@ -89,11 +90,11 @@ export async function updateBusinessSettings(
   if (!businessName || !firstName || !lastName) {
     return rechazar("required_field", "Completa nombre del negocio, nombre y apellido.");
   }
-  // Required at signup, so "Mi negocio" can't be the place it gets cleared —
-  // it's the number clients reach the business on from every share link.
-  if (!whatsapp) {
-    return rechazar("invalid_whatsapp", "Escribe el WhatsApp del negocio.");
-  }
+  // THE WHATSAPP NUMBER IS NOT WRITTEN FROM HERE SINCE C1 OF PL-22 (2026-11-05): it is the
+  // channel the second factor and the account alerts go to, so changing it asks for the
+  // password and proves the new number with a code (`security-actions.ts`,
+  // `confirmNumberChange`). A `whatsapp` field in this form is ignored, not rejected: an
+  // old browser tab still posting it must not lose the rest of the save.
   if (country !== "CO" && country !== "VE") {
     return rechazar("invalid_country", "País inválido.");
   }
@@ -125,7 +126,7 @@ export async function updateBusinessSettings(
 
   // The logo being replaced or removed, read BEFORE the update so its file can
   // be cleaned up once the new value is saved.
-  const { data: before } = await supabase.from("owners").select("logo_path").eq("id", user.id).single();
+  const { data: before } = await supabase.from("owners").select("logo_path, whatsapp").eq("id", user.id).single();
 
   // A logo uploaded and left unsaved for more than 7 days may have been
   // removed by the nightly cleanup (`DM-12`, migration 182). Checked only when
@@ -149,7 +150,6 @@ export async function updateBusinessSettings(
       business_name: businessName,
       first_name: firstName,
       last_name: lastName,
-      whatsapp,
       address: address || null,
       tax_id: taxId || null,
       ...logoUpdate,
@@ -187,7 +187,7 @@ export async function updateBusinessSettings(
     user.id,
     {
       has_logo: "logo_path" in logoUpdate ? Boolean(logoUpdate.logo_path) : Boolean(before?.logo_path),
-      has_whatsapp: Boolean(whatsapp),
+      has_whatsapp: Boolean(before?.whatsapp),
       has_address: Boolean(address),
       has_tax_id: Boolean(taxId),
     },
@@ -317,7 +317,7 @@ export async function changePassword(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const contar = (reason?: "complexity" | "mismatch" | "leaked" | "other") => {
+  const contar = (reason?: "complexity" | "mismatch" | "leaked" | "code" | "other") => {
     if (user) {
       trackServer(
         "Password Change Attempted",
@@ -329,6 +329,26 @@ export async function changePassword(
   };
   const newPassword = String(formData.get("new_password") ?? "");
   const confirmPassword = String(formData.get("confirm_password") ?? "");
+
+  // WITH THE FACTOR ON, THE CODE COMES FIRST (C1 of PL-22, owner's decision of 2026-11-05):
+  // a thief with an open session must not be able to lock the owner out by changing the
+  // password. The code was sent by `startPasswordChangeCode`; it is verified here, before
+  // the new password is even looked at, and it is consumed either way.
+  if (user) {
+    const facts = await securityFacts(user.id);
+    if (facts?.secondFactor) {
+      const code = normalizeCode(String(formData.get("code") ?? ""));
+      if (!code) {
+        contar("code");
+        return { error: "Escribe los 6 dígitos del código que te enviamos.", success: false };
+      }
+      const result = await verifyCode({ ownerId: user.id, email: user.email ?? null, purpose: "password", code, ticket: null });
+      if (!result.ok) {
+        contar("code");
+        return { error: rejectionText(result.code === "expired" ? "none" : result.code, result.attemptsLeft), success: false };
+      }
+    }
+  }
 
   const passwordError = validatePasswordComplexity(newPassword);
   if (passwordError) {
@@ -349,6 +369,7 @@ export async function changePassword(
   }
 
   contar();
+  await logSecurityAudit(user!.id, "password_changed", "owner", {});
   return { error: null, success: true };
 }
 

@@ -5,12 +5,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { CodeInput } from "@/components/ui/code-input";
 import { changePassword, type PasswordState } from "@/app/(app)/profile/actions";
+import { startPasswordChangeCode, type SecurityState } from "@/app/(app)/profile/security-actions";
 import { PasswordCriteriaChecklist } from "@/components/password-criteria-checklist";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { newPassword, confirmPassword } from "@/lib/form-validation";
 
 const initialState: PasswordState = { error: null, success: false };
+const idle: SecurityState = { error: null, notice: null, step: "idle" };
 
 // Its own component so the form's key-based remount on success (below) also
 // resets this field's local state for free — no effect-driven setState needed.
@@ -44,8 +47,14 @@ function NewPasswordField({
   );
 }
 
-export function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
+// WITH THE FACTOR ON, A CODE COMES FIRST (C1 of PL-22, owner's decision of 2026-11-05). The
+// form opens on «Enviar código»; once it is out, the code field appears above the new
+// password and the server verifies it before looking at the password. Without the factor
+// the form is the one of 2026-11-02, unchanged.
+export function ChangePasswordForm({ secondFactor, onSuccess }: { secondFactor: boolean; onSuccess?: () => void }) {
   const [state, formAction, pending] = useActionState(changePassword, initialState);
+  const [codeState, codeAction, sending] = useActionState(startPasswordChangeCode, idle);
+  const [round, setRound] = useState(0);
   const [formRef, setFormRef] = useFormRef();
   const { errors, validate, recheck } = useFieldErrors({
     new_password: newPassword,
@@ -60,6 +69,32 @@ export function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
     }
   }, [state, pending, onSuccess]);
 
+  // A new code clears the field: derived during render (no setState inside effects).
+  const [seenCode, setSeenCode] = useState(codeState);
+  if (seenCode !== codeState) {
+    setSeenCode(codeState);
+    if (codeState.step === "sent") setRound((r) => r + 1);
+  }
+
+  const codeSent = !secondFactor || codeState.step === "sent";
+
+  if (!codeSent) {
+    return (
+      <div className="flex max-w-sm flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Por seguridad, antes de cambiarla te enviamos un código a tu WhatsApp.
+        </p>
+        <form action={codeAction} className="flex flex-col gap-2">
+          <input type="hidden" name="channel" value="whatsapp" />
+          {codeState.error ? <p className="text-sm text-destructive">{codeState.error}</p> : null}
+          <Button type="submit" disabled={sending} className="w-fit">
+            {sending ? "Enviando..." : "Enviar código"}
+          </Button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <form
       ref={setFormRef}
@@ -70,6 +105,21 @@ export function ChangePasswordForm({ onSuccess }: { onSuccess?: () => void }) {
       }}
       className="flex max-w-sm flex-col gap-4"
     >
+      {secondFactor ? (
+        <div className="flex flex-col gap-2">
+          {codeState.notice ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{codeState.notice}</p> : null}
+          <Label htmlFor="code">Código de 6 dígitos</Label>
+          <CodeInput key={round} autoSubmit={false} disabled={pending} invalid={Boolean(state.error)} />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" formAction={codeAction} name="channel" value="whatsapp" variant="ghost" size="sm" disabled={sending}>
+              Reenviar al WhatsApp
+            </Button>
+            <Button type="submit" formAction={codeAction} name="channel" value="email" variant="ghost" size="sm" disabled={sending}>
+              Enviarlo al correo
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <NewPasswordField
         error={errors.new_password}
         onValueChange={() => {
