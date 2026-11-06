@@ -1474,6 +1474,15 @@ que es exactamente el problema.
 
 ## 6c. La carga con k6 — por niveles
 
+**SUSPENDIDA, decisión del dueño del 2026-11-06**: *«De momento no se correrá la
+sección 6c del checklist ni nada más con k6»*. No se corre ningún nivel hasta que
+él la reabra; el informe de la liberación lo dice en una fila, «suspendida», no
+«pasa». **Por qué**: `dev.sevenz.site` y `app.sevenz.site` son el mismo proyecto
+de Vercel, así que cada corrida gasta la cuota del plan Hobby que usa producción.
+Si esa cuota se agota, Vercel pausa la app entera hasta 30 días. Ese día el
+panel marcaba 2 h 31 min de 4 h de CPU activa. Antes de reabrirla hay que resolver
+esto: correrla contra un servidor local, o estar en un plan que no pause.
+
 Pedido por el dueño el 2026-11-06. Las suites miden si algo funciona; esto mide
 **cuánta gente aguanta**. Los guiones viven en `qa/carga/` y el plan y la línea
 base en `../docs/RENDIMIENTO-PLAN.md`. k6 está instalado en esta computadora con
