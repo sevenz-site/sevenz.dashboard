@@ -96,6 +96,32 @@ export function ChangePasswordForm({ secondFactor, onSuccess }: { secondFactor: 
   }
 
   return (
+    <div className="flex max-w-sm flex-col gap-4">
+    {/* THE RESEND BUTTONS LIVE OUTSIDE THE PASSWORD FORM. Inside it they were submit
+        buttons of a form whose onSubmit validates the two password fields, so «Enviarlo al
+        correo» with the fields still empty was silently blocked. Found on the owner's own
+        test, 2026-11-05. The code field itself stays in the form: it travels with the
+        password. */}
+    {secondFactor ? (
+      <div className="flex flex-col gap-2">
+        {codeState.notice ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{codeState.notice}</p> : null}
+        {codeState.error ? <p className="text-sm text-destructive">{codeState.error}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          <form action={codeAction}>
+            <input type="hidden" name="channel" value="whatsapp" />
+            <Button type="submit" variant="ghost" size="sm" disabled={sending}>
+              Reenviar al WhatsApp
+            </Button>
+          </form>
+          <form action={codeAction}>
+            <input type="hidden" name="channel" value="email" />
+            <Button type="submit" variant="ghost" size="sm" disabled={sending}>
+              Enviarlo al correo
+            </Button>
+          </form>
+        </div>
+      </div>
+    ) : null}
     <form
       ref={setFormRef}
       action={formAction}
@@ -103,21 +129,12 @@ export function ChangePasswordForm({ secondFactor, onSuccess }: { secondFactor: 
       onSubmit={(e) => {
         if (!validate(e.currentTarget)) e.preventDefault();
       }}
-      className="flex max-w-sm flex-col gap-4"
+      className="flex flex-col gap-4"
     >
       {secondFactor ? (
         <div className="flex flex-col gap-2">
-          {codeState.notice ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{codeState.notice}</p> : null}
           <Label htmlFor="code">Código de 6 dígitos</Label>
           <CodeInput key={round} autoSubmit={false} disabled={pending} invalid={Boolean(state.error)} />
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" formAction={codeAction} name="channel" value="whatsapp" variant="ghost" size="sm" disabled={sending}>
-              Reenviar al WhatsApp
-            </Button>
-            <Button type="submit" formAction={codeAction} name="channel" value="email" variant="ghost" size="sm" disabled={sending}>
-              Enviarlo al correo
-            </Button>
-          </div>
         </div>
       ) : null}
       <NewPasswordField
@@ -149,5 +166,6 @@ export function ChangePasswordForm({ secondFactor, onSuccess }: { secondFactor: 
         {pending ? "Actualizando..." : "Actualizar contraseña"}
       </Button>
     </form>
+    </div>
   );
 }

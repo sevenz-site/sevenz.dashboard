@@ -37,10 +37,12 @@ const REF = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
 if (REF !== "vzqppwrwnmlbrxizskdh") throw new Error(`Dev only, not ${REF}.`);
 const BASE = "http://localhost:3000";
 
-async function sessionCookies() {
+// `email` defaults to the demo owner; the C1 walk signs in as another dev account by magic
+// link, never with a password (op `login-as`).
+async function sessionCookies(email = M.email) {
   const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-  const { data: link } = await admin.auth.admin.generateLink({ type: "magiclink", email: M.email });
+  const { data: link } = await admin.auth.admin.generateLink({ type: "magiclink", email });
   const { data: s, error } = await anon.auth.verifyOtp({ type: "magiclink", token_hash: link.properties.hashed_token });
   if (error) throw new Error(`verifyOtp: ${error.message}`);
   const v = "base64-" + Buffer.from(JSON.stringify(s.session), "utf8").toString("base64url");
@@ -181,6 +183,7 @@ createServer(async (req, res) => {
     else if (q.op === "sleep") out = await sleep(q.ms);
     // C1 walk: forget every cookie, so the next sign-in is «a device Sevenz does not know».
     else if (q.op === "clear") { await send("Network.clearBrowserCookies"); out = "ok"; }
+    else if (q.op === "login-as") { await send("Network.clearBrowserCookies"); for (const [name, value] of await sessionCookies(q.email)) await send("Network.setCookie", { name, value, url: BASE }); out = "ok"; }
     else if (q.op === "relogin") { for (const [name, value] of await sessionCookies()) await send("Network.setCookie", { name, value, url: BASE }); out = "ok"; }
     else throw new Error(`unknown op ${q.op}`);
     res.end(JSON.stringify({ ok: true, out }));
