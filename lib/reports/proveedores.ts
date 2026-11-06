@@ -188,7 +188,7 @@ export async function cargarProveedores({
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")
-      .select("product_id, quantity, currency, unit_price")
+      .select("product_id, quantity, currency, unit_price, unit_cost")
       .in("sale_id", idsDeVenta);
     if (error) throw new Error(`proveedores: líneas: ${error.message}`);
     for (const l of lineas ?? []) {
@@ -198,6 +198,7 @@ export async function cargarProveedores({
         currency: l.currency as string,
         unitPrice: Number(l.unit_price),
         quantity: Number(l.quantity),
+        unitCost: l.unit_cost == null ? null : Number(l.unit_cost),
       });
     }
   }

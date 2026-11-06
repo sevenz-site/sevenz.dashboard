@@ -17,6 +17,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { costoParaCongelar } from "@/lib/reports/ganancia";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
 import {
@@ -1350,6 +1351,33 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     if (error) console.error(`registrarVenta no pudo deshacer la venta ${venta.id}:`, error.message);
   };
 
+  // THE COST OF THE DAY, read here and never taken from the browser (migration 194, owner's
+  // decision of 2026-11-06). Its own query so that `COLUMNAS_PRODUCTO`, which feeds the
+  // screens, keeps not knowing what a product cost.
+  //
+  // A FAILURE HERE DOES NOT STOP THE SALE. The worst a missing cost does is leave that line
+  // on the old behaviour in Reportes; refusing would lose a sale over a secondary figure,
+  // with the client standing at the counter.
+  const { data: costos, error: errorCostos } = await supabase
+    .from("products")
+    .select("id, cost, cost_currency")
+    .eq("owner_id", user.id)
+    .in("id", ids);
+  if (errorCostos) console.error("registrarVenta costos:", errorCostos.message);
+  const costoPorId = new Map(
+    (costos ?? []).map((c) => [
+      c.id as string,
+      {
+        costo: c.cost == null ? null : Number(c.cost),
+        monedaCosto: (c.cost_currency as string | null) ?? null,
+      },
+    ]),
+  );
+  const costoDeLinea = (productId: string, currency: string) => {
+    const costo = costoPorId.get(productId);
+    return costo ? costoParaCongelar(costo, currency, rates) : null;
+  };
+
   const { error: errorLineas } = await supabase.from("sale_lines").insert(
     lineasResueltas.map((l) => ({
       sale_id: venta.id,
@@ -1359,6 +1387,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       unit_price: l.unitPrice,
       currency: l.currency,
       tier: l.tier,
+      unit_cost: costoDeLinea(l.productId, l.currency),
     })),
   );
   if (errorLineas) {

@@ -58,6 +58,23 @@ import { formatBsAmount } from "@/lib/exchange-rate/format";
 // TECLEÓ EL TENDERO» protege lo segundo --lo que se escribió se guarda y se
 // repite--, y aquí no se está repitiendo nada tecleado: se está calculando
 // una diferencia que nunca existió como cifra escrita.
+//
+// ───────────────────────────────────────────────────────────────────────
+// SINCE MIGRATION 194 THE SECTION ABOVE ONLY HOLDS FOR OLD LINES
+//
+// Owner's decision of 2026-11-06: *«guardemos el costo al día de la venta, ajústalo también
+// en reportes»*. A new sale line stores `unit_cost`: the cost of one unit, already in the
+// line's currency, with the rates of that sale. Both things that moved the past stop moving
+// it: the product's cost and the day's rate.
+//
+// What it displaces: «La tasa es la de hoy» was accepted because this figure is an indicator
+// and not a receipt. That reason is still true; it lost to the owner seeing a month's profit
+// halve because he updated a cost. Lines with no `unit_cost` keep the old behaviour, so a
+// report across the migration date mixes the two, and that is accepted: nobody knows what
+// those products cost on those days.
+//
+// THE COST PAID FOR THIS: a cost typed wrong and sold stays wrong on that line after it is
+// corrected on the product. There is no way to fix a line yet.
 // ═══════════════════════════════════════════════════════════════════════
 
 // ───────────────────────────────────────────────────────────────────────
@@ -99,6 +116,11 @@ export type LineaVendida = {
   currency: string;
   unitPrice: number;
   quantity: number;
+  /**
+   * `sale_lines.unit_cost`: what one unit cost the day it was sold, in `currency`.
+   * Absent or null when nothing was frozen; the product's current cost is used then.
+   */
+  unitCost?: number | null;
 };
 
 /** Lo que de un producto hace falta para saber qué le costó. */
@@ -133,6 +155,23 @@ export function costoEnMonedaDeVenta(
   if (rates == null) return null;
   return priceIn(destino as PriceCurrency, { amount: p.costo, currency: desde as PriceCurrency }, rates)
     .amount;
+}
+
+/**
+ * What goes in `sale_lines.unit_cost`: the same conversion the reports use, so a frozen
+ * cost and a live one cannot disagree on the day of the sale. Four decimals, the column's
+ * own, which is not rounding money: it is multiplied by a quantity later.
+ */
+export function costoParaCongelar(
+  p: CostoDeProducto,
+  destino: string,
+  rates: BolivarRates | null,
+): number | null {
+  const costo = costoEnMonedaDeVenta(p, destino, rates);
+  if (costo == null || !Number.isFinite(costo) || !(costo > 0)) return null;
+  const redondeado = Math.round(costo * 10000) / 10000;
+  // A cost so small it rounds to nothing is unknown, not free: see `costoEnMonedaDeVenta`.
+  return redondeado > 0 ? redondeado : null;
 }
 
 /** Lo que un producto vendió y lo que dejó, repartido por moneda de venta. */
@@ -178,7 +217,8 @@ export function cuentasPorProducto(
     const ingreso = l.unitPrice * l.quantity;
     c.ingresos[l.currency] = (c.ingresos[l.currency] ?? 0) + ingreso;
 
-    const costoUnidad = costoEnMonedaDeVenta(p, l.currency, rates);
+    // The cost of the day when the line has it. Without it, today's: see the header.
+    const costoUnidad = l.unitCost ?? costoEnMonedaDeVenta(p, l.currency, rates);
     if (costoUnidad == null) {
       // LOS INGRESOS SÍ CUENTAN Y LA GANANCIA NO. Es deliberado: «Total
       // vendido» es verdad aunque no sepamos el costo, y meter esta línea en

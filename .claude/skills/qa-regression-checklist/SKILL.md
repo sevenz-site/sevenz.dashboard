@@ -278,6 +278,19 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
   nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
   «Mostrador» aparece ahí (`CT-125`), con saldo siempre cero.
 
+### El costo del día y las lecturas completas
+
+Desde el 2026-11-06. **Las dos necesitan `npm run dev` o la rama dev, y son parada
+dura si el diff toca la venta, Reportes o el puntaje.**
+
+- **`npm run qa:costo-congelado`** (migración `194`, 35 controles, necesita el
+  servidor). Vende de verdad, sube el costo y lee Reportes como el dueño: la
+  ganancia no se puede mover. Si esta suite se pone roja, cambiar un costo vuelve a
+  reescribir meses pasados, sin error y con una cifra creíble.
+- **`npm run qa:lecturas-completas`** (`PL-35`, 14 controles). Compara el puntaje de
+  la lista con el de cada ficha en un negocio de 1.500 movimientos. Sale de que la
+  API corta en 1.000 filas sin avisar.
+
 ### El PEDIDO que se vuelve venta — `npm run qa:pedido-registro`
 
 **Y los bordes de ese flujo tienen su propia guía: `REGISTRO-DE-PEDIDO-BORDES.md`
