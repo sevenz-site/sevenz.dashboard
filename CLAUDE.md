@@ -1656,9 +1656,9 @@ que alguien escribió; esta, lo que valía cuando lo escribió.
 **Regla del dueño, 2026-11-06**: *«todos los templates deben subirse a esa carpeta»*, con un
 documento para las que ya existen y otro por cada familia nueva, *«para subirlo en el ticket»*.
 
-**La carpeta**: `Liberaciones / Plantillas de WhatsApp` en el Drive de Sevenz. Los dos
-documentos de ese día son `Plantillas-de-WhatsApp-existentes.pdf` y
-`Plantillas-de-WhatsApp-familia-del-negocio.pdf`; el guion que los genera es
+**La carpeta**: `Liberaciones / Plantillas de WhatsApp` en el Drive de Sevenz. Los documentos
+vigentes son `Plantillas-de-WhatsApp-existentes-v2.pdf` y
+`Plantillas-de-WhatsApp-familia-del-negocio-v2.pdf`; el guion que los genera es
 `scripts/ayuda/raw/plantillas-pdf.py`, con el mismo estilo que los documentos de liberación.
 
 **Cada plantilla lleva, escrito en el documento**, en este orden y sin saltarse ninguno:
@@ -1672,6 +1672,11 @@ documentos de ese día son `Plantillas-de-WhatsApp-existentes.pdf` y
 
 Y además su categoría y estado en Meta, el texto tal como se aprobó, el pie, el botón con su
 dirección, y las variables con sus ejemplos.
+
+**Y cada una cierra con su sección «Copy paste para Kapso»**, pedida por el dueño el 2026-11-06:
+nombre, categoría, idioma, formato de parámetros, encabezado, cuerpo, pie, botón y ejemplos, campo
+por campo y sin nada que interpretar. El dueño crea las plantillas él mismo, y un dato que tenga
+que deducir es un dato que se envía mal a Meta, donde una plantilla aprobada ya no se edita.
 
 **Cuándo se actualiza**: al aprobar Meta una plantilla, al cambiar su disparo o sus
 condiciones, al retirarla, y en cada liberación que la toque. Se genera una versión nueva del
