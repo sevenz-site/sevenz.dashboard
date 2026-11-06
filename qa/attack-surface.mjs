@@ -389,7 +389,11 @@ export const MANIFEST = {
     // C1 of PL-22. The code screen's actions read a ten-minute ticket cookie and nothing
     // else; qa:segundo-factor drives the functions they call (wrong code, five misses, an
     // expired one, a forged ticket, a resend without the chain) and proves anon cannot.
-    "app/login/codigo/actions.ts#verifyLoginCode": "cubierta: qa:segundo-factor, código malo, cinco fallos, caducado, ticket ajeno",
+    // ATTACKED since 2026-11-06, when the checklist found the ticket cookie unsigned and
+    // the session opened for the e-mail it carried: qa:attack-actions sends an edited
+    // cookie and a signed one carrying B's e-mail. The function-level cases stay in
+    // qa:segundo-factor (código malo, cinco fallos, caducado, ticket ajeno).
+    "app/login/codigo/actions.ts#verifyLoginCode": "atacada",
     "app/login/codigo/actions.ts#resendLoginCode": "cubierta: qa:segundo-factor, reenvío sin la cadena del ticket → bad_ticket",
     "app/login/codigo/actions.ts#abandonLoginCode": "excluida: borra una cookie propia y vuelve a /login; no lee ni escribe nada",
     // The owner's security actions: each re-reads the session and writes only its own rows;

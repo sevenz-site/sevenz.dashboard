@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { cookies } from "next/headers";
 import { createClient as createBareClient } from "@supabase/supabase-js";
@@ -314,9 +314,39 @@ export type LoginTicket = {
   ownerCountry: string | null;
 };
 
+// THE COOKIE IS SIGNED, AND THE CODE SCREEN TRUSTS NONE OF ITS FACTS ANYWAY. Found by the
+// v0.4.0 checklist on 2026-11-06, before it ever reached production: the cookie was plain
+// base64 JSON, and `verifyLoginCode` opened the session for the `email` it carried. Anyone
+// with a 2FA account of their own could sign in, swap the email in their own cookie for a
+// victim's, type their own valid code, and come out as the victim — with or without 2FA on
+// the victim's side. Two defences, each enough on its own:
+//   1. an HMAC over the payload, keyed from a server secret, so an edited cookie reads as no
+//      cookie at all;
+//   2. the code screen re-reads email, number and country from the database by `ownerId`
+//      (`securityFacts`), never from the cookie; the cookie's copies only drive what the
+//      screen shows.
+// The key is derived from the service-role key rather than a new env var, so production
+// needs no extra setting to stay closed; a missing key refuses every ticket.
+function ticketKey(): Buffer | null {
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!secret) return null;
+  return createHash("sha256").update(`login-ticket:${secret}`).digest();
+}
+
+function signTicket(payload: string): string | null {
+  const key = ticketKey();
+  return key ? createHmac("sha256", key).update(payload).digest("base64url") : null;
+}
+
 export async function setLoginTicket(t: LoginTicket): Promise<void> {
+  const payload = Buffer.from(JSON.stringify(t)).toString("base64url");
+  const sig = signTicket(payload);
+  if (!sig) {
+    console.error("[segundo factor] sin SUPABASE_SERVICE_ROLE_KEY: no se puede firmar el ticket");
+    return;
+  }
   const jar = await cookies();
-  jar.set(LOGIN_TICKET_COOKIE, Buffer.from(JSON.stringify(t)).toString("base64url"), {
+  jar.set(LOGIN_TICKET_COOKIE, `${payload}.${sig}`, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -329,7 +359,15 @@ export async function readLoginTicket(): Promise<LoginTicket | null> {
   try {
     const raw = (await cookies()).get(LOGIN_TICKET_COOKIE)?.value;
     if (!raw) return null;
-    const t = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as LoginTicket;
+    const dot = raw.lastIndexOf(".");
+    if (dot <= 0) return null;
+    const payload = raw.slice(0, dot);
+    const given = Buffer.from(raw.slice(dot + 1), "base64url");
+    const expected = signTicket(payload);
+    if (!expected) return null;
+    const want = Buffer.from(expected, "base64url");
+    if (given.length !== want.length || !timingSafeEqual(given, want)) return null;
+    const t = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as LoginTicket;
     if (!t?.ownerId || !t.ticket || !t.email) return null;
     return t;
   } catch {

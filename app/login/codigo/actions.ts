@@ -9,6 +9,7 @@ import {
   issueSession,
   maskedTarget,
   readLoginTicket,
+  securityFacts,
   sendCode,
   setLoginTicket,
   verifyCode,
@@ -25,17 +26,28 @@ export type CodeState = {
   notice: string | null;
 };
 
+// WHOSE EMAIL, WHOSE NUMBER: THE DATABASE'S, BY `ownerId`, NEVER THE COOKIE'S. The cookie is
+// signed since 2026-11-06, but the session is opened for an email, so that email is read back
+// from `owner_security_facts` on every action here. A cookie that somehow carried another
+// person's email would still only ever open the session of the owner whose code was typed.
+async function factsFor(ownerId: string) {
+  const facts = await securityFacts(ownerId);
+  return facts?.email ? facts : null;
+}
+
 export async function verifyLoginCode(_prev: CodeState, formData: FormData): Promise<CodeState> {
   const ticket = await readLoginTicket();
   if (!ticket) redirect("/login");
+  const facts = await factsFor(ticket.ownerId);
+  if (!facts) redirect("/login");
 
   const code = normalizeCode(String(formData.get("code") ?? ""));
   if (!code) return { error: "Escribe los 6 dígitos del código.", notice: null };
 
-  const result = await verifyCode({ ownerId: ticket.ownerId, email: ticket.email, purpose: "login", code, ticket: ticket.ticket });
+  const result = await verifyCode({ ownerId: ticket.ownerId, email: facts.email, purpose: "login", code, ticket: ticket.ticket });
 
   if (result.ok) {
-    const user = await issueSession(ticket.email);
+    const user = await issueSession(facts.email);
     if (!user) return { error: "No pudimos abrir tu sesión. Vuelve a entrar con tu contraseña.", notice: null };
     await clearLoginTicket();
     const device = await recordLoginDevice({ id: user.id, email: user.email });
@@ -47,11 +59,11 @@ export async function verifyLoginCode(_prev: CodeState, formData: FormData): Pro
     // «Ese código caducó. Te enviamos uno nuevo.» — on the same channel, same chain.
     const sent = await sendCode({
       ownerId: ticket.ownerId,
-      email: ticket.email,
+      email: facts.email,
       purpose: "login",
       channel: ticket.channel,
-      target: ticket.channel === "whatsapp" ? ticket.whatsapp : ticket.email,
-      ownerCountry: ticket.ownerCountry,
+      target: ticket.channel === "whatsapp" ? facts.whatsapp : facts.email,
+      ownerCountry: facts.ownerCountry,
       prevTicket: ticket.ticket,
     });
     if (!sent.ok) return { error: `Ese código caducó. ${rejectionText(sent.code)}`, notice: null };
@@ -65,18 +77,20 @@ export async function verifyLoginCode(_prev: CodeState, formData: FormData): Pro
 export async function resendLoginCode(_prev: CodeState, formData: FormData): Promise<CodeState> {
   const ticket = await readLoginTicket();
   if (!ticket) redirect("/login");
+  const facts = await factsFor(ticket.ownerId);
+  if (!facts) redirect("/login");
 
   const toEmail = String(formData.get("channel") ?? "") === "email";
   const channel = toEmail ? "email" : ticket.channel;
-  const target = channel === "whatsapp" ? ticket.whatsapp : ticket.email;
+  const target = channel === "whatsapp" ? facts.whatsapp : facts.email;
 
   const sent = await sendCode({
     ownerId: ticket.ownerId,
-    email: ticket.email,
+    email: facts.email,
     purpose: "login",
     channel,
     target,
-    ownerCountry: ticket.ownerCountry,
+    ownerCountry: facts.ownerCountry,
     prevTicket: ticket.ticket,
   });
   if (!sent.ok) return { error: rejectionText(sent.code), notice: null };
