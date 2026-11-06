@@ -1649,6 +1649,30 @@ venta o Reportes.
 **Es la hermana de «SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO».** Aquella protege lo
 que alguien escribió; esta, lo que valía cuando lo escribió.
 
+## Las plantillas dicen cada cifra por moneda
+
+**Regla del dueño, 2026-11-06**, al leer `Plazos vencidos: 4 clientes, por $120,00 y €30,00`:
+*«los 4 clientes son de una misma moneda o están repartidos entre ambas? debería mencionar la
+cantidad de clientes separado por moneda»*.
+
+**La regla**: en una plantilla, cada cantidad va pegada a su moneda. Nunca un conteo total al
+lado de dos importes.
+
+| Mal | Bien |
+|---|---|
+| `4 clientes, por $120,00 y €30,00` | `3 clientes por $120,00 y 1 cliente por €30,00` |
+| `8, por $340,00 y €50,00` | `5 ventas por $340,00 y 3 ventas por €50,00` |
+
+- **Una moneda en cero no se escribe.** Con un solo libro queda `3 clientes por $120,00`.
+- **Quien debe en dos monedas cuenta en las dos**, porque son dos deudas. Las cantidades pueden
+  sumar más que los clientes reales, y eso es correcto: no se suman nunca, igual que los libros.
+- **Singular y plural van bien escritos**: `1 cliente`, `3 clientes`.
+- **Una venta en dos monedas cuenta en las dos**, por la misma razón.
+
+**Por qué merece regla propia.** Es la regla de toda la app, dólares y euros son dos libros, y en
+una plantilla se rompe más fácil: el texto no se puede revisar después de aprobado, y un mensaje
+ambiguo sobre dinero se lee sin nadie al lado para explicarlo.
+
 ## Toda plantilla de WhatsApp lleva el pie antifraude
 
 ```

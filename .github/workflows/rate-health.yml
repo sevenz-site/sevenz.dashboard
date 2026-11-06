@@ -5,15 +5,24 @@
 # Needs one repository secret, CRON_SECRET, with the same value Vercel has in production.
 # Without it the run fails on purpose: a check that cannot ask must not look healthy.
 #
-# On 2026-11-06 the first scheduled run never started, with the file on main, the cron valid,
-# the workflow active and a manual run working. Touching this file on main is the known way to
-# make GitHub register a schedule again, which is the reason for this comment. The alert no
-# longer depends on it alone: see lib/whatsapp/tasa-retenida.ts.
+# TWO TIMES A DAY, AND NEVER ON THE HOUR. On 2026-11-06 the first scheduled run never started,
+# with the file on main, the cron valid, the workflow active and a manual run working. GitHub
+# says a schedule can be delayed or dropped under load, so one time a day was a single point of
+# failure. The second time is the same question asked again, and it is free: a healthy rate
+# answers 200 and nothing is sent.
+#
+# Changing these lines also makes GitHub register the schedule again, which is the known way
+# out of that failure, and it decides the mailbox: a scheduled run notifies whoever last
+# changed the cron lines.
+#
+# THE ALERT DOES NOT DEPEND ON THIS. `/api/cron/whatsapp`, on Vercel, raises the same alert on a
+# different clock: see lib/whatsapp/tasa-retenida.ts. Neither can silence the other.
 name: Salud de la tasa
 
 on:
   schedule:
     - cron: "30 14 * * *"
+    - cron: "17 17 * * *"
   workflow_dispatch:
 
 permissions: {}
