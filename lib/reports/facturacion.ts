@@ -788,9 +788,9 @@ export async function cargarFacturacion({
   //
   // LO QUE CUESTA: esa función lee los movimientos de TODOS los clientes del
   // dueño sin filtro de fecha, porque un puntaje de por vida no se puede
-  // calcular con una ventana. Con los 468 movimientos que producción tiene
-  // entre todos no se nota; el día que un solo negocio tenga decenas de
-  // miles, esto es lo primero que hay que paginar.
+  // calcular con una ventana.
+  // It reads by pages since PL-35. This comment used to put that problem at «decenas de
+  // miles» of rows; the API cut at 1,000.
   const puntajes = await computeCreditScoresForClients(
     supabase,
     (resumenes ?? []) as ClientSummary[],

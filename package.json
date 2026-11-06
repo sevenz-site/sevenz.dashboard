@@ -110,6 +110,7 @@
     "qa:eventos": "node qa/eventos-transacciones.mjs",
     "qa:ventas-inicio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/ventas-inicio.mjs",
     "qa:segundo-factor": "node --experimental-strip-types --no-warnings qa/segundo-factor.mjs",
+    "qa:lecturas-completas": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/lecturas-completas.mjs",
     "qa:carga-sesiones": "node qa/carga/sesiones.mjs",
     "qa:carga-lectura": "k6 run -e BASE_URL=https://dev.sevenz.site qa/carga/lectura.js",
     "qa:carga-cuentas": "node qa/carga/cuentas.mjs",
