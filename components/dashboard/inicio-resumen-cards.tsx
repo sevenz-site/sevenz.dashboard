@@ -8,7 +8,7 @@ import { useHiddenBalances } from "@/hooks/use-hidden-balances";
 import { PedidosIcon, VERDE_PEDIDOS } from "@/components/icons/pedidos";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { hrefDeSeccion } from "@/lib/reports/secciones";
 import { cn } from "@/lib/utils";
 
@@ -183,7 +183,7 @@ export function InicioResumenCards({
           oculto
             ? "Ventas ocultas"
             : tasa != null
-              ? `${formatBs(ventas * tasa)} hoy`
+              ? `${formatBsHoy(ventas * tasa)}`
               : "Últimos 30 días"
         }
       >

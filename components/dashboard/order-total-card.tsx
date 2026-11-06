@@ -2,7 +2,7 @@
 
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   priceIn,
@@ -99,7 +99,7 @@ export function OrderTotalCard({
         </span>
         {enBs != null ? (
           <span className="text-xs text-muted-foreground tabular-nums">
-            {formatBs(enBs)} hoy
+            {formatBsHoy(enBs)}
           </span>
         ) : null}
       </div>

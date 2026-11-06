@@ -2,7 +2,7 @@
 
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -130,7 +130,7 @@ export function ImporteDeLinea({
             ) : null}
           </span>
           {enBs != null && hayProducto ? (
-            <p className="text-xs text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</p>
+            <p className="text-xs text-muted-foreground tabular-nums">{formatBsHoy(enBs)}</p>
           ) : null}
         </>
       )}

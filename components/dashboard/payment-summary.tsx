@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { Fecha } from "@/components/fecha";
 import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
@@ -175,7 +175,7 @@ export function PaymentSummary({
                 <FilaDeTotal
                   rotulo="Total por cobrar"
                   cifra={s.primary}
-                  bolivares={s.secondary ? `${s.secondary} hoy` : null}
+                  bolivares={s.secondary ? conHoy(s.secondary) : null}
                   moneda={currency}
                   tono={saldoDelLibro > 0.005 ? "debe" : saldoDelLibro < -0.005 ? "a_favor" : "neutro"}
                   aFavor={saldoDelLibro < -0.005}

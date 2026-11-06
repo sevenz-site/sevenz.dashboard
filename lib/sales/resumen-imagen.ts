@@ -1,4 +1,4 @@
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 
@@ -694,7 +694,7 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
         ctx.font = fuente(12);
         ctx.fillStyle = TENUE;
         ctx.textAlign = "right";
-        ctx.fillText(`${formatBs(deudaEnBs)} hoy`, xDer, by);
+        ctx.fillText(`${formatBsHoy(deudaEnBs)}`, xDer, by);
         ctx.textAlign = "left";
       }
     }
@@ -738,7 +738,7 @@ function recorrer(ctx: CanvasRenderingContext2D | null, datos: DatosDelResumen):
         ctx.font = fuente(12);
         ctx.fillStyle = TENUE;
         ctx.textAlign = "right";
-        ctx.fillText(`${formatBs(deudaEnBs)} hoy`, xDer, by);
+        ctx.fillText(`${formatBsHoy(deudaEnBs)}`, xDer, by);
         ctx.textAlign = "left";
       }
     }

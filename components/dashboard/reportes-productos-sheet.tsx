@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { StockBadge } from "@/components/stock-badge";
 import { formatCantidad } from "@/lib/products/cantidad";
 import type { ProductoDeHoja } from "@/lib/reports/inventario";
@@ -314,6 +314,10 @@ function Importe({ d, grande = false }: { d: Dinero; grande?: boolean }) {
  * que enseñar -- `Bs. 0,00` sería un dato falso con pinta de dato, que es
  * exactamente lo que la tarjeta de «Referencias agotadas» ya evita no
  * dibujando su chip de dinero.
+ *
+ * «HOY» IS NOT IN THE FRAME AND GOES ANYWAY, owner's decision of 2026-11-06. This is a total
+ * of the period at today's rate, so without the word it reads as what it was worth then, and
+ * it changes every morning with nothing sold. `reportes-facturacion.tsx` says it the same way.
  */
 function LineaEnBs({
   d,
@@ -327,7 +331,7 @@ function LineaEnBs({
   if (tasa == null || !(tasa > 0)) return null;
   return (
     <span className="truncate text-xs text-muted-foreground tabular-nums">
-      {formatBs(d.amount * tasa)}
+      {formatBsHoy(d.amount * tasa)}
     </span>
   );
 }

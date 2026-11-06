@@ -49,7 +49,7 @@ import {
   absorbPinnedCents,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy, formatBsHoy } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   parseAmount,
@@ -873,7 +873,7 @@ export function AbonoReparto({
               -{formatPriceAmount(f.pending, f.currency ?? "COP")}
             </span>
             {enBs != null ? (
-              <span className="text-xs text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{formatBsHoy(enBs)}</span>
             ) : null}
           </Link>
           <Button
@@ -1003,7 +1003,7 @@ export function AbonoReparto({
                 </span>
                 {bs != null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(bs)} hoy
+                    {formatBsHoy(bs)}
                   </span>
                 ) : null}
               </div>
@@ -1318,8 +1318,8 @@ export function AbonoReparto({
                   />
                 ) : null}
                 {enBolivares
-                  ? `${formatPriceAmount(enElLibro, (libro ?? "COP") as PriceCurrency)} hoy`
-                  : `${formatBs(bsDelTotal)} hoy`}
+                  ? `${conHoy(formatPriceAmount(enElLibro, (libro ?? "COP") as PriceCurrency))}`
+                  : `${formatBsHoy(bsDelTotal)}`}
               </p>
             ) : null}
 

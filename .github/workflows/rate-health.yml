@@ -4,6 +4,11 @@
 #
 # Needs one repository secret, CRON_SECRET, with the same value Vercel has in production.
 # Without it the run fails on purpose: a check that cannot ask must not look healthy.
+#
+# On 2026-11-06 the first scheduled run never started, with the file on main, the cron valid,
+# the workflow active and a manual run working. Touching this file on main is the known way to
+# make GitHub register a schedule again, which is the reason for this comment. The alert no
+# longer depends on it alone: see lib/whatsapp/tasa-retenida.ts.
 name: Salud de la tasa
 
 on:

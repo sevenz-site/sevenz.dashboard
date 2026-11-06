@@ -4,7 +4,7 @@ import { forwardRef } from "react";
 import { ChevronRight, ImageOff, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import {
   formatPriceAmount,
@@ -95,7 +95,7 @@ export function OrderProductCard({
           </span>
           {enBs != null ? (
             <span className="text-xs text-muted-foreground tabular-nums">
-              {formatBs(enBs)} hoy
+              {formatBsHoy(enBs)}
             </span>
           ) : null}
         </span>

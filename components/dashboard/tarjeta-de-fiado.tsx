@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatPriceAmount, priceIn, type BolivarRates, type PriceCurrency } from "@/lib/products/price";
 
@@ -195,7 +195,7 @@ export function TarjetaDeFiado({
             -{formatPriceAmount(enRojo, fiado.currency ?? "COP")}
           </span>
           {enBs != null ? (
-            <span className="text-[10px] text-muted-foreground tabular-nums">{formatBs(enBs)} hoy</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">{formatBsHoy(enBs)}</span>
           ) : null}
         </div>
         {conChevron ? (

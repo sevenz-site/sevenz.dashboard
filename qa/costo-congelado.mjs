@@ -69,7 +69,7 @@ const TASAS = { usd: 100, eur: 120, usdt: null };
     }
   }
   check("1n. hay una sola escritura de líneas de venta en el código", escrituras.length === 1, escrituras.map((e) => e.ruta).join(", "));
-  check("1o. esa escritura guarda el costo", escrituras.every((e) => e.trozo.includes("unit_cost")), escrituras.map((e) => e.ruta).join(", "));
+  check("1o. esa escritura guarda el costo y el proveedor", escrituras.every((e) => e.trozo.includes("unit_cost") && e.trozo.includes("supplier")), escrituras.map((e) => e.ruta).join(", "));
   const sql = readdirSync("supabase").filter((f) => /^\d/.test(f) && /insert\s+into\s+public\.sale_lines/i.test(readFileSync(join("supabase", f), "utf8")));
   check("1p. ninguna función de la base escribe líneas de venta por su cuenta", sql.length === 0, sql.join(", "));
 }
@@ -157,11 +157,11 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes(REF)) {
     throw new Error("resultado sin cerrar");
   };
 
-  const producto = async (ownerId, nombre, moneda, precio, costo, monedaCosto) => {
+  const producto = async (ownerId, nombre, moneda, precio, costo, monedaCosto, supplier = null) => {
     const { data, error } = await admin.from("products").insert({
       owner_id: ownerId, name: nombre, base_currency: moneda, base_currency_retail: moneda, base_currency_wholesale: moneda,
       price_retail: precio, published_retail: true, published_wholesale: false, cost: costo, cost_currency: costo == null ? null : monedaCosto,
-      cost_currency_other: monedaCosto === "OTHER" ? "pesos argentinos" : null,
+      cost_currency_other: monedaCosto === "OTHER" ? "pesos argentinos" : null, supplier,
     }).select("id").single();
     if (error) throw new Error(`producto: ${error.message}`);
     return data.id;
@@ -244,6 +244,30 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes(REF)) {
     check("2n2. la devolución real se registra", !eRetorno, eRetorno?.message ?? JSON.stringify(retorno));
     const gd = await gananciaProveedores(ve.dueno, ve.id, devuelto, rates);
     check("2n3. resta lo que esa unidad dejó, con el costo de su venta", casi(gd?.amount, 24), JSON.stringify(gd));
+
+    // Moving a product to another supplier does not take its past sales along.
+    const proveedorDe = async (nombre) => (await cargarProveedores({ supabase: ve.dueno, ownerId: ve.id, rango: rango(), rates })).find((p) => p.nombre.toLowerCase() === nombre.toLowerCase()) ?? null;
+    const azucar = await producto(ve.id, "QA Costo azucar", "USD", 10, 5, "USD", "Makro");
+    const v9 = await vender(accion, ve.cookie, { clientId: cli, lineas: [{ productId: azucar, quantity: 2, currency: "USD" }], pagos: [{ currency: "USD", amount: 20 }], credito: [] });
+    check("2t. la línea guarda el proveedor del día", (await admin.from("sale_lines").select("supplier").eq("sale_id", v9.saleId).single()).data?.supplier === "Makro");
+    const makroAntes = await proveedorDe("Makro");
+    check("2u. el margen de Makro es el de su venta", casi(makroAntes?.margenPct, 100), JSON.stringify(makroAntes));
+    await admin.from("products").update({ supplier: "Éxito" }).eq("id", azucar);
+    const makro = await proveedorDe("Makro");
+    const exito = await proveedorDe("Éxito");
+    check("2v. tras mudar el producto, Makro conserva ese margen", casi(makro?.margenPct, 100), JSON.stringify(makro));
+    check("2w. Makro lo sigue listando por lo que vendió ahí", makro?.lista.some((x) => x.id === azucar && casi(x.ganancia?.amount, 10)), JSON.stringify(makro?.lista));
+    check("2x. Éxito lo tiene en su catálogo sin heredar esa venta", exito?.lista.some((x) => x.id === azucar && x.ganancia === null) && exito?.margenPct === null, JSON.stringify(exito));
+    const v10 = await vender(accion, ve.cookie, { clientId: cli, lineas: [{ productId: azucar, quantity: 1, currency: "USD" }], pagos: [{ currency: "USD", amount: 10 }], credito: [] });
+    const exitoDespues = await proveedorDe("Éxito");
+    check("2y. la venta siguiente ya cuenta para Éxito", v10.ok === true && casi(exitoDespues?.lista.find((x) => x.id === azucar)?.ganancia?.amount, 5), JSON.stringify(exitoDespues?.lista));
+    const mayusculas = await producto(ve.id, "QA Costo mayusculas", "USD", 10, 5, "USD", "MAKRO");
+    await vender(accion, ve.cookie, { clientId: cli, lineas: [{ productId: mayusculas, quantity: 1, currency: "USD" }], pagos: [{ currency: "USD", amount: 10 }], credito: [] });
+    const unaSola = (await cargarProveedores({ supabase: ve.dueno, ownerId: ve.id, rango: rango(), rates })).filter((p) => p.nombre.toLowerCase() === "makro");
+    check("2z. «Makro» y «MAKRO» siguen siendo uno", unaSola.length === 1, JSON.stringify(unaSola.map((p) => p.nombre)));
+    await admin.from("products").update({ supplier: "Nuevo" }).eq("id", sin);
+    const nuevo = await proveedorDe("Nuevo");
+    check("2z2. una línea sin proveedor guardado va al que se escriba después", nuevo?.lista.some((x) => x.id === sin && casi(x.ganancia?.amount, 7)), JSON.stringify(nuevo));
 
     // What a shop paid is not for its client to read.
     const { data: enlace } = await admin.from("share_links").insert({ client_id: cli }).select("token").single();

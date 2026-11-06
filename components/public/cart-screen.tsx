@@ -44,7 +44,7 @@ import {
   priceIn,
   type BolivarRates,
 } from "@/lib/products/price";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { conHoy, formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { telefonoLegible } from "@/lib/phone";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
@@ -360,7 +360,7 @@ export function CartScreen({
                           </span>
                           {bs?.amount != null ? (
                             <span className="text-xs text-muted-foreground tabular-nums">
-                              {formatBs(bs.amount)} c/u
+                              {conHoy(`${formatBs(bs.amount)} c/u`)}
                             </span>
                           ) : null}
                         </>
@@ -1120,7 +1120,7 @@ function Enviado({
                 </span>
                 {enBs?.amount != null ? (
                   <span className="block text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs.amount)}
+                    {formatBsHoy(enBs.amount)}
                   </span>
                 ) : null}
                 </span>

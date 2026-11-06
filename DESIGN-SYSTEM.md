@@ -486,6 +486,24 @@ phone or address is itself visible rather than silently absent.
   one showed a Colombian owner 12:15 p. m. for a 7:15 a. m. event. Use the
   owner's country: `America/Caracas` or `America/Bogota`.
 
+### «hoy» junto a una cifra en bolívares
+
+Decisión del dueño el 2026-11-06. Un solo estándar para toda la app.
+
+- **`Bs. 1.234,56 hoy`**: la cifra se calculó con la tasa de hoy. Minúscula y después de la
+  cifra, en la línea secundaria.
+- **`Bs. 1.000,00`**: se tecleó o quedó sellada. Nunca lleva «hoy», porque la palabra dice
+  que mañana cambia.
+- **`Bs. 1.234,56 al día del pago`**: bolívares del momento de un pago. Se escribe con
+  `alDiaDelPago`, y nunca «al día de pago».
+- **`•••••• hoy`**: el mismo rótulo con el saldo oculto.
+
+Se escribe con `formatBsHoy` o `conHoy`, de `lib/exchange-rate/format.ts`. Nunca a mano:
+`qa:bs-hoy` falla. Vale en las dos vistas, salvo la imagen del comprobante del pedido.
+Antes de cambiar Reportes, ver «Cada cambio en Reportes se evalúa contra las plantillas» en
+`CLAUDE.md`. **Si un frame dibuja la línea sin «hoy», manda este estándar.** La razón
+está en `CLAUDE.md`, «Una cifra del pasado no se calcula con datos de hoy».
+
 ## Responsive
 
 - Mobile stacks, `sm:` and up sits side by side. The bottom nav is the

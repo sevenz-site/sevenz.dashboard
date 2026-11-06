@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { headers } from "next/headers";
+import { landingAfterLogin } from "@/lib/auth/landing-after-login";
 import { currentDeviceHash, mustResetPassword, recordLoginDevice } from "@/lib/security/new-device";
 import { maskedTarget, sendCode, setLoginTicket, verifyPassword } from "@/lib/security/second-factor";
 import { rejectionText } from "@/lib/security/code-text";
@@ -131,5 +132,5 @@ export async function login(_prevState: AuthState, formData: FormData): Promise<
   // `second_factor` whether a code was asked for on the way in (C1).
   if (data.user) trackServer("Login Completed", data.user.id, { new_device: device?.isNew ?? false, second_factor: false }, data.user.email);
 
-  redirect("/dashboard");
+  redirect(await landingAfterLogin());
 }

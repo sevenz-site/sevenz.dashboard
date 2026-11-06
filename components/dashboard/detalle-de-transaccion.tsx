@@ -12,7 +12,7 @@ import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { TarjetaDeAbono, type AbonoDirigido } from "@/components/dashboard/tarjeta-de-abono";
 import { PaymentSummary, type PaymentLine } from "@/components/dashboard/payment-summary";
 import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy } from "@/lib/exchange-rate/format";
 import { formatPlazoDias } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
@@ -450,7 +450,7 @@ export function DetalleDeTransaccion({
               <FilaDeTotal
                 rotulo="Total"
                 cifra={t.primary}
-                bolivares={t.secondary ? `${t.secondary} hoy` : null}
+                bolivares={t.secondary ? conHoy(t.secondary) : null}
                 moneda={currency}
                 tono={pendienteDelFiado > 0.005 ? "debe" : "neutro"}
               />
@@ -722,7 +722,7 @@ export function DetalleDeTransaccion({
         <FilaDeTotal
           rotulo={balanceLabel}
           cifra={balance.primary}
-          bolivares={balance.secondary ? `${balance.secondary} hoy` : null}
+          bolivares={balance.secondary ? conHoy(balance.secondary) : null}
           moneda={currency}
           tono={runningBalance > 0 ? "debe" : runningBalance < 0 ? "a_favor" : "neutro"}
           aFavor={aFavor}

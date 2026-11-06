@@ -1,3 +1,4 @@
+import { conHoy } from "@/lib/exchange-rate/format";
 import Link from "next/link";
 import { ChevronRight, Undo2 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -97,7 +98,7 @@ export function DetalleDeDevolucion({
         <FilaDeTotal
           rotulo="Total por cobrar"
           cifra={balance.primary}
-          bolivares={balance.secondary ? `${balance.secondary} hoy` : null}
+          bolivares={balance.secondary ? conHoy(balance.secondary) : null}
           moneda={currency}
           tono={runningBalance > 0 ? "debe" : runningBalance < 0 ? "a_favor" : "neutro"}
           aFavor={runningBalance < 0}

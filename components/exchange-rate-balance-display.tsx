@@ -1,3 +1,4 @@
+import { conHoy } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { cn } from "@/lib/utils";
 import type { LedgerCurrency } from "@/lib/types";
@@ -61,7 +62,7 @@ export function ExchangeRateBalanceDisplay({
   return (
     <div className={cn("flex flex-col gap-0.5", align === "end" && "items-end")}>
       {mainWithLeading}
-      {secondary ? <p className="text-xs text-muted-foreground tabular-nums">{secondary} hoy</p> : null}
+      {secondary ? <p className="text-xs text-muted-foreground tabular-nums">{conHoy(secondary)}</p> : null}
     </div>
   );
 }

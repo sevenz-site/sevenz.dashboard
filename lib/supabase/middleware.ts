@@ -1,3 +1,4 @@
+import { RETURN_COOKIE, RETURN_MAX_AGE, safeReturnPath } from "@/lib/auth/return-after-login";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -97,7 +98,20 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    url.search = "";
+    const response = NextResponse.redirect(url);
+    // A button in a WhatsApp template opens Reportes: see lib/auth/return-after-login.ts.
+    const destino = safeReturnPath(`${request.nextUrl.pathname}${request.nextUrl.search}`);
+    if (destino && request.method === "GET") {
+      response.cookies.set(RETURN_COOKIE, destino, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        maxAge: RETURN_MAX_AGE,
+        path: "/",
+      });
+    }
+    return response;
   }
 
   if (user && isAuthRoute) {

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   priceIn,
@@ -268,7 +268,7 @@ export function ProductDetail({
     const enBs = priceIn("VES", { amount, currency: c }, rates);
     return {
       texto,
-      bs: enBs.amount == null ? null : formatBs(enBs.amount),
+      bs: enBs.amount == null ? null : formatBsHoy(enBs.amount),
       exacto,
     };
   }

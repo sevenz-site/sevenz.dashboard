@@ -1360,7 +1360,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   // with the client standing at the counter.
   const { data: costos, error: errorCostos } = await supabase
     .from("products")
-    .select("id, cost, cost_currency")
+    .select("id, cost, cost_currency, supplier")
     .eq("owner_id", user.id)
     .in("id", ids);
   if (errorCostos) console.error("registrarVenta costos:", errorCostos.message);
@@ -1370,6 +1370,8 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       {
         costo: c.cost == null ? null : Number(c.cost),
         monedaCosto: (c.cost_currency as string | null) ?? null,
+        // As written, and null when blank: migration 195.
+        proveedor: ((c.supplier as string | null) ?? "").trim() || null,
       },
     ]),
   );
@@ -1388,6 +1390,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       currency: l.currency,
       tier: l.tier,
       unit_cost: costoDeLinea(l.productId, l.currency),
+      supplier: costoPorId.get(l.productId)?.proveedor ?? null,
     })),
   );
   if (errorLineas) {

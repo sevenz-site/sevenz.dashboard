@@ -1510,13 +1510,35 @@ tanto mensaje»*.
    que iba a salir callado, y `primera_semana` sustituye a su lunes.
 4. **El tope se cuenta por TELÉFONO, no por negocio.** Nada impide que dos negocios
    compartan número, y entonces recibiría el doble.
-5. **El jueves solo sale con novedad**, comparando clientes y productos, no cifras. Máximo
-   dos jueves callados seguidos si sigue habiendo algo pendiente.
+5. **El jueves nunca se calla si hay deudores.** Sale siempre que haya un plazo vencido o por
+   vencer. Decisión del dueño el 2026-11-06, al ver que callarlo dejaba a un negocio pequeño
+   sin saber quién le debe: *«puede ser quebrar por no saber quien te debe»*. Solo productos
+   y pedidos esperan a que haya novedad.
 6. **Toda plantilla nueva dice en su ficha qué cita ocupa.** Si no ocupa ninguna, hay que
    justificar por qué es extraordinaria.
 
+**Dos es el tope, no la meta.** Una cuenta sin ventas ni por cobrar recibe uno o ninguno. Si
+ya cargó clientes o productos, recibe `negocio_estado` el lunes, máximo tres semanas seguidas.
+
 **No cuentan para el tope**: el código de acceso, el aviso de aparato nuevo y el de cambio
 de número o correo. Los pide el propio dueño o protegen su cuenta, y no pueden esperar.
+
+### Cada cambio en Reportes se evalúa contra las plantillas
+
+**Regla del dueño, 2026-11-06**: el botón de cada plantilla lleva a la sección de Reportes que
+respalda su cifra, y *«cada cambio en la sección reporte debe evaluar como impactará las
+plantillas y si se debe crear nueva plantilla»*.
+
+Antes de renombrar, mover o quitar una sección, o de cambiar qué cuenta una cifra, se abre
+`lib/whatsapp/destinos.ts` y se contestan dos preguntas **por escrito, en el reporte**:
+
+1. **¿El botón sigue llegando?** Una dirección aprobada por Meta no se edita. Si la sección
+   cambia, hace falta plantilla nueva y su espera, y eso se presupuesta antes de tocar nada.
+2. **¿La cifra del mensaje sigue siendo la de la pantalla?** Si el mensaje dice 10 y Reportes
+   dice 4, se lee como un error de la app, aunque las dos estén bien calculadas.
+
+`qa:destinos-plantillas` falla si un destino deja de existir. La segunda pregunta no la vigila
+ninguna máquina.
 
 **Por qué merece regla propia.** Cada mensaje nuevo se justifica solo y el total no lo
 mira nadie. Una calificación baja afecta al número entero, así que el que bloquea por
@@ -1582,21 +1604,41 @@ sobre el pasado, se busca por lo que puede cambiar:
 - Cualquier atributo editable de un producto o cliente que agrupe cifras viejas.
 
 Lo que ya se guarda en la transacción, y no hay que volver a buscar: nombre, precio,
-moneda y costo en `sale_lines`; lo tecleado y su tasa en `sale_payments` y `movements`.
+moneda, costo y proveedor en `sale_lines`; lo tecleado y su tasa en `sale_payments` y `movements`.
+
+### «hoy» se escribe de una sola forma
+
+**Decisión del dueño, 2026-11-06**: un mismo estándar para toda la app.
+
+| Qué es la cifra | Cómo se escribe | Con qué |
+|---|---|---|
+| Equivalencia calculada con la tasa de hoy | `Bs. 1.234,56 hoy` | `formatBsHoy`, o `conHoy` si la cifra ya viene escrita |
+| Lo que alguien tecleó, o un monto sellado | `Bs. 1.000,00`, sin nada | `formatBs` |
+| Bolívares del momento de un pago | `Bs. 1.234,56 al día del pago` | `alDiaDelPago`. Dice que esa cifra ya no se mueve |
+| Un saldo oculto | `•••••• hoy` | `conHoy` |
+
+**Siempre en minúscula y después de la cifra.** La palabra significa «calculado con la tasa
+de hoy, así que mañana se lee distinto». Por eso un monto tecleado nunca la lleva: diría que
+va a cambiar, y es lo único que no cambia.
+
+**Se escribe con la función, nunca a mano, y vale igual para las dos.** Eran 25 sitios
+tecleados uno por uno: así fue como la hoja de productos de Reportes enseñó el total de un
+periodo sin «hoy», y como una misma pantalla decía «al día del pago» y «al día de pago».
+`qa:bs-hoy` falla si alguien vuelve a escribirlas a mano, o si calcula bolívares con la tasa
+sin la palabra.
+
+**La vista del cliente lleva el mismo estándar**, decisión del dueño el 2026-11-06: el carrito y
+el detalle de producto dicen «hoy». Queda fuera la imagen del comprobante del pedido: es una
+foto que se comparte y se lee días después, y ahí «hoy» sería falso. El detalle de diseño está en `DESIGN-SYSTEM.md`.
 
 ### Lo que sigue sin congelarse, dicho para que nadie lo redescubra
 
 Medido el 2026-11-06:
 
-- **Proveedores agrupa por el proveedor ACTUAL del producto.** Si el tendero cambia el
-  proveedor de un producto, sus ventas pasadas se mudan al nuevo. Es esta misma clase de
-  error. No se arregló: hace falta decidir si la línea guarda también su proveedor.
 - **Un margen que cruza dos monedas** se pesa con la tasa de hoy, porque un porcentaje
   necesita una unidad común. Mueve poco, pero se mueve.
-- **La hoja de productos de Reportes enseña los bolívares de un total del periodo con la
-  tasa de hoy y sin decirlo.** `reportes-facturacion.tsx` escribe «hoy» junto a la cifra;
-  `LineaEnBs`, en `reportes-productos-sheet.tsx`, no. Falta ese rótulo.
-- **Las ventas anteriores a la migración `194`** usan el costo actual.
+- **Las ventas anteriores a las migraciones `194` y `195`** usan el costo y el proveedor
+  actuales.
 - **Un costo mal escrito y vendido** se queda mal en esa línea. Todavía no hay cómo
   corregirlo (`CT-168`).
 

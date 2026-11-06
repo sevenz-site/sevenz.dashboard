@@ -13,7 +13,7 @@ import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-row
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { alDiaDelPago, formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { bookBalance, ceilingOfBook, lineasDe, otherFiadosOf } from "@/lib/returns/read";
@@ -296,7 +296,7 @@ export default async function VentaDeContadoPage({
                     cantidad valió eso ESE día, no hoy. */}
                 {monedaTecleada === "VES" ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(entregado)} al día del pago
+                    {alDiaDelPago(formatBs(entregado))}
                   </span>
                 ) : null}
               </span>
@@ -309,7 +309,7 @@ export default async function VentaDeContadoPage({
           <FilaDeTotal
             rotulo="Total"
             cifra={formatear(total)}
-            bolivares={enBs != null ? `${formatBs(enBs)} al día de pago` : null}
+            bolivares={enBs != null ? alDiaDelPago(formatBs(enBs)) : null}
             moneda={moneda}
           />
         </div>

@@ -44,6 +44,13 @@ export function ReportesAncla({ apartado }: { apartado: string }) {
   const params = useSearchParams();
 
   useEffect(() => {
+    // `?seccion=` is what a WhatsApp button carries: a fragment does not survive signing in.
+    // The browser only scrolls by itself to a fragment, so this one is done here.
+    const pedida = params.get("seccion");
+    if (pedida && pedida in SECCIONES && SECCIONES[pedida as Seccion].tab === apartado) {
+      document.getElementById(pedida)?.scrollIntoView();
+    }
+
     const ancla = window.location.hash.replace(/^#/, "");
     if (!ancla || !(ancla in SECCIONES)) return;
 

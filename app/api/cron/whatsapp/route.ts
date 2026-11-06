@@ -5,6 +5,8 @@ import { diaIsoEnColombia } from "@/lib/whatsapp/send";
 import { registrarLatido } from "@/lib/whatsapp/latido";
 import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
 import { createServiceClient } from "@/lib/supabase/service";
+import { getRateHealth } from "@/lib/admin/rate-health";
+import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
 
 export const runtime = "nodejs";
 
@@ -69,6 +71,10 @@ export async function GET(request: Request) {
   } catch (e) {
     console.error("cron whatsapp: bloquear_vencidas:", e);
   }
+
+  // The rate alert does not wait for GitHub: see lib/whatsapp/tasa-retenida.ts. It never
+  // throws, and the batch below does not depend on it.
+  await avisarTasaRetenida(await getRateHealth());
 
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.

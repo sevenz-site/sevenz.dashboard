@@ -10,7 +10,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { AbonoCompartir } from "@/components/dashboard/abono-compartir";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { telefonoLegible } from "@/lib/phone";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
@@ -466,7 +466,7 @@ export default async function AbonoRegistradoPage({
                 )}
                 {enBs != null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} hoy
+                    {formatBsHoy(enBs)}
                   </span>
                 ) : null}
               </div>
@@ -507,7 +507,7 @@ export default async function AbonoRegistradoPage({
                 </span>
                 {enBs != null ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs)} hoy
+                    {formatBsHoy(enBs)}
                   </span>
                 ) : null}
               </div>

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatPlazoDias } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
 import type { ReactNode } from "react";
@@ -244,7 +244,7 @@ export default async function ConfirmarFiadoPage({
               </span>
               {pendienteEnBs != null ? (
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  {formatBs(pendienteEnBs)} hoy
+                  {formatBsHoy(pendienteEnBs)}
                 </span>
               ) : null}
             </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { conHoy } from "@/lib/exchange-rate/format";
 import { track } from "@/lib/mixpanel";
 import Link from "next/link";
 import { ChevronRight, Eye, EyeOff } from "lucide-react";
@@ -142,7 +143,7 @@ export function BalanceCard({
                   <span className="font-medium text-foreground">
                     {smaller.primary}
                   </span>
-                  {smaller.secondary ? ` · ${smaller.secondary} hoy` : null}
+                  {smaller.secondary ? ` · ${conHoy(smaller.secondary)}` : null}
                 </>
               )}
             </span>

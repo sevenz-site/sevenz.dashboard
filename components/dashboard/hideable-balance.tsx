@@ -1,5 +1,6 @@
 "use client";
 
+import { conHoy } from "@/lib/exchange-rate/format";
 import { Eye, EyeOff } from "lucide-react";
 import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-display";
 import { useHiddenBalances } from "@/hooks/use-hidden-balances";
@@ -46,7 +47,7 @@ export function HideableBalance({
           {/* Matches ExchangeRateBalanceDisplay's own condition for the
               secondary "hoy" line — a COP owner (no ledger/currency) never
               has one to mask either. */}
-          {ledger && currency ? <p className="text-xs text-muted-foreground tabular-nums">•••••• hoy</p> : null}
+          {ledger && currency ? <p className="text-xs text-muted-foreground tabular-nums">{conHoy("••••••")}</p> : null}
         </div>
       ) : (
         <ExchangeRateBalanceDisplay

@@ -1,5 +1,6 @@
 "use server";
 
+import { landingAfterLogin } from "@/lib/auth/landing-after-login";
 import { redirect } from "next/navigation";
 import { trackServer } from "@/lib/mixpanel-server";
 import { recordLoginDevice } from "@/lib/security/new-device";
@@ -39,7 +40,7 @@ export async function verifyLoginCode(_prev: CodeState, formData: FormData): Pro
     await clearLoginTicket();
     const device = await recordLoginDevice({ id: user.id, email: user.email });
     trackServer("Login Completed", user.id, { new_device: device.isNew, second_factor: true }, user.email);
-    redirect("/dashboard");
+    redirect(await landingAfterLogin());
   }
 
   if (result.code === "expired") {

@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { conHoy } from "@/lib/exchange-rate/format";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
@@ -440,7 +441,7 @@ export function PagoCampos({
           </span>
           {tasa ? (
             <span className="pl-5 text-xs text-muted-foreground tabular-nums">
-              {formatPriceAmount(total * tasa, "VES")}
+              {conHoy(formatPriceAmount(total * tasa, "VES"))}
             </span>
           ) : null}
         </div>
