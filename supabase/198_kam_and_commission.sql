@@ -640,8 +640,9 @@ as $fn$
   where a.owner_id = p_owner;
 $fn$;
 
--- 171's list, with the KAM's name and email for the table and its filter. Same
--- signature, so `create or replace` keeps its grants.
+-- 171's list, with the KAM's name and email for the table and its filter, and with
+-- «Último pago» counting real payments only. Same signature, so `create or replace`
+-- keeps its grants.
 create or replace function public.admin_cuentas_lista()
 returns setof jsonb
 language sql
@@ -667,9 +668,11 @@ as $$
       else ((s.demo_termina_el at time zone public.admin_zona(o.country))::date
             - (now() at time zone public.admin_zona(o.country))::date)
     end,
+    -- `metodo_pago` too, `PL-38`: «Dar demo» and «Cambiar plan» store the agreed price
+    -- in `monto_usd` with no method, so an account in demo read as having just paid.
     'ultimo_pago_el', (
       select max(e.ocurrido_el) from public.subscription_events e
-      where e.owner_id = o.id and e.monto_usd is not null
+      where e.owner_id = o.id and e.monto_usd is not null and e.metodo_pago is not null
     ),
     'clientes', (select count(*) from public.clients c where c.owner_id = o.id),
     'creado_el', o.created_at,

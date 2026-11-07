@@ -254,12 +254,15 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes("vzqppwrwnmlbrxizskdh")) {
     await rpc("admin_dar_demo", { p_owner: B.id, p_dias: 30, p_actor_email: ACTOR, p_notas: null, p_precio_usd: 19.5, p_periodicidad: "mensual" });
     await rpc("admin_cambiar_plan", { p_owner: B.id, p_plan: "pro", p_actor_email: ACTOR, p_periodicidad: "mensual", p_precio_usd: 19.5, p_notas: null });
     check("9j2. dar demo o cambiar de plan NO cuentan como pago del negocio", (await leer(B.id)).account_payments.length === 0, JSON.stringify((await leer(B.id)).account_payments));
+    const filaDe = async (id) => (await rpc("admin_cuentas_lista", {})).find((c) => c.owner_id === id);
+    check("9j3. «Último pago» sigue vacío tras dar demo y cambiar de plan (PL-38)", (await filaDe(B.id))?.ultimo_pago_el === null, JSON.stringify((await filaDe(B.id))?.ultimo_pago_el));
 
     // The first payment of the business clears the demo: the agreement must not care.
     await rpc("admin_registrar_pago", { p_owner: A.id, p_monto_usd: 19.5, p_metodo: "zelle", p_hasta: "2026-12-31T23:59:59-04:00", p_actor_email: ACTOR, p_notas: null });
     const trasPago = await leer(A.id);
     const acuerdo = trasPago.commissions[0];
     const cifras = commissionFigures({ ...acuerdo, amount_usd: Number(acuerdo.amount_usd), base_price_usd: Number(acuerdo.base_price_usd), paid_usd: Number(acuerdo.paid_usd) }, trasPago.account_payments.map((p) => ({ on: p.on, amount_usd: Number(p.amount_usd) })));
+    check("9j4. «Último pago» sí se llena con un pago de verdad", Boolean((await filaDe(A.id))?.ultimo_pago_el));
     check("9k. el pago borró el fin de la demo y el acuerdo sigue con su fecha", trasPago.demo_ends_on === null && acuerdo.starts_on === "2026-11-01");
     check("9l. el pago del negocio genera $9,75", cifras.generatedUsd === 9.75, JSON.stringify(cifras));
     check("9m. pagado $5, pendiente $4,75", cifras.paidUsd === 5 && cifras.pendingUsd === 4.75, JSON.stringify(cifras));
