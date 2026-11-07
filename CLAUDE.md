@@ -1641,8 +1641,10 @@ Medido el 2026-11-06:
   necesita una unidad común. Mueve poco, pero se mueve.
 - **Las ventas anteriores a las migraciones `194` y `195`** usan el costo y el proveedor
   actuales.
-- **Un costo mal escrito y vendido** se queda mal en esa línea. Todavía no hay cómo
-  corregirlo (`CT-168`).
+- **Un costo mal escrito y vendido** se queda mal en esa línea, y es a propósito: el
+  2026-11-06 se construyó una corrección línea por línea y el dueño la quitó ese mismo
+  día, *«la quitamos, cierra CT-168 como decidido no hacer»*. Solo afecta a Reportes.
+  Antes de proponerla otra vez, lee `supabase/197_remove_sale_line_cost_correction.sql`.
 
 **`qa:costo-congelado` vigila esto**: que la ganancia no se mueva al cambiar un costo, y
 que toda escritura de `sale_lines` guarde su costo. Es parada dura si el diff toca la
