@@ -126,7 +126,11 @@ export async function updateBusinessSettings(
 
   // The logo being replaced or removed, read BEFORE the update so its file can
   // be cleaned up once the new value is saved.
-  const { data: before } = await supabase.from("owners").select("logo_path, whatsapp").eq("id", user.id).single();
+  const { data: before } = await supabase
+    .from("owners")
+    .select("logo_path, whatsapp, business_name, first_name, last_name, address, tax_id")
+    .eq("id", user.id)
+    .single();
 
   // A logo uploaded and left unsaved for more than 7 days may have been
   // removed by the nightly cleanup (`DM-12`, migration 182). Checked only when
@@ -179,6 +183,23 @@ export async function updateBusinessSettings(
 
   revalidatePath("/profile");
   revalidatePath("/dashboard");
+
+  // The history of /admin says WHICH fields moved, never their values (the owner's
+  // decision of 2026-11-07). Nothing is written for a save that changed nothing, and a
+  // failure here must not read as a failed save: the data is already stored.
+  const changed = [
+    before?.business_name !== businessName && "nombre del negocio",
+    before?.first_name !== firstName && "nombre",
+    before?.last_name !== lastName && "apellido",
+    (before?.address ?? "") !== address && "dirección",
+    (before?.tax_id ?? "") !== taxId && "documento fiscal",
+    "logo_path" in logoUpdate && (before?.logo_path ?? null) !== logoUpdate.logo_path && "logo",
+  ].filter(Boolean);
+  if (changed.length > 0) {
+    await logSecurityAudit(user.id, "business_profile_changed", "owner", { fields: changed }).catch((e) =>
+      console.error("updateBusinessSettings: audit", e),
+    );
+  }
 
   // DO BUSINESSES COMPLETE THEIR PROFILE? A logo and a WhatsApp are what the client sees.
   // Yes or no per field: none of the values travels. Filed under the owner.
@@ -257,6 +278,9 @@ export async function addPaymentMethod(body: string): Promise<PaymentMethodResul
   // DO BUSINESSES WRITE DOWN HOW THEY GET PAID? The client sees it when paying. The
   // text itself never travels. Filed under the owner.
   trackServer("Payment Method Changed", user.id, { action: "add" }, user.email);
+  await logSecurityAudit(user.id, "payment_method_changed", "owner", { note: "agregado" }).catch((e) =>
+    console.error("payment method: audit", e),
+  );
   return { error: null, method: data };
 }
 
@@ -282,6 +306,9 @@ export async function updatePaymentMethod(id: string, body: string): Promise<Pay
 
   revalidatePath("/profile");
   trackServer("Payment Method Changed", user.id, { action: "update" }, user.email);
+  await logSecurityAudit(user.id, "payment_method_changed", "owner", { note: "editado" }).catch((e) =>
+    console.error("payment method: audit", e),
+  );
   return { error: null, method: data };
 }
 
@@ -303,6 +330,9 @@ export async function deletePaymentMethod(id: string): Promise<{ error: string |
 
   revalidatePath("/profile");
   trackServer("Payment Method Changed", user.id, { action: "delete" }, user.email);
+  await logSecurityAudit(user.id, "payment_method_changed", "owner", { note: "eliminado" }).catch((e) =>
+    console.error("payment method: audit", e),
+  );
   return { error: null };
 }
 

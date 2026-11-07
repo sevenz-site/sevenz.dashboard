@@ -54,12 +54,15 @@ export function ComprobanteInput({
   value,
   onChange,
   ayuda,
+  etiqueta = "Comprobante (opcional)",
 }: {
   value: Comprobante;
   onChange: (valor: Comprobante) => void;
   // Qué tiene sentido adjuntar en ESTA acción. No es lo mismo el recibo de un
   // pago que las capturas que respaldan un bloqueo.
   ayuda: string;
+  // Feedback attaches a capture, not a receipt.
+  etiqueta?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preparando, setPreparando] = useState(false);
@@ -94,7 +97,7 @@ export function ComprobanteInput({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label>Comprobante (opcional)</Label>
+      <Label>{etiqueta}</Label>
 
       {value ? (
         <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">

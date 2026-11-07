@@ -7,10 +7,14 @@ import {
   getHistorial,
   urlsDeComprobantes,
   type Cuenta,
-  type EventoCuenta,
 } from "@/lib/admin/subscriptions";
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
+import { CuentaComision } from "@/components/admin/cuenta-comision";
+import { CuentaFeedback } from "@/components/admin/cuenta-feedback";
+import { CuentaKam } from "@/components/admin/cuenta-kam";
 import { CuentaSeguridad } from "@/components/admin/cuenta-seguridad";
+import { mergeHistory } from "@/lib/admin/history";
+import { getAccountCommercial, getKams, getSecurityLog } from "@/lib/admin/kam";
 import { getCuentaSeguridad } from "@/lib/admin/security";
 import { EstadoChip } from "@/components/admin/estado-chip";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
@@ -18,14 +22,6 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const METODO: Record<string, string> = {
-  pago_movil: "Pago Móvil",
-  zelle: "Zelle",
-  transferencia: "Transferencia",
-  efectivo: "Efectivo",
-  otro: "Otro",
-};
 
 const ESTADO: Record<string, string> = {
   demo: "Demo",
@@ -56,31 +52,6 @@ function fecha(iso: string | null): string {
   }).format(new Date(iso));
 }
 
-// Un asiento del historial, contado como una frase y no como una fila de tabla.
-//
-// Una tabla con ocho columnas —desde_plan, hasta_plan, desde_estado, monto,
-// método…— obliga a reconstruir mentalmente qué pasó. La frase ya lo dice, y
-// debajo van los detalles que la respaldan. Esta pantalla se abre cuando
-// alguien discute un cobro, y ahí lo que hace falta es leer, no interpretar.
-function queDice(e: EventoCuenta): string {
-  const cambioDePlan = e.desde_plan && e.hasta_plan && e.desde_plan !== e.hasta_plan;
-  const cambioDeEstado = e.desde_estado && e.hasta_estado && e.desde_estado !== e.hasta_estado;
-
-  if (e.monto_usd != null && e.metodo_pago) {
-    return `Pagó $${e.monto_usd} por ${METODO[e.metodo_pago] ?? e.metodo_pago}`;
-  }
-  if (cambioDePlan) {
-    return `Cambió de ${e.desde_plan === "pro" ? "Pro" : "Free"} a ${e.hasta_plan === "pro" ? "Pro" : "Free"}`;
-  }
-  if (cambioDeEstado) {
-    return `Pasó de ${ESTADO[e.desde_estado!] ?? e.desde_estado} a ${ESTADO[e.hasta_estado!] ?? e.hasta_estado}`;
-  }
-  if (!e.desde_estado && e.hasta_estado) {
-    return "Cuenta creada en el sistema de planes";
-  }
-  return "Cambio sin efecto visible";
-}
-
 export default async function CuentaDetallePage({
   params,
 }: {
@@ -92,9 +63,20 @@ export default async function CuentaDetallePage({
   // La lista completa y se filtra aquí, en vez de una función nueva por un
   // negocio. Son 24 filas: una consulta más contra la base costaría más que
   // recorrer un array.
-  const [cuentas, historial, seguridad] = await Promise.all([getCuentas(), getHistorial(ownerId), getCuentaSeguridad(ownerId)]);
+  const [cuentas, historial, seguridad, comercial, kams, bitacora] = await Promise.all([
+    getCuentas(),
+    getHistorial(ownerId),
+    getCuentaSeguridad(ownerId),
+    getAccountCommercial(ownerId),
+    getKams(),
+    getSecurityLog(ownerId),
+  ]);
   const cuenta: Cuenta | undefined = cuentas.find((c) => c.owner_id === ownerId);
-  if (!cuenta) notFound();
+  if (!cuenta || !comercial) notFound();
+
+  // Point 4 of the owner's request of 2026-11-07: everything done to the account, on
+  // one line of time. The sentences live in `lib/admin/history.ts`.
+  const lineas = mergeHistory(historial, bitacora, comercial.events);
 
   // Las URLs se firman aqui, todas de una vez, y caducan en una hora.
   //
@@ -102,7 +84,9 @@ export default async function CuentaDetallePage({
   // firmarlas al dibujar, en vez de una accion de servidor por cada click,
   // evita tener un endpoint al que se le pueda pedir cualquier ruta.
   const comprobantes = await urlsDeComprobantes(
-    historial.map((e) => e.comprobante_path).filter((p): p is string => Boolean(p)),
+    [...lineas.map((l) => l.proofPath), ...comercial.feedback.map((f) => f.attachment_path)].filter(
+      (p): p is string => Boolean(p),
+    ),
   );
 
   const dias = cuenta.dias_restantes;
@@ -134,6 +118,17 @@ export default async function CuentaDetallePage({
       </div>
 
       <CuentaAcciones cuenta={cuenta} />
+
+      {/* The strip the owner marked in his capture of 2026-11-07. */}
+      <CuentaKam
+        ownerId={ownerId}
+        businessName={cuenta.business_name || "esta cuenta"}
+        kam={comercial.kam}
+        kams={kams}
+        running={comercial.commissions.find((c) => !c.closed_on) ?? null}
+        payments={comercial.account_payments}
+        today={comercial.today}
+      />
 
       <dl className="flex flex-col gap-4 rounded-lg border p-4">
         <Grupo>
@@ -184,6 +179,10 @@ export default async function CuentaDetallePage({
         ) : null}
       </dl>
 
+      <CuentaComision ownerId={ownerId} data={comercial} />
+
+      <CuentaFeedback ownerId={ownerId} feedback={comercial.feedback} urls={comprobantes} />
+
       {/* C1 of PL-22: how the account signs in, and the admin's two doors (recovery mail,
           email change behind an identity check). */}
       {seguridad ? <CuentaSeguridad ownerId={ownerId} cuenta={seguridad} /> : null}
@@ -197,43 +196,30 @@ export default async function CuentaDetallePage({
           </p>
         </div>
 
-        {historial.length === 0 ? (
+        {lineas.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin transacciones todavía.</p>
         ) : (
           <ul className="flex flex-col divide-y rounded-lg border">
-            {historial.map((e) => (
-              <li key={e.id} className="flex flex-col gap-1 p-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-sm font-medium">{queDice(e)}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {fechaHora(e.ocurrido_el)}
-                  </span>
+            {lineas.map((l) => (
+              <li key={l.key} className="flex flex-col gap-1 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 text-sm font-medium break-words">{l.title}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{fechaHora(l.at)}</span>
                 </div>
-                {e.motivo ? <span className="text-xs text-muted-foreground">{e.motivo}</span> : null}
-                {e.comprobante_path && comprobantes[e.comprobante_path] ? (
+                {l.proofPath && comprobantes[l.proofPath] ? (
                   <a
-                    href={comprobantes[e.comprobante_path]}
+                    href={comprobantes[l.proofPath]}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex w-fit items-center gap-1.5 text-xs font-medium underline underline-offset-2"
                   >
-                    {e.comprobante_path.endsWith(".pdf") ? (
-                      <FileText className="size-3.5" />
-                    ) : (
-                      <Paperclip className="size-3.5" />
-                    )}
+                    {l.proofPath.endsWith(".pdf") ? <FileText className="size-3.5" /> : <Paperclip className="size-3.5" />}
                     Ver comprobante
                   </a>
                 ) : null}
-                <span className="text-xs text-muted-foreground">
-                  {e.actor_email ?? "—"}
-                  {e.desde_estado || e.hasta_estado
-                    ? ` · ${ESTADO[e.desde_estado ?? ""] ?? e.desde_estado ?? "—"} → ${ESTADO[e.hasta_estado ?? ""] ?? e.hasta_estado ?? "—"}`
-                    : ""}
-                  {e.desde_plan !== e.hasta_plan
-                    ? ` · ${e.desde_plan ?? "—"} → ${e.hasta_plan ?? "—"}`
-                    : ""}
-                </span>
+                {l.detail ? (
+                  <span className="text-xs break-words whitespace-pre-line text-muted-foreground">{l.detail}</span>
+                ) : null}
               </li>
             ))}
           </ul>

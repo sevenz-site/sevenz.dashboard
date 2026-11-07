@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CodeInput } from "@/components/ui/code-input";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
 import type { CuentaSeguridad } from "@/lib/admin/security";
+import { auditDetail, auditTitle } from "@/lib/admin/history";
 import { maskEmail, maskPhone } from "@/lib/security/code-text";
 import {
   accionCambiarCorreo,
@@ -33,16 +34,6 @@ function fecha(iso: string | null): string {
   if (!iso) return "—";
   return new Intl.DateTimeFormat("es-VE", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Caracas" }).format(new Date(iso));
 }
-
-const ACCION: Record<string, string> = {
-  email_changed_by_admin: "Correo cambiado por Sevenz",
-  email_change_identity_note: "Identidad comprobada por otra vía",
-  recovery_email_resent: "Correo de recuperación reenviado",
-  second_factor_enabled: "Verificación en dos pasos activada",
-  second_factor_disabled: "Verificación en dos pasos desactivada",
-  whatsapp_changed: "Número de WhatsApp cambiado",
-  password_changed: "Contraseña cambiada",
-};
 
 // «SEGURIDAD» ON THE ACCOUNT'S ADMIN PAGE (C1 of PL-22). Two buttons, and the one that
 // changes the email is a checklist the server enforces again: code to the account's
@@ -76,14 +67,10 @@ export function CuentaSeguridad({ ownerId, cuenta }: { ownerId: string; cuenta: 
           {cuenta.audit.map((a, i) => (
             <li key={i} className="flex flex-col gap-0.5 p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-sm font-medium">{ACCION[a.action] ?? a.action}</span>
+                <span className="text-sm font-medium">{auditTitle(a)}</span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{fecha(a.at)}</span>
               </div>
-              <span className="text-xs text-muted-foreground">
-                {a.actor === "owner" ? "El dueño" : a.actor}
-                {typeof a.detail?.from === "string" && typeof a.detail?.to === "string" ? ` · ${a.detail.from} → ${a.detail.to}` : ""}
-                {typeof a.detail?.note === "string" ? ` · ${a.detail.note}` : ""}
-              </span>
+              <span className="text-xs text-muted-foreground">{auditDetail(a)}</span>
             </li>
           ))}
         </ul>
@@ -103,7 +90,7 @@ function ReenviarRecuperacion({ ownerId, email }: { ownerId: string; email: stri
       <input type="hidden" name="owner_id" value={ownerId} />
       <Button type="submit" variant="outline" size="sm" disabled={pending} title={`A ${maskEmail(email)}`}>
         <KeyRound className="size-4" />
-        {pending ? "Enviando…" : "Reenviar correo de recuperación"}
+        {pending ? "Enviando…" : "Reenviar correo para recuperar contraseña"}
       </Button>
     </form>
   );
@@ -221,7 +208,7 @@ function CambiarCorreo({ ownerId, cuenta }: { ownerId: string; cuenta: CuentaSeg
             {changing ? "Cambiando…" : "Cambiar el correo"}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Al cambiarlo, el dueño recibe un WhatsApp con el aviso y un botón «No fui yo». Después, reenvíale el correo de recuperación.
+            Al cambiarlo, el dueño recibe un WhatsApp con el aviso y un botón «No fui yo». Después, reenvíale el correo para recuperar contraseña.
           </p>
         </form>
       </DialogContent>

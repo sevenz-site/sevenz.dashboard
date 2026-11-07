@@ -62,6 +62,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
   const [busqueda, setBusqueda] = useState("");
   const [estado, setEstado] = useState<string>("todos");
   const [plan, setPlan] = useState<string>("todos");
+  const [kam, setKam] = useState("");
 
   const columnas = useMemo<ColumnDef<Cuenta>[]>(
     () => [
@@ -85,6 +86,11 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
             <span className="truncate text-xs text-muted-foreground">
               {row.original.email ?? "sin correo"}
             </span>
+            {/* Nothing is drawn without a KAM: 27 rows of «sin KAM» on the first day
+                would be noise, and the filter finds who has one. */}
+            {row.original.kam_name ? (
+              <span className="truncate text-xs text-muted-foreground">KAM: {row.original.kam_name}</span>
+            ) : null}
           </div>
         ),
       },
@@ -212,7 +218,10 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
 
   const filtradas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
+    const k = foldForSearch(kam.trim());
     return cuentas.filter((c) => {
+      // By name or email of the KAM, the owner's request of 2026-11-07.
+      if (k && !foldForSearch(c.kam_name).includes(k) && !foldForSearch(c.kam_email).includes(k)) return false;
       if (estado !== "todos") {
         const vencida = c.estado === "demo" && (c.dias_restantes ?? 0) < 0;
         if (estado === "vencida" ? !vencida : c.estado !== estado || vencida) return false;
@@ -223,7 +232,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         foldForSearch(c.business_name).includes(q) || foldForSearch(c.email).includes(q)
       );
     });
-  }, [cuentas, busqueda, estado, plan]);
+  }, [cuentas, busqueda, estado, plan, kam]);
 
   // El aviso de react-hooks/incompatible-library es correcto y no tiene
   // arreglo: useReactTable devuelve funciones nuevas en cada render por
@@ -284,6 +293,13 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         <span className="text-xs text-muted-foreground">
           {filtradas.length} de {cuentas.length}
         </span>
+        <Input
+          placeholder="KAM: nombre o correo…"
+          aria-label="Filtrar por KAM"
+          value={kam}
+          onChange={(e) => setKam(e.target.value)}
+          className="w-full sm:w-56"
+        />
       </div>
 
       {/* overflow-x en su propio contenedor, nunca en la página: una tabla

@@ -349,6 +349,10 @@ export type EventProps = {
   "Account Change Alert Sent": { what: "number" | "email" };
   "Owner Email Changed By Admin": { verified_by: "whatsapp_code" | "other" };
   "Recovery Email Resent By Admin": Record<string, never>;
+  // The KAM of an account (migration 198). The commission stays out on purpose: what a
+  // KAM earns is internal, and /admin already answers it from the tables.
+  "KAM Assignment Changed": { action: "kam_assigned" | "kam_changed" | "kam_removed" };
+  "Account Feedback Logged": { kind: "complaint" | "suggestion" | "praise" | "question"; has_attachment: boolean };
   // C2 of PL-22: an account opened from a device Sevenz did not know, and what came of it.
   "New Device Alert Sent": { known_devices: number };
   "Session Revoked By Owner": { reason: "not_me" };
