@@ -49,6 +49,9 @@ export type Cuenta = {
   se_bloquea_el: string | null;
   // A test or demo business: left out of the metrics by default.
   es_prueba: boolean;
+  // Migration 198. The KAM in charge today, or null.
+  kam_name: string | null;
+  kam_email: string | null;
 };
 
 export type EventoCuenta = {

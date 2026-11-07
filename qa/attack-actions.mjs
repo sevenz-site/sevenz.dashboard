@@ -289,6 +289,21 @@ try {
     ],
     control: SA && [SA, () => [null, fd({ owner_id: A.id, ...campos })]],
   });
+  // The KAM's actions. The owner's session gets the same 404 as every /admin action,
+  // and one control proves the door opens: `accionRegistrarFeedback` writes a note on
+  // the fixture, which dies with it. The other five would leave a KAM behind, so they
+  // lean on it: same file, same first line.
+  const KAM = "app/admin/cuentas/kam-actions.ts";
+  const kamAccion = (nombre, campos, control = false) => ({
+    clave: `${KAM}#${nombre}`, fase: 1,
+    ataques: [
+      ["un dueño la llama sobre sí mismo", A.cookie, () => [null, fd({ owner_id: A.id, ...campos })]],
+      ["un dueño la llama sobre otro negocio", A.cookie, () => [null, fd({ owner_id: B.id, ...campos })]],
+      ["un anónimo la llama", null, () => [null, fd({ owner_id: B.id, ...campos })]],
+    ],
+    control: control && SA ? [SA, () => [null, fd({ owner_id: A.id, ...campos })]] : null,
+    ...(control ? {} : { hermana: `${KAM}#accionRegistrarFeedback`, sinControl: "dejaría un KAM en la base; su control es accionRegistrarFeedback (mismo archivo, misma puerta)" }),
+  });
   const S = "app/s/[token]/actions.ts";
   const C = "app/c/[token]/actions.ts";
   const P = (f) => `app/(app)/${f}`;
@@ -300,6 +315,12 @@ try {
     adminAccion("accionBloquear", { motivo: "zz prueba" }),
     adminAccion("accionDesbloquear", { motivo: "zz" }),
     adminAccion("accionMarcarPrueba", { es_prueba: "1" }),
+    kamAccion("accionRegistrarFeedback", { kind: "complaint", body: "zz" }, true),
+    kamAccion("accionAsignarKam", { dejar_sin_kam: "1" }),
+    kamAccion("accionCrearKam", { first_name: "zz", last_name: "zz", email: "zz@example.com" }),
+    kamAccion("accionEditarKam", { kam_id: "00000000-0000-0000-0000-000000000000", first_name: "zz", last_name: "zz", email: "zz@example.com" }),
+    kamAccion("accionGuardarComision", { starts_on: "2099-01-01", ends_on: "2099-06-30", amount: "1" }),
+    kamAccion("accionPagarKam", { commission_id: "00000000-0000-0000-0000-000000000000", paid_on: "2099-01-01", amount: "1", method: "zelle" }),
     { clave: "app/admin/actions.ts#runServiceChecks", fase: 1, ataques: [["un dueño pide el estado de los servicios", A.cookie, () => []], ["un anónimo", null, () => []]], control: null, sinControl: "hace sondas a servicios externos; el formato sin argumentos lo prueba getUnreadNotificationCount" },
     { clave: `${S}#submitDocumentId`, fase: 1, ataques: [["con un token falso", null, () => ["zz-no-existe", "87654321", "V"]]], control: [null, () => [ctx.tokB, "87654321", "V"]] },
     { clave: `${S}#submitFeedback`, fase: 1, ataques: [["con un token falso", null, () => ["zz-no-existe", "zz opinión"]]], control: [null, () => [ctx.tokB, "zz opinión"]] },

@@ -8,7 +8,7 @@ import { trackServer } from "@/lib/mixpanel-server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getCuentaSeguridad } from "@/lib/admin/security";
 import { logSecurityAudit, notifyAccountChange, recentlyVerified, sendCode, verifyCode } from "@/lib/security/second-factor";
-import { maskEmail, normalizeCode, rejectionText, sentToText } from "@/lib/security/code-text";
+import { maskEmail, maskPhone, normalizeCode, rejectionText, sentToText } from "@/lib/security/code-text";
 
 // THE ADMIN'S TWO DOORS INTO AN ACCOUNT'S ACCESS (C1 of PL-22, owner's decisions of
 // 2026-11-05): resend the recovery email, and change the email of an owner whose inbox is
@@ -54,7 +54,7 @@ export async function accionReenviarRecuperacion(_prev: AdminSecurityState, form
 }
 
 export async function accionEnviarCodigoAdmin(_prev: AdminSecurityState, formData: FormData): Promise<AdminSecurityState> {
-  await requireSuperadmin();
+  const { email: actor } = await requireSuperadmin();
   const ownerId = String(formData.get("owner_id") ?? "");
   if (!ownerId) return { ...idle, error: "Falta el negocio." };
   const cuenta = await getCuentaSeguridad(ownerId);
@@ -62,11 +62,14 @@ export async function accionEnviarCodigoAdmin(_prev: AdminSecurityState, formDat
   if (!cuenta.whatsapp) return { ...idle, error: "La cuenta no tiene WhatsApp: comprueba la identidad por otra vía y anótala abajo." };
   const sent = await sendCode({ ownerId, email: cuenta.email, purpose: "admin_email", channel: "whatsapp", target: cuenta.whatsapp, ownerCountry: cuenta.country });
   if (!sent.ok) return { ...idle, error: rejectionText(sent.code) };
+  // The step before the master key, so the history keeps it (the owner's decision of
+  // 2026-11-07). The target is masked: this line is read by whoever opens the page.
+  await logSecurityAudit(ownerId, "identity_code_sent", actor, { target: maskPhone(cuenta.whatsapp) });
   return { error: null, notice: `${sentToText("whatsapp", sent.target).replace("Te enviamos", "Enviamos")} Pídele que te lo lea.` };
 }
 
 export async function accionVerificarCodigoAdmin(_prev: AdminSecurityState, formData: FormData): Promise<AdminSecurityState> {
-  await requireSuperadmin();
+  const { email: actor } = await requireSuperadmin();
   const ownerId = String(formData.get("owner_id") ?? "");
   const code = normalizeCode(String(formData.get("code") ?? ""));
   if (!ownerId) return { ...idle, error: "Falta el negocio." };
@@ -74,6 +77,7 @@ export async function accionVerificarCodigoAdmin(_prev: AdminSecurityState, form
   const cuenta = await getCuentaSeguridad(ownerId);
   const result = await verifyCode({ ownerId, email: cuenta?.email ?? null, purpose: "admin_email", code, ticket: null });
   if (!result.ok) return { ...idle, error: rejectionText(result.code, result.attemptsLeft), verified: false };
+  await logSecurityAudit(ownerId, "identity_code_verified", actor, {});
   return { error: null, notice: `Coincide. Tienes ${VERIFIED_WINDOW_MINUTES} minutos para cambiar el correo.`, verified: true };
 }
 
@@ -131,5 +135,5 @@ export async function accionCambiarCorreo(_prev: AdminSecurityState, formData: F
   trackServer("Owner Email Changed By Admin", ownerId, { verified_by: verifiedBy }, nuevo);
   revalidatePath(`/admin/cuentas/${ownerId}`);
   revalidatePath("/admin/cuentas");
-  return { error: null, notice: `Listo: la cuenta entra ahora con ${maskEmail(nuevo)}. Reenvíale el correo de recuperación para que elija contraseña.` };
+  return { error: null, notice: `Listo: la cuenta entra ahora con ${maskEmail(nuevo)}. Reenvíale el correo para recuperar contraseña y que elija una.` };
 }

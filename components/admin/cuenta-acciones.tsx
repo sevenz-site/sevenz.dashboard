@@ -169,7 +169,7 @@ function Desbloquear({ cuenta }: { cuenta: Cuenta }) {
 // Un diálogo con su formulario. Se cierra solo cuando la acción responde bien,
 // y deja el error dentro cuando no — si se cerrara siempre, el error se iría
 // con él.
-function DialogoDeAccion({
+export function DialogoDeAccion({
   titulo,
   descripcion,
   disparador,
@@ -177,10 +177,16 @@ function DialogoDeAccion({
   children,
   pending,
   formId,
+  confirmar = "Confirmar",
+  extra,
 }: {
   titulo: string;
-  descripcion: string;
+  descripcion?: string;
   disparador: React.ReactNode;
+  // The word on the submit button, when «Confirmar» says less than the frame does.
+  confirmar?: string;
+  // A second button in the footer, next to the submit one.
+  extra?: React.ReactNode;
   state: AccionState;
   children: React.ReactNode;
   pending: boolean;
@@ -212,13 +218,14 @@ function DialogoDeAccion({
       <DialogContent className="max-h-[90svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{titulo}</DialogTitle>
-          <DialogDescription>{descripcion}</DialogDescription>
+          {descripcion ? <DialogDescription>{descripcion}</DialogDescription> : null}
         </DialogHeader>
         {children}
         {state.error ? <p className="text-xs text-destructive">{state.error}</p> : null}
         <DialogFooter>
+          {extra}
           <Button type="submit" form={formId} disabled={pending}>
-            {pending ? "Guardando…" : "Confirmar"}
+            {pending ? "Guardando…" : confirmar}
           </Button>
         </DialogFooter>
       </DialogContent>

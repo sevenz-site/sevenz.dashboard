@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { trackServer } from "@/lib/mixpanel-server";
 import { hashNotMeToken } from "@/lib/security/new-device";
+import { logSecurityAudit } from "@/lib/security/second-factor";
 
 export type NotMeState = { done: boolean; error: string | null };
 
@@ -51,6 +52,15 @@ export async function confirmNotMe(_prev: NotMeState, formData: FormData): Promi
     }
   }
 
-  if (r.owner_id) trackServer("Session Revoked By Owner", r.owner_id, { reason: "not_me" }, r.email ?? undefined);
+  if (r.owner_id) {
+    trackServer("Session Revoked By Owner", r.owner_id, { reason: "not_me" }, r.email ?? undefined);
+    // The first thing support wants to see when this owner calls (the owner's decision
+    // of 2026-11-07). The sessions are closed by now: a failure here changes nothing.
+    try {
+      await logSecurityAudit(r.owner_id, "not_me_confirmed", "owner", {});
+    } catch (e) {
+      console.error("[no fui yo] audit:", e instanceof Error ? e.message : e);
+    }
+  }
   return { done: true, error: null };
 }

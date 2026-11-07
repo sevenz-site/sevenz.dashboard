@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
+import { logSecurityAudit } from "@/lib/security/second-factor";
 
 export type ResetPasswordState = { error: string | null };
 
@@ -43,6 +44,14 @@ export async function resetPassword(
     if (clearError) console.error("[reset] clear_must_reset_password:", clearError.message);
   } catch (e) {
     console.error("[reset] clear_must_reset_password:", e instanceof Error ? e.message : e);
+  }
+
+  // The history of /admin shows this one too (the owner's decision of 2026-11-07). A
+  // failure here must not cost the owner a password already changed.
+  try {
+    await logSecurityAudit(user.id, "password_changed_by_link", "owner", {});
+  } catch (e) {
+    console.error("[reset] audit:", e instanceof Error ? e.message : e);
   }
 
   redirect("/dashboard");
