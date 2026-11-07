@@ -30,7 +30,7 @@ export function FilaDeTotal({
   rotulo: string;
   /** Already formatted, in the book's currency. */
   cifra: string;
-  /** The bolivars line, with its qualifier («… hoy», «… al día de pago»). */
+  /** The bolivars line, with its qualifier («… hoy», «… al día del pago»). */
   bolivares?: string | null;
   moneda?: Moneda | null;
   /** «debe» paints the figure red, «a_favor» green, «neutro» leaves it ink. */

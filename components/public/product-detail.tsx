@@ -1,6 +1,6 @@
 "use client";
 
-import { PublicEventOnMount, sendPublicEvent } from "@/components/public/public-event";
+import { CatalogProductOpenedEvent, sendPublicEvent } from "@/components/public/public-event";
 import { useMemo, useState } from "react";
 import { StockBadge } from "@/components/stock-badge";
 import { CircleCheck, Minus, Plus } from "lucide-react";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   priceIn,
@@ -268,7 +268,7 @@ export function ProductDetail({
     const enBs = priceIn("VES", { amount, currency: c }, rates);
     return {
       texto,
-      bs: enBs.amount == null ? null : formatBs(enBs.amount),
+      bs: enBs.amount == null ? null : formatBsHoy(enBs.amount),
       exacto,
     };
   }
@@ -321,12 +321,7 @@ export function ProductDetail({
   return (
     <div className="flex flex-col gap-5">
       {isPreview || alAgregar ? null : (
-        <PublicEventOnMount
-          token={token}
-          code="catalog_product_opened"
-          onceKey={productId}
-          props={{ product_id: productId }}
-        />
+        <CatalogProductOpenedEvent token={token} productId={productId} />
       )}
       {/* EL DISPONIBLE, SIN CIFRA, igual que la etiqueta del catálogo.
           Decisión del dueño el 2026-10-15: dice si hay o no hay, nunca cuánto.

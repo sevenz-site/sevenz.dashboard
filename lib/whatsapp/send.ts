@@ -35,6 +35,8 @@ export async function enviarAvisoAlDueno(opciones: {
   periodKey: string;
   parametrosCuerpo: ParametroPlantilla[];
   parametroBoton?: ParametroPlantilla;
+  // Meta's authentication templates (the second-factor code). See kapso.ts.
+  cuerpoPosicional?: boolean;
 }): Promise<ResultadoEnvio> {
   const supabase = createServiceClient();
 
@@ -83,6 +85,7 @@ export async function enviarAvisoAlDueno(opciones: {
     plantilla: opciones.plantilla,
     parametrosCuerpo: opciones.parametrosCuerpo,
     parametroBoton: opciones.parametroBoton,
+    cuerpoPosicional: opciones.cuerpoPosicional,
   });
 
   await supabase.rpc("whatsapp_send_finish", {

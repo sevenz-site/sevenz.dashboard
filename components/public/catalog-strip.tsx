@@ -22,13 +22,19 @@ export type CatalogStripProduct = {
 // Frame `1378:7916`, owner's commission of 2026-10-17. A row of 120px cards
 // that scrolls sideways, above the movement history.
 //
-// EVERY CARD GOES TO THE CATALOGUE INDEX, NOT TO THAT PRODUCT'S PAGE. That
-// reads wrong at first and it is what both the frame and the owner asked for:
-// the connector in the frame points from "Ver todo" AND from the cards to the
-// same screen, and his words were «al seleccionar cualquier producto o el
-// botón "Ver todo" se debe abrir el catálogo». The strip is an invitation to
-// the catalogue, not a shortcut into one product -- and a client who meant to
-// browse would otherwise land on a single item with no way back into the rest.
+// A CARD OPENS ITS PRODUCT, AND "VER TODO" THE CATALOGUE. Owner's decision of
+// 2026-11-05: *«Al seleccionar producto desde el perfil del cliente, este debe
+// abrir directo el detalle del producto, al seleccionar "Ver todo" abre el
+// catálogo»*, and the same day *«Ajustalo también en el comprobante del pedido»*.
+// So both screens that mount this strip behave the same.
+//
+// THAT DISPLACES HIS DECISION OF 2026-10-17, and both stay written. Then every
+// card went to the index: the frame's connector pointed there from the cards and
+// from "Ver todo", and his words were «al seleccionar cualquier producto o el
+// botón "Ver todo" se debe abrir el catálogo». The reason was that a client who
+// meant to browse would land on a single item with no way back into the rest.
+// That risk is covered now: the product's back arrow goes to the index, and the
+// index offers the way back to the balance.
 //
 // IT IS A CLIENT COMPONENT ONLY FOR THE TAP, not for the data. Everything
 // rendered here arrives already resolved from the server; the one thing the
@@ -91,7 +97,7 @@ export function CatalogStrip({
   //
   // IT FAILS SILENTLY ON PURPOSE. An analytics call that can break a link is
   // worse than a missing number, so every outcome here is swallowed.
-  const registrar = () => {
+  const registrar = (target: "catalog" | "product") => {
     // SIN TOKEN NO HAY NADA QUE HACER: no se viene del saldo, así que ni hay
     // camino de vuelta que guardar ni evento que contar.
     if (!shareToken) return;
@@ -110,7 +116,7 @@ export function CatalogStrip({
       void fetch("/api/share-catalog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: shareToken }),
+        body: JSON.stringify({ token: shareToken, target }),
         keepalive: true,
       }).catch(() => {});
     } catch {
@@ -130,7 +136,7 @@ export function CatalogStrip({
         <h2 className="mt-1 text-xl font-semibold">{titulo}</h2>
         <Link
           href={href}
-          onClick={registrar}
+          onClick={() => registrar("catalog")}
           className="flex items-center gap-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
         >
           Ver todo
@@ -157,9 +163,9 @@ export function CatalogStrip({
           return (
             <Link
               key={p.id}
-              href={href}
-              onClick={registrar}
-              aria-label={`${p.name} — ver el catálogo`}
+              href={`${href}/${p.id}`}
+              onClick={() => registrar("product")}
+              aria-label={`${p.name} — ver el producto`}
               className="relative flex size-30 shrink-0 flex-col justify-end gap-1 overflow-hidden rounded-lg bg-muted p-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {foto ? (

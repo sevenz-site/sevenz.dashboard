@@ -178,7 +178,7 @@ export async function cargarProveedores({
   const idsDeVenta = (resVentas.data ?? []).map((v) => v.id as string);
   // What came back counts as a sold line with a negative quantity: see
   // `lib/reports/devoluciones.ts`.
-  const vendidas: LineaVendida[] = lineasDevueltas(
+  const vendidas: (LineaVendida & { supplier: string | null })[] = lineasDevueltas(
     await cargarDevoluciones(supabase, {
       ownerId,
       desdeIso: rango.desde.toISOString(),
@@ -188,7 +188,7 @@ export async function cargarProveedores({
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")
-      .select("product_id, quantity, currency, unit_price")
+      .select("product_id, quantity, currency, unit_price, unit_cost, supplier")
       .in("sale_id", idsDeVenta);
     if (error) throw new Error(`proveedores: líneas: ${error.message}`);
     for (const l of lineas ?? []) {
@@ -198,6 +198,8 @@ export async function cargarProveedores({
         currency: l.currency as string,
         unitPrice: Number(l.unit_price),
         quantity: Number(l.quantity),
+        unitCost: l.unit_cost == null ? null : Number(l.unit_cost),
+        supplier: (l.supplier as string | null) ?? null,
       });
     }
   }
@@ -211,7 +213,24 @@ export async function cargarProveedores({
       },
     ]),
   );
-  const cuentas = cuentasPorProducto(vendidas, costos, rates);
+
+  // EACH LINE COUNTS FOR THE SUPPLIER OF ITS DAY (migration 195, owner's request of
+  // 2026-11-06). Grouping by the product's current supplier moved every past sale along with
+  // it, and the old supplier's margin went too. A line with no frozen supplier uses the
+  // current one, which is how every line behaved until then.
+  const proveedorActual = new Map(productos.map((p) => [p.id as string, ((p.supplier as string | null) ?? "").trim()]));
+  const claveDe = (escrito: string) => (escrito === "" ? "" : normalizar(escrito));
+  const lineasDe = new Map<string, { nombre: string; lineas: LineaVendida[] }>();
+  for (const l of vendidas) {
+    const escrito = (l.supplier ?? proveedorActual.get(l.productId) ?? "").trim();
+    const clave = claveDe(escrito);
+    const entrada = lineasDe.get(clave) ?? { nombre: escrito, lineas: [] };
+    entrada.lineas.push(l);
+    lineasDe.set(clave, entrada);
+  }
+  const cuentasDe = new Map(
+    [...lineasDe.entries()].map(([clave, e]) => [clave, cuentasPorProducto(e.lineas, costos, rates)]),
+  );
 
   // ── AGRUPAR ──────────────────────────────────────────────────────────
   const grupos = new Map<
@@ -219,9 +238,7 @@ export async function cargarProveedores({
     { nombre: string; filas: ProductoDeHoja[]; cuentas: CuentaDeProducto[] }
   >();
 
-  for (const p of productos) {
-    const escrito = ((p.supplier as string | null) ?? "").trim();
-    const clave = escrito === "" ? "" : normalizar(escrito);
+  const agregar = (clave: string, escrito: string, p: (typeof productos)[number]) => {
     let g = grupos.get(clave);
     if (!g) {
       // EL NOMBRE ES EL DEL PRIMERO QUE LLEGA, y los productos vienen
@@ -232,7 +249,7 @@ export async function cargarProveedores({
       g = { nombre: escrito === "" ? SIN_PROVEEDOR : escrito, filas: [], cuentas: [] };
       grupos.set(clave, g);
     }
-    const c = cuentas.get(p.id as string);
+    const c = cuentasDe.get(clave)?.get(p.id as string);
     if (c) g.cuentas.push(c);
     const moneda = c ? monedaPrincipal(c.ingresos) : null;
     const monto = c && moneda != null ? (c.ganancia[moneda] ?? null) : null;
@@ -243,6 +260,23 @@ export async function cargarProveedores({
       cantidad: p.stock_opening == null ? null : Number(p.stock_opening),
       ganancia: moneda != null && monto != null ? { currency: moneda, amount: monto } : null,
     });
+  };
+
+  for (const p of productos) {
+    const escrito = proveedorActual.get(p.id as string) ?? "";
+    agregar(claveDe(escrito), escrito, p);
+  }
+
+  // A product that left a supplier stays listed under it for what it sold there, so the
+  // margin of that row can be traced to something. It is the only way a supplier with no
+  // product left today can appear, and it does so only in a range where it sold.
+  const porId = new Map(productos.map((p) => [p.id as string, p]));
+  for (const [clave, cuentasDelProveedor] of cuentasDe) {
+    for (const productId of cuentasDelProveedor.keys()) {
+      const p = porId.get(productId);
+      if (!p || claveDe(proveedorActual.get(productId) ?? "") === clave) continue;
+      agregar(clave, lineasDe.get(clave)?.nombre ?? "", p);
+    }
   }
 
   const filas: ProveedorEnReporte[] = [...grupos.entries()].map(([clave, g]) => ({

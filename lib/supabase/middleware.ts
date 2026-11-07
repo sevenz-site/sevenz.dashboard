@@ -1,3 +1,4 @@
+import { RETURN_COOKIE, RETURN_MAX_AGE, safeReturnPath } from "@/lib/auth/return-after-login";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -49,7 +50,11 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname === "/api/share-catalog" ||
     // Every other event from `/s` and `/c`. Same reason, and the route guards itself:
     // a code from a closed list in, nothing readable out.
-    request.nextUrl.pathname === "/api/public-event";
+    request.nextUrl.pathname === "/api/public-event" ||
+    // «No fui yo» (C2 of PL-22): the owner taps it on a phone with no session, and when the
+    // thief is the one signed in, that is the session it ends. The page guards itself: a
+    // one-use token in, three fixed sentences out, and nothing closes on a GET.
+    request.nextUrl.pathname.startsWith("/cuenta/no-fui-yo/");
 
   // A public route's decision doesn't depend on who is asking, so skip the
   // session lookup entirely rather than paying for an answer nothing reads.
@@ -93,7 +98,20 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isAuthRoute && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    url.search = "";
+    const response = NextResponse.redirect(url);
+    // A button in a WhatsApp template opens Reportes: see lib/auth/return-after-login.ts.
+    const destino = safeReturnPath(`${request.nextUrl.pathname}${request.nextUrl.search}`);
+    if (destino && request.method === "GET") {
+      response.cookies.set(RETURN_COOKIE, destino, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: request.nextUrl.protocol === "https:",
+        maxAge: RETURN_MAX_AGE,
+        path: "/",
+      });
+    }
+    return response;
   }
 
   if (user && isAuthRoute) {

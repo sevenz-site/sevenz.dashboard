@@ -44,7 +44,7 @@ import {
   priceIn,
   type BolivarRates,
 } from "@/lib/products/price";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { conHoy, formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { telefonoLegible } from "@/lib/phone";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { dibujarRecibo } from "@/lib/cart/recibo-imagen";
@@ -360,7 +360,7 @@ export function CartScreen({
                           </span>
                           {bs?.amount != null ? (
                             <span className="text-xs text-muted-foreground tabular-nums">
-                              {formatBs(bs.amount)} c/u
+                              {conHoy(`${formatBs(bs.amount)} c/u`)}
                             </span>
                           ) : null}
                         </>
@@ -1120,7 +1120,7 @@ function Enviado({
                 </span>
                 {enBs?.amount != null ? (
                   <span className="block text-xs text-muted-foreground tabular-nums">
-                    {formatBs(enBs.amount)}
+                    {formatBsHoy(enBs.amount)}
                   </span>
                 ) : null}
                 </span>
@@ -1150,6 +1150,9 @@ function Enviado({
           ES EL MISMO COMPONENTE que la franja del saldo —no una copia—
           porque las dos enseñan lo mismo y el día que una cambie la otra
           tiene que cambiar con ella.
+
+          Each card opens its product, as on the balance, since 2026-11-05:
+          the reason is at the top of `catalog-strip.tsx`.
 
           SIN `shareToken`, a propósito: quien lee esto YA está dentro del
           catálogo, así que no hay ningún «abrió el catálogo desde el enlace»

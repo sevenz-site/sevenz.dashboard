@@ -553,7 +553,7 @@ export async function cargarInventario({
   if (idsDeVenta.length) {
     const { data: lineas, error } = await supabase
       .from("sale_lines")
-      .select("product_id, quantity, currency, unit_price")
+      .select("product_id, quantity, currency, unit_price, unit_cost")
       .in("sale_id", idsDeVenta);
     if (error) throw new Error(`inventario: líneas: ${error.message}`);
 
@@ -566,6 +566,7 @@ export async function cargarInventario({
           currency: l.currency as string,
           unitPrice: Number(l.unit_price),
           quantity: Number(l.quantity),
+          unitCost: l.unit_cost == null ? null : Number(l.unit_cost),
         });
       }
       // UNA LÍNEA SIN PRODUCTO NO SE PUEDE ATRIBUIR. Pasa con lo que el

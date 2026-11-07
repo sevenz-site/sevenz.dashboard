@@ -40,13 +40,19 @@ import { cn } from "@/lib/utils";
 // came with this choice.
 //
 // ───────────────────────────────────────────────────────────────────────
-// WHY AN UNCOUNTED PRODUCT RENDERS NOTHING BY DEFAULT
+// THE OWNER ALWAYS SEES THE CHIP, AND THE CHIP ALWAYS CARRIES THE QUANTITY
 //
-// `product-detail.tsx` already made this call and its reason stands: a chip
-// reading «Disponible: —» informs nobody and takes the place of something that
-// would. Reportes is the exception and asks for `showUncounted`, because there
-// the whole point of the sheet is telling the shopkeeper WHICH products he
-// never counted.
+// Owner's decision of 2026-11-05, with two screenshots of his product page:
+// *«la chip siempre debe ser visible para el dueño con la cantidad manteniendo
+// el estado (Disponible, Agotado, etc)»*. So zero reads «Agotado: 0», and a
+// product nobody counts reads «Sin cantidad anotada», the one state with no
+// figure to show.
+//
+// THAT DISPLACES THE RULE THAT HID AN UNCOUNTED PRODUCT on the owner's screens,
+// and its reason stays written: *a chip reading «Disponible: —» informs nobody
+// and takes the place of something that would*. Only Reportes showed it then,
+// through a `showUncounted` prop that no longer exists. «Sin cantidad anotada»
+// does inform: it tells him the count is missing, not that the shelf is empty.
 // ═══════════════════════════════════════════════════════════════════════
 
 // The shape, shared by every state. Lifted verbatim from the six owner-side
@@ -62,7 +68,6 @@ export function StockBadge({
   quantity,
   threshold,
   audience = "owner",
-  showUncounted = false,
   className,
 }: {
   /** `products.stock_opening`. NULL means nobody counts this product. */
@@ -71,8 +76,6 @@ export function StockBadge({
   threshold: number;
   /** `"customer"` hides the figure except when stock is low — see the header. */
   audience?: "owner" | "customer";
-  /** Reportes passes true: naming the uncounted products is that sheet's job. */
-  showUncounted?: boolean;
   className?: string;
 }) {
   const state = stockState(quantity, threshold);
@@ -90,7 +93,7 @@ export function StockBadge({
       case "out":
         return {
           estilo: CLIENT_STATUS_BADGE_CLASS.critico,
-          texto: paraCliente ? "No disponible" : "Agotado",
+          texto: paraCliente ? "No disponible" : `Agotado: ${formatCantidad(quantity as number)}`,
         };
       case "low":
         // THE ONLY STATE WHERE BOTH SIDES READ THE SAME, figure included.
@@ -108,11 +111,6 @@ export function StockBadge({
             };
     }
   })();
-
-  // The owner's screens hide an uncounted product's chip; the customer's have
-  // always drawn a plain «Disponible» for it, so `showUncounted` does not gate
-  // that side.
-  if (state === "uncounted" && !paraCliente && !showUncounted) return null;
 
   return <span className={cn(BASE, estilo, className)}>{texto}</span>;
 }

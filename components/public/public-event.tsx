@@ -77,12 +77,34 @@ export const PublicEventLink = forwardRef<
 
 // `from_balance` says whether the visit came from the client's own balance link,
 // which only the tab knows: `catalog-strip.tsx` leaves this mark when tapped.
-export function CatalogOpenedEvent({ token }: { token: string }) {
-  let fromBalance = false;
+function cameFromBalance(): boolean {
   try {
-    fromBalance = typeof window !== "undefined" && Boolean(sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO));
+    return typeof window !== "undefined" && Boolean(sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO));
   } catch {
     // Blocked storage: it counts as a direct visit.
+    return false;
   }
-  return <PublicEventOnMount token={token} code="catalog_opened" props={{ from_balance: fromBalance }} />;
+}
+
+export function CatalogOpenedEvent({ token }: { token: string }) {
+  return <PublicEventOnMount token={token} code="catalog_opened" props={{ from_balance: cameFromBalance() }} />;
+}
+
+// THE PRODUCT CARRIES `from_balance` TOO, since 2026-11-05: a card on the balance
+// now lands here without passing through the index, so `Catalog Link Opened` never
+// fires for that visit. Without this property those clients would look like people
+// who opened a shared product link.
+//
+// «¿Cuántos clientes que entran desde su saldo agregan un producto?» decides whether
+// the strip earns its place on the balance. The mark lasts the whole tab, so it means
+// "this visit started on the balance", the same as on `Catalog Link Opened`.
+export function CatalogProductOpenedEvent({ token, productId }: { token: string; productId: string }) {
+  return (
+    <PublicEventOnMount
+      token={token}
+      code="catalog_product_opened"
+      onceKey={productId}
+      props={{ product_id: productId, from_balance: cameFromBalance() }}
+    />
+  );
 }

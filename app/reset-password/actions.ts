@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
 
 export type ResetPasswordState = { error: string | null };
@@ -33,6 +34,15 @@ export async function resetPassword(
   if (error) {
     if (error.code === "weak_password") return { error: LEAKED_PASSWORD_MESSAGE };
     return { error: "No pudimos actualizar tu contraseña. Intenta de nuevo." };
+  }
+
+  // A new password is what «No fui yo» was waiting for (C2 of PL-22): the mark that kept the
+  // app closed comes off here and nowhere else. Service role, because no session may clear it.
+  try {
+    const { error: clearError } = await createServiceClient().rpc("clear_must_reset_password", { p_owner_id: user.id });
+    if (clearError) console.error("[reset] clear_must_reset_password:", clearError.message);
+  } catch (e) {
+    console.error("[reset] clear_must_reset_password:", e instanceof Error ? e.message : e);
   }
 
   redirect("/dashboard");

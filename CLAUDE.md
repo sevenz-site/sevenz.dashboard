@@ -977,6 +977,13 @@ dentro de su liberación, porque este repo es público. Sin estar ahí, el docum
 existe para el checklist. El ticket lo mantiene el dueño:
 desde aquí no hay acceso a Trello, así que se le pasa su contenido listo para pegar.
 
+**Y él confirma que lo creó; mientras no lo confirme, se le sigue preguntando.** Pedido
+por el dueño el 2026-11-05: *«debo siempre confirmarte que lo creé, sino lo confirmo lo
+sigues preguntando»*. Un ticket sin confirmar se nombra en el informe de cada liberación
+y al planificar la siguiente, hasta que él diga que existe. Solo entonces su fila de
+`LIBERACIONES.md` pasa a «creado por el dueño» con la fecha. No se da por creado porque
+se le haya pasado el texto.
+
 **La app, Figma y el documento dicen lo mismo, y eso se comprueba.** El documento se
 genera con capturas de la app, después del último cambio de copy. El 2026-11-04 se
 compararon los textos de los frames contra los de la app; si el copy cambia después
@@ -1484,6 +1491,262 @@ Abonos, ventas, fiados, el comprobante PNG, el mensaje de WhatsApp, el enlace
 del cliente. **Si una pantalla enseña un importe, la pregunta es siempre la
 misma: ¿esto es lo que alguien escribió, o lo que yo calculé a partir de lo que
 escribió?** Si es lo segundo y existe lo primero, está mal.
+
+## Un tendero recibe dos mensajes a la semana
+
+**Regla del dueño, 2026-11-06**: *«un mismo tendero solo recibe dos mensajes a la semana,
+un tercer mensaje en casos extraordinario»*. Su razón: *«mi temor es que seamos muy
+invasivos y caigamos en spam y terminen bloqueándonos o nos convirtamos en invisibles por
+tanto mensaje»*.
+
+**La regla, entera:**
+
+1. **Dos citas fijas, y nada más.** Lunes, el resumen. Jueves, lo que requiere atención.
+   Una plantilla por cita, y el código elige cuál según el estado de la cuenta.
+2. **El tercero es extraordinario, no un cupo mensual.** Solo sale si la cuenta puede
+   perder algo por no saberlo. Hoy eso es uno: `prueba_por_vencer`. Antes de declarar otro
+   se le pregunta al dueño.
+3. **Lo que no es extraordinario ocupa una cita o espera.** `cierre_mensual` toma un jueves
+   que iba a salir callado, y `primera_semana` sustituye a su lunes.
+4. **El tope se cuenta por TELÉFONO, no por negocio.** Nada impide que dos negocios
+   compartan número, y entonces recibiría el doble.
+5. **El jueves nunca se calla si hay deudores.** Sale siempre que haya un plazo vencido o por
+   vencer. Decisión del dueño el 2026-11-06, al ver que callarlo dejaba a un negocio pequeño
+   sin saber quién le debe: *«puede ser quebrar por no saber quien te debe»*. Solo productos
+   y pedidos esperan a que haya novedad.
+6. **Toda plantilla nueva dice en su ficha qué cita ocupa.** Si no ocupa ninguna, hay que
+   justificar por qué es extraordinaria.
+
+**Dos es el tope, no la meta.** Una cuenta sin ventas ni por cobrar recibe uno o ninguno. Si
+ya cargó clientes o productos, recibe `negocio_estado` el lunes, máximo tres semanas seguidas.
+
+**No cuentan para el tope**: el código de acceso, el aviso de aparato nuevo y el de cambio
+de número o correo. Los pide el propio dueño o protegen su cuenta, y no pueden esperar.
+
+### Cada cambio en Reportes se evalúa contra las plantillas
+
+**Regla del dueño, 2026-11-06**: el botón de cada plantilla lleva a la sección de Reportes que
+respalda su cifra, y *«cada cambio en la sección reporte debe evaluar como impactará las
+plantillas y si se debe crear nueva plantilla»*.
+
+Antes de renombrar, mover o quitar una sección, o de cambiar qué cuenta una cifra, se abre
+`lib/whatsapp/destinos.ts` y se contestan dos preguntas **por escrito, en el reporte**:
+
+1. **¿El botón sigue llegando?** Una dirección aprobada por Meta no se edita. Si la sección
+   cambia, hace falta plantilla nueva y su espera, y eso se presupuesta antes de tocar nada.
+2. **¿La cifra del mensaje sigue siendo la de la pantalla?** Si el mensaje dice 10 y Reportes
+   dice 4, se lee como un error de la app, aunque las dos estén bien calculadas.
+
+`qa:destinos-plantillas` falla si un destino deja de existir. La segunda pregunta no la vigila
+ninguna máquina.
+
+**Por qué merece regla propia.** Cada mensaje nuevo se justifica solo y el total no lo
+mira nadie. Una calificación baja afecta al número entero, así que el que bloquea por
+fastidio no se pierde a sí mismo: daña el canal de los que sí lo aprecian.
+
+## UNA CIFRA DEL PASADO NO SE CALCULA CON DATOS DE HOY
+
+**Pedido por el dueño el 2026-11-06**, después de ver el caso del costo: *«guardemos el
+costo al día de la venta, ajústalo también en reportes»*, y *«que no vuelva a ocurrir el
+error en ningún otro lado donde necesitemos el cálculo»*.
+
+**La regla, entera**: lo que ya pasó se calcula con lo que valía cuando pasó. Si una
+cifra habla de una venta, un abono o un periodo cerrado, cada dato que entra en la
+cuenta tiene que estar **guardado en esa transacción**. Nunca se lee de una ficha que el
+tendero puede editar mañana, ni de la tasa de hoy.
+
+### Por qué merece regla propia
+
+La venta guardaba el precio y no el costo, así que Reportes restaba el costo de HOY.
+Marta compra harina a $1, vende 100 a $2 y gana $100. El día 30 actualiza el costo a
+$1,50 y su mes pasa a decir $50, igual que todos los anteriores. **Nada falla y nada se
+pone en rojo**: sale una cifra creíble y falsa, y cambia sola con cada edición.
+
+### La pregunta que decide, antes de escribir el cálculo
+
+**¿Esta cifra habla de algo que ya pasó, o de lo que hay hoy?**
+
+| Cifra | Habla de | Con qué se calcula |
+|---|---|---|
+| Ganancia de un periodo | Lo que ya pasó | `sale_lines.unit_cost`, congelado |
+| Margen real de un proveedor | Lo que ya pasó | Igual |
+| Capital en mercancía, por agotarse | Lo que hay hoy | `products.cost`, y está bien |
+| Precio sugerido, margen de la ficha | Lo que hay hoy | `products.cost`, y está bien |
+| Por cobrar, saldo en bolívares «hoy» | Lo que hay hoy | Tasa de hoy, y el rótulo lo dice |
+
+Si la respuesta es «lo que hay hoy», leer el valor actual es lo correcto, y **el rótulo
+tiene que decirlo**. El problema nunca fue usar datos de hoy, sino usarlos sin decirlo
+para hablar del pasado.
+
+### Qué hay que hacer
+
+1. **Se guarda al ocurrir, en el servidor.** Nunca se toma del navegador.
+2. **Se guarda lo que hace falta para no volver a calcular.** Por eso `unit_cost` va ya
+   en la moneda de la línea y con la tasa de esa venta: un costo crudo se seguiría
+   convirtiendo con la tasa de hoy, y el pasado se seguiría moviendo.
+3. **Vacío no es cero.** `null` quiere decir «no se pudo congelar», y se usa el valor
+   actual o se dibuja «—». Un cero inventa una ganancia igual al precio entero.
+4. **No se rellena el pasado con datos de hoy.** Nadie sabe qué costaba un producto ese
+   día, y escribirlo presentaría una suposición como un registro.
+5. **Una sola puerta para cada lado.** Se escribe con `costoParaCongelar` y se lee con
+   `cuentasPorProducto`, los dos en `lib/reports/ganancia.ts`. `LineaVendida.unitCost` es
+   obligatorio, así que una pantalla nueva que olvide leerlo **no compila**.
+6. **Si falla la lectura del dato, la venta sigue.** Una cifra de reporte no vale perder
+   una venta con el cliente delante.
+
+### La auditoría se hace por dato, no por pantalla
+
+Es la misma lección que la de los montos tecleados. Antes de dar por bueno un cálculo
+sobre el pasado, se busca por lo que puede cambiar:
+
+- `products.cost`, `cost_currency`, los precios y márgenes de la ficha.
+- La tasa: `rates`, `effectiveRate`, `tasa` junto a un importe de algo ya registrado.
+- Cualquier atributo editable de un producto o cliente que agrupe cifras viejas.
+
+Lo que ya se guarda en la transacción, y no hay que volver a buscar: nombre, precio,
+moneda, costo y proveedor en `sale_lines`; lo tecleado y su tasa en `sale_payments` y `movements`.
+
+### «hoy» se escribe de una sola forma
+
+**Decisión del dueño, 2026-11-06**: un mismo estándar para toda la app.
+
+| Qué es la cifra | Cómo se escribe | Con qué |
+|---|---|---|
+| Equivalencia calculada con la tasa de hoy | `Bs. 1.234,56 hoy` | `formatBsHoy`, o `conHoy` si la cifra ya viene escrita |
+| Lo que alguien tecleó, o un monto sellado | `Bs. 1.000,00`, sin nada | `formatBs` |
+| Bolívares del momento de un pago | `Bs. 1.234,56 al día del pago` | `alDiaDelPago`. Dice que esa cifra ya no se mueve |
+| Un saldo oculto | `•••••• hoy` | `conHoy` |
+
+**Siempre en minúscula y después de la cifra.** La palabra significa «calculado con la tasa
+de hoy, así que mañana se lee distinto». Por eso un monto tecleado nunca la lleva: diría que
+va a cambiar, y es lo único que no cambia.
+
+**Se escribe con la función, nunca a mano, y vale igual para las dos.** Eran 25 sitios
+tecleados uno por uno: así fue como la hoja de productos de Reportes enseñó el total de un
+periodo sin «hoy», y como una misma pantalla decía «al día del pago» y «al día de pago».
+`qa:bs-hoy` falla si alguien vuelve a escribirlas a mano, o si calcula bolívares con la tasa
+sin la palabra.
+
+**La vista del cliente lleva el mismo estándar**, decisión del dueño el 2026-11-06: el carrito y
+el detalle de producto dicen «hoy». **Y los frames de Figma no son la referencia para esta
+palabra**: el archivo la escribía de tres formas («Bs. … hoy», «Bs. … Hoy», «Hoy: Bs. …») y el
+formulario de producto copió la tercera. Un frame que la escriba distinto se corrige al frame. Queda fuera la imagen del comprobante del pedido: es una
+foto que se comparte y se lee días después, y ahí «hoy» sería falso. El detalle de diseño está en `DESIGN-SYSTEM.md`.
+
+### Lo que sigue sin congelarse, dicho para que nadie lo redescubra
+
+Medido el 2026-11-06:
+
+- **Un margen que cruza dos monedas** se pesa con la tasa de hoy, porque un porcentaje
+  necesita una unidad común. Mueve poco, pero se mueve.
+- **Las ventas anteriores a las migraciones `194` y `195`** usan el costo y el proveedor
+  actuales.
+- **Un costo mal escrito y vendido** se queda mal en esa línea. Todavía no hay cómo
+  corregirlo (`CT-168`).
+
+**`qa:costo-congelado` vigila esto**: que la ganancia no se mueva al cambiar un costo, y
+que toda escritura de `sale_lines` guarde su costo. Es parada dura si el diff toca la
+venta o Reportes.
+
+**Es la hermana de «SIEMPRE MANDA EL MONTO QUE TECLEÓ EL TENDERO».** Aquella protege lo
+que alguien escribió; esta, lo que valía cuando lo escribió.
+
+## Toda plantilla de WhatsApp tiene su ficha en la carpeta de Drive
+
+**Regla del dueño, 2026-11-06**: *«todos los templates deben subirse a esa carpeta»*, con un
+documento para las que ya existen y otro por cada familia nueva, *«para subirlo en el ticket»*.
+
+**La carpeta**: `Liberaciones / Plantillas de WhatsApp` en el Drive de Sevenz. Los documentos
+vigentes son `Plantillas-de-WhatsApp-existentes-v3.pdf` y
+`Plantillas-de-WhatsApp-familia-del-negocio-v3.pdf`; el guion que los genera es
+`scripts/ayuda/raw/plantillas-pdf.py`, con el mismo estilo que los documentos de liberación.
+
+**Cada plantilla lleva, escrito en el documento**, en este orden y sin saltarse ninguno:
+
+1. El problema que resuelve.
+2. La fecha en que se implementó: aprobación de Meta y primer envío.
+3. El usuario al que va dirigido: dueño del negocio, cliente del negocio o dueño de Sevenz.
+4. Cuándo se dispara.
+5. Las condiciones para que se dispare, incluidos los topes y los interruptores.
+6. La liberación en la que salió.
+
+Y además su categoría y estado en Meta, el texto tal como se aprobó, el pie, el botón con su
+dirección, y las variables con sus ejemplos.
+
+**Y cada una cierra con su sección «Copy paste para Kapso»**, pedida por el dueño el 2026-11-06:
+nombre, categoría, idioma, formato de parámetros, encabezado, cuerpo, pie, botón y ejemplos, campo
+por campo y sin nada que interpretar. El dueño crea las plantillas él mismo, y un dato que tenga
+que deducir es un dato que se envía mal a Meta, donde una plantilla aprobada ya no se edita.
+
+**Cuándo se actualiza**: al aprobar Meta una plantilla, al cambiar su disparo o sus
+condiciones, al retirarla, y en cada liberación que la toque. Se genera una versión nueva del
+PDF, nunca se edita el anterior, y el enlace va en `../docs/LIBERACIONES.md` dentro de su
+liberación y en `../docs/WHATSAPP-PLANTILLAS.md`, que sigue siendo la fuente de verdad técnica.
+
+**Por qué merece regla propia.** Lo aprobado vivía repartido entre Kapso, el código y un
+documento técnico largo. Nadie podía leer en un sitio, por cada plantilla, a quién le llega y
+bajo qué condiciones, y es justo lo que un ticket de liberación tiene que enseñar.
+
+## Las plantillas van con viñetas `•` y punto final
+
+**Regla del dueño, 2026-11-06**, al ver los borradores en Kapso: *«siempre pongas viñetas con
+bullets en tus templates»*, y *«debe haber punto y aparte en cada salto de línea en las viñetas»*.
+
+- **Cada línea después del saludo lleva `• `**, el punto como carácter, seguido de un espacio.
+- **Nunca `* ` ni `- `.** WhatsApp puede convertirlos en lista, pero depende de la versión de
+  cada teléfono, y la vista previa de Kapso enseñó el asterisco tal cual. Una plantilla aprobada
+  no se edita, así que no se apuesta a cómo lo dibuje cada aparato.
+- **Cada viñeta termina en punto**, también la que acaba en una variable:
+  `• Por cobrar: {{amount_due}}.`
+
+```
+Hola {{owner_name}}, este es el resumen de tu negocio en Sevenz.
+
+• Por cobrar: {{amount_due}}.
+• Plazos vencidos: {{overdue_summary}}.
+```
+
+## Las plantillas se nombran en inglés
+
+**Regla del dueño, 2026-11-06, y era la segunda vez.** El 2026-10-09 renombró él mismo las
+primeras: *«Cambié los nombres de los templates a inglés»*. El 2026-11-06 encontró diez borradores
+con nombre en español: *«siempre deben ser los títulos en inglés»*.
+
+- **El nombre y sus variables van en inglés**, en `snake_case`: `trial_ending_soon`, no
+  `prueba_por_vencer`. El texto del mensaje sigue en español, porque lo lee el tendero.
+- **Se comprueba antes de pasarle la plantilla al dueño**: en su ficha, en el documento y en
+  `lib/whatsapp/destinos.ts`. Después ya hay un borrador creado con ese nombre.
+- **Lo que ya está en Meta no se renombra solo por esto.** El nombre de una plantilla enviada no
+  se edita ni se reutiliza. Las diez de la familia del negocio, creadas en español el 2026-11-06,
+  se quedan así por decisión del dueño ese día: *«Lo que ya está en español en draft así se queda»*.
+
+**Por qué merece regla propia.** Es la regla de los valores guardados de «Code is written in
+English», y aquí sale más cara: el nombre queda en Meta, en `whatsapp_sends` y en Kapso, así que
+equivocarse se corrige con una plantilla nueva y su espera de aprobación.
+
+## Las plantillas dicen cada cifra por moneda
+
+**Regla del dueño, 2026-11-06**, al leer `Plazos vencidos: 4 clientes, por $120,00 y €30,00`:
+*«los 4 clientes son de una misma moneda o están repartidos entre ambas? debería mencionar la
+cantidad de clientes separado por moneda»*.
+
+**La regla**: en una plantilla, cada cantidad va pegada a su moneda. Nunca un conteo total al
+lado de dos importes.
+
+| Mal | Bien |
+|---|---|
+| `4 clientes, por $120,00 y €30,00` | `3 clientes por $120,00 y 1 cliente por €30,00` |
+| `8, por $340,00 y €50,00` | `5 ventas por $340,00 y 3 ventas por €50,00` |
+
+- **Una moneda en cero no se escribe.** Con un solo libro queda `3 clientes por $120,00`.
+- **Quien debe en dos monedas cuenta en las dos**, porque son dos deudas. Las cantidades pueden
+  sumar más que los clientes reales, y eso es correcto: no se suman nunca, igual que los libros.
+- **Singular y plural van bien escritos**: `1 cliente`, `3 clientes`.
+- **Una venta en dos monedas cuenta en las dos**, por la misma razón.
+
+**Por qué merece regla propia.** Es la regla de toda la app, dólares y euros son dos libros, y en
+una plantilla se rompe más fácil: el texto no se puede revisar después de aprobado, y un mensaje
+ambiguo sobre dinero se lee sin nadie al lado para explicarlo.
 
 ## Toda plantilla de WhatsApp lleva el pie antifraude
 

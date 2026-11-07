@@ -5,6 +5,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { mySecondFactor } from "@/lib/security/second-factor";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
@@ -12,7 +13,7 @@ export default async function ProfilePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: owner }, { data: paymentMethods }] = await Promise.all([
+  const [{ data: owner }, { data: paymentMethods }, secondFactor] = await Promise.all([
     supabase.from("owners").select("*").eq("id", user!.id).single(),
     // Migration 179. Oldest first, so a new method lands at the bottom of the
     // list where the owner just tapped "Agregar".
@@ -21,6 +22,8 @@ export default async function ProfilePage() {
       .select("id, body")
       .eq("owner_id", user!.id)
       .order("created_at", { ascending: true }),
+    // C1 of PL-22: the session may ask one thing about its own factor, through my_second_factor.
+    mySecondFactor(supabase),
   ]);
 
   if (!owner) return null;
@@ -40,7 +43,7 @@ export default async function ProfilePage() {
       </ScreenBackRow>
       <ScreenTitle>Mi negocio</ScreenTitle>
 
-      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} paymentMethods={paymentMethods ?? []} />
+      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} paymentMethods={paymentMethods ?? []} secondFactor={secondFactor} />
     </div>
   );
 }

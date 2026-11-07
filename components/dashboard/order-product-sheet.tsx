@@ -1,5 +1,6 @@
 "use client";
 
+import { conHoy } from "@/lib/exchange-rate/format";
 import { forwardRef } from "react";
 import Image from "next/image";
 import { ChevronRight, ImageOff } from "lucide-react";
@@ -192,7 +193,7 @@ export function OrderProductSheet({
             </span>
             {enBolivares != null ? (
               <span className="w-full text-right text-xs text-muted-foreground tabular-nums">
-                {formatPriceAmount(enBolivares, "VES")} hoy
+                {conHoy(formatPriceAmount(enBolivares, "VES"))}
               </span>
             ) : null}
           </div>

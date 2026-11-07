@@ -29,7 +29,11 @@ export const PUBLIC_EVENTS = {
   },
   client_signup_tapped: { event: "Client Signup Link Tapped", surface: "balance", props: {} },
   catalog_opened: { event: "Catalog Link Opened", surface: "catalog", props: { from_balance: "boolean" } },
-  catalog_product_opened: { event: "Catalog Product Opened", surface: "catalog", props: { product_id: "uuid" } },
+  catalog_product_opened: {
+    event: "Catalog Product Opened",
+    surface: "catalog",
+    props: { product_id: "uuid", from_balance: "boolean" },
+  },
   catalog_product_added: {
     event: "Catalog Product Added",
     surface: "catalog",

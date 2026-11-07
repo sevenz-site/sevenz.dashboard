@@ -15,10 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { WhatsappInput } from "@/components/whatsapp-input";
 import { LogoUploader } from "@/components/dashboard/logo-uploader";
 import { PaymentMethodsCard } from "@/components/dashboard/payment-methods-card";
 import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
+import { ChangeWhatsappDialog } from "@/components/dashboard/change-whatsapp-dialog";
+import { SecondFactorCard } from "@/components/dashboard/security-card";
+import { maskPhone } from "@/lib/security/code-text";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
 import { updateBusinessSettings, type PaymentMethod, type ProfileState } from "@/app/(app)/profile/actions";
@@ -27,7 +29,7 @@ import { useTrampaDeAtras } from "@/hooks/use-trampa-de-atras";
 import type { Owner } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
-import { required, whatsapp as whatsappRule } from "@/lib/form-validation";
+import { required } from "@/lib/form-validation";
 
 const initialState: ProfileState = { error: null, success: false };
 
@@ -47,10 +49,13 @@ export function BusinessSettingsForm({
   owner,
   logoUrl,
   paymentMethods,
+  secondFactor,
 }: {
   owner: Owner;
   logoUrl: string | null;
   paymentMethods: PaymentMethod[];
+  // C1 of PL-22: whether the account asks for a code. Decides the password dialog's first step.
+  secondFactor: boolean;
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
@@ -66,7 +71,6 @@ export function BusinessSettingsForm({
     business_name: required,
     first_name: required,
     last_name: required,
-    whatsapp: whatsappRule,
   });
 
   // Shared by both save paths: the button's own submit and "Guardar y salir"
@@ -189,18 +193,18 @@ export function BusinessSettingsForm({
           {errors.last_name ? <p className="text-xs text-destructive">{errors.last_name}</p> : null}
         </div>
 
+        {/* READ-ONLY SINCE C1 OF PL-22 (2026-11-05). The number is where the second factor
+            and the account alerts go, so it is not a field of this form any more: «Cambiar»
+            opens its own dialog, which asks for the password and proves the new number with
+            a code. Rendered inside the form only for its place on the screen; it carries no
+            `name`, so «Guardar cambios» never sends it. The dialog lives OUTSIDE the form
+            (below) for the reason the header of this file gives about portals. */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="whatsapp">WhatsApp</Label>
-          <WhatsappInput
-            id="whatsapp"
-            name="whatsapp"
-            defaultValue={owner.whatsapp}
-            required
-            preferredDialCode={OWNER_COUNTRY_DIAL_CODE[owner.country]}
-            invalid={Boolean(errors.whatsapp)}
-            onValueChange={() => recheck("whatsapp", formRef.current)}
-          />
-          {errors.whatsapp ? <p className="text-xs text-destructive">{errors.whatsapp}</p> : null}
+          <Label htmlFor="whatsapp_shown">WhatsApp</Label>
+          <Input id="whatsapp_shown" value={owner.whatsapp ? `+${owner.whatsapp.replace(/^\+/, "")}` : "Sin número"} disabled readOnly />
+          <p className="mt-2 text-sm text-muted-foreground">
+            Es el número al que te enviamos los códigos y avisos de tu cuenta. Para cambiarlo te pedimos tu contraseña.
+          </p>
         </div>
 
         {/* El correo con el que entra, en gris y sin poder tocarlo.
@@ -288,15 +292,37 @@ export function BusinessSettingsForm({
           password change; `qa:sesiones` row 4 measures it). It runs the full
           width under the row: beside the button it got a 125px column at
           375px and broke into five lines. */}
-      <section className="flex flex-col gap-2 rounded-[10px] border p-4">
-        <div className="flex items-start gap-2">
-          <p className="flex-1 text-sm">Contraseña</p>
-          <ChangePasswordDialog />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Si crees que alguien entró a tu cuenta, cámbiala: se cerrará la sesión en tus otros
-          dispositivos.
-        </p>
+      {/* «SEGURIDAD DE LA CUENTA» (C1 of PL-22, 2026-11-05): the password card that was here
+          since 2026-11-02, the WhatsApp number (now changed only with the password), and the
+          second factor. The security questions for the admin's identity check are PL-32. */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Seguridad de la cuenta</h2>
+
+        <section className="flex flex-col gap-2 rounded-[10px] border p-4">
+          <div className="flex items-start gap-2">
+            <p className="flex-1 text-sm">Contraseña</p>
+            <ChangePasswordDialog secondFactor={secondFactor} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Si crees que alguien entró a tu cuenta, cámbiala: se cerrará la sesión en tus otros
+            dispositivos.{secondFactor ? " Te pediremos un código antes." : ""}
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-2 rounded-[10px] border p-4">
+          <div className="flex items-start gap-2">
+            <div className="flex flex-1 flex-col">
+              <p className="text-sm">WhatsApp de la cuenta</p>
+              <p className="text-xs text-muted-foreground">{owner.whatsapp ? `+${owner.whatsapp.replace(/^\+/, "")}` : "Sin número"}</p>
+            </div>
+            <ChangeWhatsappDialog current={owner.whatsapp} preferredDialCode={OWNER_COUNTRY_DIAL_CODE[owner.country]} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Aquí llegan los códigos y los avisos de tu cuenta. Cambiarlo pide tu contraseña y un código al número nuevo.
+          </p>
+        </section>
+
+        <SecondFactorCard enabled={secondFactor} maskedWhatsapp={owner.whatsapp ? maskPhone(owner.whatsapp) : null} />
       </section>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

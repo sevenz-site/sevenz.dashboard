@@ -12,7 +12,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { alDiaDelPago, formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SharedVentaDeContado } from "@/components/public/movement-history-list";
@@ -198,7 +198,7 @@ export default async function VentaDeContadoDelClientePage({
                 </span>
                 {monedaTecleada === "VES" ? (
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatBs(entregado)} al día del pago
+                    {alDiaDelPago(formatBs(entregado))}
                   </span>
                 ) : null}
               </span>
@@ -211,7 +211,7 @@ export default async function VentaDeContadoDelClientePage({
           <FilaDeTotal
             rotulo="Total"
             cifra={formatear(total)}
-            bolivares={enBs != null ? `${formatBs(enBs)} al día de pago` : null}
+            bolivares={enBs != null ? alDiaDelPago(formatBs(enBs)) : null}
             moneda={moneda}
           />
         </div>

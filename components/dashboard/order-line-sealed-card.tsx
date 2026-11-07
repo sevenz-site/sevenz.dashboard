@@ -1,5 +1,5 @@
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -92,7 +92,7 @@ export function OrderLineSealedCard({
               shopkeeper charges today's rate for last week's deal. */}
           {enBs != null ? (
             <span className="text-xs leading-4 text-muted-foreground tabular-nums">
-              {formatBs(enBs)} hoy
+              {formatBsHoy(enBs)}
             </span>
           ) : null}
           {/* It says «Hoy» and not «subió» on purpose — it can have gone down,

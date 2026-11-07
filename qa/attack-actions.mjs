@@ -32,6 +32,7 @@
 //
 // Needs `npm run dev`. Dev only.
 import { readFileSync, existsSync } from "node:fs";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { createRequire } from "node:module";
 import { MANIFEST } from "./attack-surface.mjs";
@@ -108,8 +109,54 @@ async function llamar(clave, args, cookie, pagina) {
   if (typeof body === "string") headers["content-type"] = "text/plain;charset=UTF-8";
   const res = await fetch(BASE + (pagina ?? a.ruta), { method: "POST", headers, body, redirect: "manual" });
   const texto = await res.clone().text();
-  return { status: res.status, valor: valorDeLaAccion(texto), texto };
+  // The cookies the action SET: how the sign-in attacks read whose session came out.
+  return { status: res.status, valor: valorDeLaAccion(texto), texto, setCookie: res.headers.getSetCookie?.() ?? [] };
 }
+
+// Whose session a response opened, read from the `sb-…-auth-token` cookies it set (chunked
+// like @supabase/ssr chunks them). Null when it opened none.
+function emailDeSesion(setCookie) {
+  const partes = setCookie
+    .map((c) => /^(sb-[^=]*auth-token(?:\.(\d+))?)=([^;]*)/.exec(c))
+    .filter(Boolean)
+    .sort((a, b) => Number(a[2] ?? 0) - Number(b[2] ?? 0))
+    .map((m) => decodeURIComponent(m[3]));
+  if (!partes.length) return null;
+  const valor = partes.join("");
+  if (!valor.startsWith("base64-")) return null;
+  try {
+    return JSON.parse(Buffer.from(valor.slice(7), "base64url").toString("utf8"))?.user?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The code screen's ticket cookie (C1 of PL-22), built the way the server builds it. The
+// script knows the signing key because it holds the service-role key; an attacker does
+// not. What the signed variant proves is that even a VALID cookie carrying somebody
+// else's e-mail never opens that person's session — the server re-reads the e-mail by
+// `ownerId` from the database.
+const sha256hex = (v) => createHash("sha256").update(v).digest("hex");
+const ticketCookie = (t, { firmada }) => {
+  const payload = Buffer.from(JSON.stringify(t)).toString("base64url");
+  if (!firmada) return `sz_login=${payload}`;
+  const key = createHash("sha256").update(`login-ticket:${env.SUPABASE_SERVICE_ROLE_KEY}`).digest();
+  return `sz_login=${payload}.${createHmac("sha256", key).update(payload).digest("base64url")}`;
+};
+// A real, delivered login code for `owner`, as the password step would leave it.
+async function codigoDeEntrada(owner) {
+  const code = String(Math.floor(Math.random() * 1e6)).padStart(6, "0");
+  const ticket = randomBytes(24).toString("base64url");
+  const { data, error } = await svc.rpc("create_login_code", {
+    p_owner_id: owner.id, p_purpose: "login", p_channel: "email", p_target: owner.email,
+    p_code_hash: sha256hex(`${code}:${owner.id}`), p_ticket_hash: sha256hex(`ticket:${ticket}`),
+    p_ttl_minutes: 10, p_prev_ticket_hash: null,
+  });
+  if (error || !data?.ok) throw new Error(`create_login_code: ${error?.message ?? JSON.stringify(data)}`);
+  await svc.rpc("mark_login_code_delivered", { p_id: data.id });
+  return { code, ticket };
+}
+const ticketDe = (owner, email, ticket) => ({ ownerId: owner.id, email, ticket, channel: "email", masked: "z***@qa", resends: 0, whatsapp: null, ownerCountry: "VE" });
 
 // THE ACTION'S RETURN VALUE, read from the raw Flight rows. Row 0 points at
 // the row holding it («"a":"$@1"»); that row is plain JSON for every value
@@ -356,6 +403,27 @@ try {
         return r.valor?.error === otra.valor?.error;
       },
       control: null, hermana: P("clients/nuevo/actions.ts#validarCliente"), sinControl: "el dueño de prueba no tiene contraseña; el formato del formulario lo prueba validarCliente" },
+    // ── C1 of PL-22: the code screen trusts its cookie for nothing that matters ──
+    // Found by the v0.4.0 checklist on 2026-11-06, in dev, before production: the ticket
+    // cookie was plain base64 JSON and `verifyLoginCode` opened the session for the e-mail
+    // it carried. An attacker with 2FA on their own account could swap the e-mail for B's,
+    // type their own valid code, and come out as B. Two attacks, one control:
+    //   · an EDITED cookie (no signature) with B's e-mail → no session at all;
+    //   · a SIGNED cookie (the script holds the key) with B's e-mail and A's real code →
+    //     whatever session opens is A's, never B's;
+    //   · control: A's signed cookie and A's real code → A's session.
+    // Each call creates its own code: a ticket lives ten minutes and this row runs late.
+    { clave: "app/login/codigo/actions.ts#verifyLoginCode", fase: 2, orden: 97,
+      ataques: [
+        ["cookie editada sin firma, con el correo de B", () => ticketCookie(ticketDe(A, B.email, "zz-ticket-inventado"), { firmada: false }), () => [null, fd({ code: "000000" })]],
+        ["cookie firmada con el correo de B y el código válido de A", async () => { const c = await codigoDeEntrada(A); ctx.codigoA = c.code; return ticketCookie(ticketDe(A, B.email, c.ticket), { firmada: true }); }, () => [null, fd({ code: ctx.codigoA })]],
+      ],
+      juzgar: (r) => emailDeSesion(r.setCookie) !== B.email,
+      control: [async () => { const c = await codigoDeEntrada(A); ctx.codigoA = c.code; return ticketCookie(ticketDe(A, A.email, c.ticket), { firmada: true }); }, () => [null, fd({ code: ctx.codigoA })]],
+      // The redirect after the code comes back as a 200 Flight render of the landing page
+      // (the client asked for `text/x-component`), so the verdict is the session cookie
+      // the response set, never the status.
+      exito: (r) => emailDeSesion(r.setCookie) === A.email },
     // LAST, and with a session of its own: its control signs the owner out
     // everywhere, and run earlier it turned every later control into a 307.
     { clave: P("actions.ts#logout"), fase: 2, orden: 99, ataques: [["un anónimo la llama", null, () => []]], control: ["SESION_PROPIA", () => []], exito: (r) => r.status < 400 },
@@ -382,7 +450,7 @@ try {
     if (controles[t.clave] !== undefined) return controles[t.clave];
     if (!t.control) return (controles[t.clave] = null);
     const [quien, args] = t.control;
-    const cookie = quien === "RECUPERACION" ? await sesion(A.email, "recovery") : quien === "SESION_PROPIA" ? await sesion(A.email) : quien;
+    const cookie = quien === "RECUPERACION" ? await sesion(A.email, "recovery") : quien === "SESION_PROPIA" ? await sesion(A.email) : typeof quien === "function" ? await quien() : quien;
     const r = await llamar(t.clave, await args(), cookie);
     const bien = t.exitoAsync ? await t.exitoAsync(r) : (t.exito ?? funciono)(r);
     return (controles[t.clave] = bien ? true : `control falló: ${r.status} ${r.valor instanceof Error ? r.valor.message : JSON.stringify(r.valor)?.slice(0, 90)}`);
@@ -397,9 +465,12 @@ try {
         else rec(fase, nombre, "la acción no está en el manifiesto de dev", "SIN PROBAR", "¿página sin compilar o acción renombrada?");
         continue;
       }
-      for (const [que, cookie, args] of t.ataques) {
+      for (const [que, galleta, args] of t.ataques) {
         const antes = await fotoB();
         const antesA = await fotoA();
+        // A cookie given as a function is built at call time: a login ticket lives ten
+        // minutes and its code has to exist when the request goes out.
+        const cookie = typeof galleta === "function" ? await galleta() : galleta;
         const r = await llamar(t.clave, await args(), cookie);
         const despues = await fotoB();
         const fuga = filtra(r.valor);

@@ -10,6 +10,8 @@ import {
   type EventoCuenta,
 } from "@/lib/admin/subscriptions";
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
+import { CuentaSeguridad } from "@/components/admin/cuenta-seguridad";
+import { getCuentaSeguridad } from "@/lib/admin/security";
 import { EstadoChip } from "@/components/admin/estado-chip";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -90,7 +92,7 @@ export default async function CuentaDetallePage({
   // La lista completa y se filtra aquí, en vez de una función nueva por un
   // negocio. Son 24 filas: una consulta más contra la base costaría más que
   // recorrer un array.
-  const [cuentas, historial] = await Promise.all([getCuentas(), getHistorial(ownerId)]);
+  const [cuentas, historial, seguridad] = await Promise.all([getCuentas(), getHistorial(ownerId), getCuentaSeguridad(ownerId)]);
   const cuenta: Cuenta | undefined = cuentas.find((c) => c.owner_id === ownerId);
   if (!cuenta) notFound();
 
@@ -181,6 +183,10 @@ export default async function CuentaDetallePage({
           </Grupo>
         ) : null}
       </dl>
+
+      {/* C1 of PL-22: how the account signs in, and the admin's two doors (recovery mail,
+          email change behind an identity check). */}
+      {seguridad ? <CuentaSeguridad ownerId={ownerId} cuenta={seguridad} /> : null}
 
       <section className="flex flex-col gap-2">
         <div className="flex flex-col">

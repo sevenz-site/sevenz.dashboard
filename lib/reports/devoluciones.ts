@@ -40,6 +40,11 @@ export type ReturnOfRange = {
   productName: string;
   quantity: number;
   unitPrice: number;
+  // What the line it undoes froze. It has to be the same cost, or returning one unit would
+  // take back a different profit from the one the sale added.
+  unitCost: number | null;
+  // Same reason: it undoes a sale of that supplier, whoever supplies the product today.
+  supplier: string | null;
   amount: number;
   // `sale_lines` spelling: 'USD' | 'EUR' | 'COP'.
   currency: string;
@@ -49,6 +54,18 @@ export type ReturnOfRange = {
   // It hangs from a fiado. If not, it came from a sale paid in full.
   fromFiado: boolean;
 };
+
+// The embedded line, which PostgREST hands back as an object or a one-row list.
+function lineaDeLaVenta(linea: unknown) {
+  return (Array.isArray(linea) ? linea[0] : linea) as
+    | { unit_cost: number | string | null; supplier: string | null }
+    | null;
+}
+
+function frozenCost(linea: unknown): number | null {
+  const fila = lineaDeLaVenta(linea);
+  return fila?.unit_cost == null ? null : Number(fila.unit_cost);
+}
 
 export async function cargarDevoluciones(
   supabase: SupabaseClient,
@@ -69,7 +86,7 @@ export async function cargarDevoluciones(
   let q = supabase
     .from("sale_returns")
     .select(
-      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, charge_movement_id, sales!inner(catalog_order_id)",
+      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, charge_movement_id, sales!inner(catalog_order_id), sale_lines(unit_cost, supplier)",
     )
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
@@ -89,6 +106,8 @@ export async function cargarDevoluciones(
     productName: r.product_name as string,
     quantity: Number(r.quantity),
     unitPrice: Number(r.unit_price),
+    unitCost: frozenCost(r.sale_lines),
+    supplier: lineaDeLaVenta(r.sale_lines)?.supplier ?? null,
     amount: Number(r.amount),
     currency: (r.currency as string | null) ?? "COP",
     toOwn: Number(r.to_own),
@@ -117,7 +136,7 @@ export function rankingDeDevueltos(devoluciones: ReturnOfRange[]) {
 }
 
 /** Returns as sold lines with a negative quantity. */
-export function lineasDevueltas(devoluciones: ReturnOfRange[]): LineaVendida[] {
+export function lineasDevueltas(devoluciones: ReturnOfRange[]): (LineaVendida & { supplier: string | null })[] {
   return devoluciones
     .filter((d) => d.productId)
     .map((d) => ({
@@ -125,5 +144,7 @@ export function lineasDevueltas(devoluciones: ReturnOfRange[]): LineaVendida[] {
       currency: d.currency,
       unitPrice: d.unitPrice,
       quantity: -d.quantity,
+      unitCost: d.unitCost,
+      supplier: d.supplier,
     }));
 }

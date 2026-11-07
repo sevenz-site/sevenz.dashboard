@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Button } from "@/components/ui/button";
@@ -103,7 +103,7 @@ function EnBolivares({
   if (tasa == null || !(tasa > 0)) return null;
   return (
     <span className="truncate text-xs text-muted-foreground tabular-nums">
-      {oculto ? "•••••" : `${formatBs(valor * tasa)} hoy`}
+      {oculto ? "•••••" : `${formatBsHoy(valor * tasa)}`}
     </span>
   );
 }

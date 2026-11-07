@@ -20,6 +20,9 @@ type CurrencyKey = "usd" | "eur" | "cop" | "usdt" | "ves";
 
 // One number per currency and never a total across them: dollars and euros do
 // not add up. `lib/analytics/amounts.ts` builds these.
+type CodePurpose = "login" | "enable" | "password" | "number" | "admin_email";
+type CodeChannel = "whatsapp" | "email";
+
 export type Money<P extends string> = Partial<Record<`${P}_${CurrencyKey}`, number>>;
 
 export type EntryPoint =
@@ -329,7 +332,27 @@ export type EventProps = {
 
   "Signup Completed": { country: string; referral_source: string; email_confirmation_required: boolean };
   "Signup Rejected": { reason: string };
-  "Login Completed": Record<string, never>;
+  "Login Completed": { new_device?: boolean; second_factor?: boolean };
+  // C1 of PL-22: the optional code by WhatsApp (email as fallback). `purpose` is which door
+  // asked for it; `reason` is why a code was refused: `expired` growing means WhatsApp
+  // arrives late, `locked` means somebody is guessing, `send_failed` means Kapso or Resend.
+  "Second Factor Code Sent": { purpose: CodePurpose; channel: CodeChannel };
+  "Second Factor Code Verified": { purpose: CodePurpose; channel: CodeChannel };
+  "Second Factor Code Rejected": {
+    purpose: CodePurpose;
+    reason: "mismatch" | "expired" | "locked" | "none" | "bad_ticket" | "send_failed" | "error";
+    channel?: CodeChannel;
+  };
+  "Second Factor Enabled": Record<string, never>;
+  "Second Factor Disabled": Record<string, never>;
+  "WhatsApp Number Changed": { had_number: boolean };
+  "Account Change Alert Sent": { what: "number" | "email" };
+  "Owner Email Changed By Admin": { verified_by: "whatsapp_code" | "other" };
+  "Recovery Email Resent By Admin": Record<string, never>;
+  // C2 of PL-22: an account opened from a device Sevenz did not know, and what came of it.
+  "New Device Alert Sent": { known_devices: number };
+  "Session Revoked By Owner": { reason: "not_me" };
+  "Login Blocked Pending Reset": Record<string, never>;
   "Logout Completed": { scope: "local" | "global" };
   "Client Flagged": { client_id: string };
   "Client Unflagged": { client_id: string };
@@ -346,7 +369,7 @@ export type EventProps = {
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };
   "Owner Notices Prompt Shown": { ask_number: number };
-  "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "other" };
+  "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "code" | "other" };
   "Report Export Failed": { que: string; reason: string };
   "Stock Threshold Changed": { threshold: number };
 
@@ -381,7 +404,7 @@ export type EventProps = {
   "Client Transaction Opened": PublicContext & { transaction_type?: string };
   "Client Signup Link Tapped": PublicContext;
   "Catalog Link Opened": PublicContext & { from_balance?: boolean };
-  "Catalog Product Opened": PublicContext & { product_id?: string };
+  "Catalog Product Opened": PublicContext & { product_id?: string; from_balance?: boolean };
   "Catalog Product Added": PublicContext & { product_id?: string; cart_lines?: number };
   "Catalog Cart Opened": PublicContext & { lines?: number };
   "Catalog Order Form Opened": PublicContext & { lines?: number };

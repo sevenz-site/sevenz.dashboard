@@ -11,6 +11,27 @@ export function formatBs(amount: number): string {
   return `Bs. ${bsNumberFormatter.format(amount)}`;
 }
 
+// «HOY» HAS ONE SPELLING, and it lives here. Owner's request of 2026-11-06: one standard for
+// the whole app. It goes after the figure, lowercase, and it means «worked out with today's
+// rate, so tomorrow it reads different». It is 25 places and they were all typed by hand,
+// which is how a report ended up showing a period's total with no word at all.
+//
+// A figure that was typed or sealed never takes it: see CLAUDE.md, «Una cifra del pasado no
+// se calcula con datos de hoy». `qa:bs-hoy` fails on a hand-written one.
+export function conHoy(figura: string): string {
+  return `${figura} hoy`;
+}
+
+export function formatBsHoy(amount: number): string {
+  return conHoy(formatBs(amount));
+}
+
+// The other qualifier, and the opposite promise: this figure is the one of that day, and it
+// will not move. Two spellings of it lived in the same screen until 2026-11-06.
+export function alDiaDelPago(figura: string): string {
+  return `${figura} al día del pago`;
+}
+
 // Same "es-VE", 2-decimal formatting as formatBs, without the "Bs. " prefix —
 // for surfaces (like an amount input) that show the number on its own.
 export function formatBsAmount(amount: number): string {

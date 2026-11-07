@@ -1,6 +1,7 @@
 "use client";
 
 import { track } from "@/lib/mixpanel";
+import { conHoy } from "@/lib/exchange-rate/format";
 import { newFlowId } from "@/lib/analytics/flow-client";
 import { useEffect, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
@@ -1778,7 +1779,7 @@ function PriceRows({
             // Antes era una fila suelta al final, que decía lo que vale el
             // precio base y nada de las demás. Así cada línea dice lo que de
             // verdad le van a pagar por ESA.
-            bolivares={bs == null ? null : `Hoy: ${formatPriceAmount(bs, "VES")}`}
+            bolivares={bs == null ? null : conHoy(formatPriceAmount(bs, "VES"))}
             // LA FILA DE LA MONEDA BASE NO LLEVA VINCULO: es el precio, no una
             // equivalencia de nada, y su vínculo con el costo es el margen.
             // THE CHAIN OPENS EVEN WITH NOTHING TO COPY. Reported by the owner

@@ -49,6 +49,11 @@ if (want("la-papelera")) {
   console.log("  papelera tras restaurar:", (await js("document.body.innerText")).includes("Tu papelera está vacía") ? "vacía ✓" : "¡CARMEN SIGUE EN LA PAPELERA!");
 }
 if (want("mi-negocio")) { await go("/profile", 5000); await snap("mi-negocio"); }
+if (want("verificacion-en-dos-pasos")) {
+  await go("/profile", 5000);
+  await top("[...document.querySelectorAll('h2')].find(h=>h.textContent.trim()==='Seguridad de la cuenta')");
+  await snap("verificacion-en-dos-pasos");
+}
 if (want("instalar-la-app-en-tu-telefono")) {
   // The app itself, as it opens from the home screen: the install steps
   // happen in the browser's own menus, which no app screen shows.

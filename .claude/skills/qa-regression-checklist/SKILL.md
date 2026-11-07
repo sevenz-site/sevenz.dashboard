@@ -278,6 +278,19 @@ Y después, en el navegador, **nombrando el viewport en el informe**:
   nadie. `qa:venta-accion` lo prueba, pero mira también la lista de clientes:
   «Mostrador» aparece ahí (`CT-125`), con saldo siempre cero.
 
+### El costo del día y las lecturas completas
+
+Desde el 2026-11-06. **Las dos necesitan `npm run dev` o la rama dev, y son parada
+dura si el diff toca la venta, Reportes o el puntaje.**
+
+- **`npm run qa:costo-congelado`** (migración `194`, 35 controles, necesita el
+  servidor). Vende de verdad, sube el costo y lee Reportes como el dueño: la
+  ganancia no se puede mover. Si esta suite se pone roja, cambiar un costo vuelve a
+  reescribir meses pasados, sin error y con una cifra creíble.
+- **`npm run qa:lecturas-completas`** (`PL-35`, 14 controles). Compara el puntaje de
+  la lista con el de cada ficha en un negocio de 1.500 movimientos. Sale de que la
+  API corta en 1.000 filas sin avisar.
+
 ### El PEDIDO que se vuelve venta — `npm run qa:pedido-registro`
 
 **Y los bordes de ese flujo tienen su propia guía: `REGISTRO-DE-PEDIDO-BORDES.md`
@@ -1013,7 +1026,9 @@ lanza».
    `Liberación vX.Y.Z · <de qué trata>`, con todos los enlaces de Drive y de Figma
    dentro, y junto a cada uno el problema planteado y la solución (decisión del dueño
    del 2026-11-04). Desde aquí no hay acceso a Trello: lo
-   confirma el dueño, y mientras no lo haga la fila dice «sin comprobar».
+   confirma el dueño, y mientras no lo haga la fila dice «sin comprobar» y se le
+   sigue preguntando, también por los de liberaciones anteriores (decisión suya del
+   2026-11-05). Su confirmación queda en `LIBERACIONES.md`, con la fecha.
 
 **Si falta algo, esa interfaz no se lanza.** Se le dice al dueño cuál falta y qué
 falta. **Quitarla del lanzamiento o darla por exenta es decisión suya.**
@@ -1469,6 +1484,78 @@ razón por la que las migraciones de un solo entorno se registran como no-op en
 el otro—, así que o se limpian esas dos filas o la suite las excluye
 explícitamente. Mientras siga así, **esa suite en rojo no es señal de nada**,
 que es exactamente el problema.
+
+## 6c. La carga con k6 — por niveles
+
+**SUSPENDIDA, decisión del dueño del 2026-11-06**: *«De momento no se correrá la
+sección 6c del checklist ni nada más con k6»*. No se corre ningún nivel hasta que
+él la reabra; el informe de la liberación lo dice en una fila, «suspendida», no
+«pasa». **Por qué**: `dev.sevenz.site` y `app.sevenz.site` son el mismo proyecto
+de Vercel, así que cada corrida gasta la cuota del plan Hobby que usa producción.
+Si esa cuota se agota, Vercel pausa la app entera hasta 30 días. Ese día el
+panel marcaba 2 h 31 min de 4 h de CPU activa. Antes de reabrirla hay que resolver
+esto: correrla contra un servidor local, o estar en un plan que no pause.
+
+Pedido por el dueño el 2026-11-06. Las suites miden si algo funciona; esto mide
+**cuánta gente aguanta**. Los guiones viven en `qa/carga/` y el plan y la línea
+base en `../docs/RENDIMIENTO-PLAN.md`. k6 está instalado en esta computadora con
+`winget` (`GrafanaLabs.k6`); no entra en `package.json`.
+
+**NUNCA CONTRA PRODUCCIÓN, y los guiones lo rechazan.** La lectura y la pública
+solo aceptan `dev.sevenz.site` o `localhost`; la escritura, solo `localhost`.
+Regla del dueño del 2026-11-05: *«ante la duda, es mejor omitir la prueba»*.
+
+| Nivel | Cuándo | Qué corre | Tiempo | Para el lanzamiento si |
+|---|---|---|---|---|
+| **A** | Cada liberación, con el código ya desplegado en dev | Lectura a 100 y pública a 100 | ~12 min | Hay fallos, p95 > 4 s, o el p95 empeora más de 25 % contra la línea base |
+| **B** | El diff toca dinero, el layout, el proxy o las consultas de Inicio y Reportes | Escritura a 100, `qa:saldos` y limpieza | ~35 min | Una venta rechazada, un saldo que no cuadre, o una fila en `whatsapp_sends` |
+| **C** | Antes de una campaña o de cambiar el tamaño de la base | Techo a 150 y 300 | ~30 min | No para: actualiza el techo conocido |
+
+**Nivel A**, desde `dashboard/`:
+
+```sh
+npm run qa:carga-sesiones
+npm run qa:carga-lectura
+npm run qa:carga-tokens
+npm run qa:carga-publico
+```
+
+**Nivel B.** Se compila con las claves en blanco y se sirve en esta computadora,
+para que nada de lo que dispara una venta salga de aquí. Hay que comprobar que el
+token de Mixpanel no quedó en `.next/`. Las 100 sesiones tardan tres rondas,
+porque Auth da 30 cada 5 minutos por IP:
+
+```sh
+npm run qa:carga-cuentas
+PATRON='qa-carga-%@sevenz-qa.test' npm run qa:carga-sesiones
+npm run qa:carga-acciones
+npm run qa:carga-escritura
+npm run qa:saldos
+npm run qa:carga-cuentas -- --clean
+```
+
+**Nivel C**: `k6 run -e BASE_URL=https://dev.sevenz.site -e MAX_VUS=300 qa/carga/lectura.js`.
+
+### Cinco formas de leerlo mal, y las cinco pasaron el 2026-11-05
+
+1. **El caudal se lee por fase, no por promedio.** El promedio incluye las rampas:
+   dio «10 páginas/s» donde el pico era 17,7. Sale de las líneas `running (…)` del
+   registro de k6.
+2. **Siempre contra una corrida de un usuario.** Una venta de 4 s bajo carga parecía
+   culpa de la carga, y con una persona tardaba lo mismo.
+3. **Quince minutos entre corridas.** Dev tardó minutos en volver después de 300
+   usuarios, y la corrida siguiente salió contaminada.
+4. **Una causa no se escribe sin una medición que la distinga.** Para saber qué se
+   satura hace falta Reports → Database abierto durante la corrida; la gráfica de
+   Infrastructure agrega periodos largos.
+5. **La escritura desde esta computadora no es Vercel.** Sirve para comparar una
+   liberación con otra, no como cifra absoluta.
+
+**No se corre a la vez que `qa:attack`**, que apaga y enciende interruptores en dev.
+
+**En el informe**: una fila por corrida, con usuarios, caudal en el pico, % sin
+respuesta, p50, p95 y si pasó contra la línea base. La línea base nueva se copia a
+`../docs/RENDIMIENTO-PLAN.md`.
 
 ## 7. Final report format
 

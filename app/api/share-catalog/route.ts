@@ -49,18 +49,30 @@ export const runtime = "nodejs";
 // events onto another owner's profile. This page has no session -- the person
 // tapping is the client.
 //
-// So this route accepts NOTHING but a token and emits ONE fixed event name
-// with no caller-supplied properties. That is the whole defence: a public
-// endpoint that forwarded arbitrary event names into Mixpanel would be a
-// graffiti wall. The token is not a secret the caller is proving -- it is in
-// their address bar -- it is only how the server finds out which business to
-// file under.
+// So this route accepts a token and one value from a closed list, and emits ONE
+// fixed event name. That is the whole defence: a public endpoint that forwarded
+// arbitrary event names or free text into Mixpanel would be a graffiti wall. The
+// token is not a secret the caller is proving -- it is in their address bar -- it
+// is only how the server finds out which business to file under.
+//
+// `target` SAYS WHERE THE TAP WENT, since 2026-11-05, when the strip's cards began
+// opening their product and only "Ver todo" kept opening the catalogue. The event
+// keeps its name so its series does not break; before that date every tap went to
+// the catalogue and the property is simply absent.
+//
+// THE QUESTION IT ANSWERS: «¿el cliente entra por un producto que le llamó la
+// atención, o a mirar todo?». If most taps are `product`, the strip sells by
+// itself and which products it shows, and in what order, is worth deciding on
+// purpose. If most are `catalog`, the strip is only a door and its cards matter
+// less than the button.
 
 export async function POST(request: Request) {
   let token: string | null = null;
+  let target: "catalog" | "product" | null = null;
   try {
-    const body = (await request.json()) as { token?: unknown };
+    const body = (await request.json()) as { token?: unknown; target?: unknown };
     token = typeof body.token === "string" && body.token.length <= 128 ? body.token : null;
+    target = body.target === "catalog" || body.target === "product" ? body.target : null;
   } catch {
     token = null;
   }
@@ -89,7 +101,11 @@ export async function POST(request: Request) {
     trackServer(
       "Catalog Opened From Share Link",
       owner.owner_id,
-      { surface: "shared_balance", ...(owner.client_id ? { client_id: owner.client_id } : {}) },
+      {
+        surface: "shared_balance",
+        ...(target ? { target } : {}),
+        ...(owner.client_id ? { client_id: owner.client_id } : {}),
+      },
       owner.owner_email,
     );
   } catch (e) {

@@ -189,10 +189,8 @@ export function ProductDetail({
               and asking for this. A product at or below his alert threshold
               now reads amber, and zero reads red.
 
-              THE «SOLO SI HAY CIFRA» RULE SURVIVES, inside the badge: a
-              product nobody counts renders nothing rather than «Disponible:
-              —», which informs no one and takes the place of something that
-              would. */}
+              Since 2026-11-05 it is always visible here, quantity included.
+              The reason, and the rule it displaced, are in `StockBadge`. */}
           <StockBadge quantity={product.stock_opening} threshold={lowStockThreshold} />
         </div>
 

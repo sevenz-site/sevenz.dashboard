@@ -37,7 +37,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { toBs } from "@/lib/exchange-rate/convert";
 import {
   formatPriceAmount,
@@ -442,7 +442,7 @@ export function AbonoMonto({
               «equivalencia»— están en `DESIGN-SYSTEM.md`. */}
           {llevaDivisas && rateContext ? (
             <span className="text-xs text-muted-foreground tabular-nums">
-              {formatBs(toBs(pendiente, libro, rateContext.effectiveRate))} hoy
+              {formatBsHoy(toBs(pendiente, libro, rateContext.effectiveRate))}
             </span>
           ) : null}
         </span>
