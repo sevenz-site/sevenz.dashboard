@@ -126,6 +126,14 @@ export const PLANTILLAS_ESPERADAS = {
     cuerpoPosicional: true,
   },
 
+  // Approved and compared on 2026-11-07: body, footer and «No fui yo» match, and the editor
+  // shows the button's address ending in {{1}}, so it is dynamic. Behind ACCOUNT_CHANGE_ALERTS
+  // (PL-40): the code calls it and nothing goes out until that switch is on.
+  account_change_alert: {
+    cuerpo: ["what", "new_value", "when"],
+    boton: "url_suffix",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,
