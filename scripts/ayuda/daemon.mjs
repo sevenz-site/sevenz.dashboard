@@ -78,9 +78,11 @@ ws.onmessage = (e) => {
 };
 const send = (method, params = {}) => new Promise((res, rej) => { const id = ++n; pending.set(id, { res, rej }); ws.send(JSON.stringify({ id, method, params })); });
 
-const W = 375, H = 812, SCALE = 2;
+// The phone by default. `AYUDA_W=1280 AYUDA_H=800` takes the web width, for the release
+// documents that have to show both (CLAUDE.md, «Todo ajuste se evalúa también en la resolución web»).
+const W = Number(process.env.AYUDA_W ?? 375), H = Number(process.env.AYUDA_H ?? 812), SCALE = 2;
 await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable");
-await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: SCALE, mobile: true });
+await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: SCALE, mobile: W < 768 });
 await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
 await send("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 14; SM-S906B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36" });
 for (const [name, value] of await sessionCookies()) await send("Network.setCookie", { name, value, url: BASE });
