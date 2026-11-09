@@ -104,9 +104,15 @@ const botonBien = (b) =>
   !("parameter_name" in b.parameters[0]) && /^[A-Za-z0-9_-]{32}$/.test(b.parameters[0].text ?? "");
 const textosLimpios = (t) => Object.values(t).every((x) => x && !/[\n\t]| {5}/.test(x));
 const sha256 = (v) => createHash("sha256").update(v).digest("hex");
-// The clock of a zone right now and a minute ago, as HH:MM: the send happened between the two.
-const horaEn = (zona) => [0, 60_000].map((atras) =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: zona, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(Date.now() - atras)));
+// The clock of a zone right now and a minute ago, as «4:25 p. m.»: the send happened between
+// the two. Built apart from `whenText`, so the check is not the function agreeing with itself.
+const horaEn = (zona) => [0, 60_000].map((atras) => {
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: zona, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(Date.now() - atras));
+  const h = Number(p.find((x) => x.type === "hour").value) % 24;
+  return `${h % 12 || 12}:${p.find((x) => x.type === "minute").value} ${h < 12 ? "a. m." : "p. m."}`;
+});
+// «9 de noviembre a las 4:25 p. m.»: the sentence the owner approved on 2026-11-05.
+const FORMA_DE_LA_HORA = /^\d{1,2} de [a-z]+ a las? \d{1,2}:\d{2} [ap]\. m\.$/;
 
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const email = `qa-security-alerts-${Date.now().toString(36)}@sevenz-qa.test`;
@@ -148,7 +154,7 @@ try {
   check("1h. los parámetros del cuerpo, con su nombre y en su orden", JSON.stringify(s1.nombres) === JSON.stringify(esperadoAparato.cuerpo), `esperado ${JSON.stringify(esperadoAparato.cuerpo)} · visto ${JSON.stringify(s1.nombres)}`);
   check("1i. el botón «No fui yo» lleva su sufijo, posicional y sin nombre", esperadoAparato.boton === "url_suffix" && botonBien(s1.boton), JSON.stringify(s1.boton));
   check("1j. dice el aparato y el lugar de ESA entrada", s1.textos.device === "un Android con Chrome" && s1.textos.place === "Maracaibo, Venezuela", JSON.stringify(s1.textos));
-  check("1k. la hora es la de Venezuela, no la del servidor", horaEn("America/Caracas").some((x) => (s1.textos.when ?? "").includes(x)), `${s1.textos.when} · esperada ${horaEn("America/Caracas")[0]}`);
+  check("1k. la hora es la de Venezuela, escrita como se aprobó", FORMA_DE_LA_HORA.test(s1.textos.when ?? "") && horaEn("America/Caracas").some((x) => (s1.textos.when ?? "").endsWith(`a las ${x}`) || (s1.textos.when ?? "").endsWith(`a la ${x}`)), `${s1.textos.when} · esperada ${horaEn("America/Caracas")[0]}`);
   check("1l. ningún parámetro va vacío ni con saltos de línea", textosLimpios(s1.textos), JSON.stringify(s1.textos));
   check("1m. al número del perfil, por la línea de dueños", s1.to === NUMERO && s1.lineaDeDuenos === true, `${s1.to} · ${aKapso[0]?.url}`);
 
@@ -193,7 +199,7 @@ try {
   const correo = await notifyAccountChange({ ...cambio, ownerCountry: "CO", what: "email", newValueMasked: "j***@gmail.com" });
   const s3 = sobre(aKapso[antes + 1]);
   check("2j. cambiar el correo: mismo sobre, y dice «el correo»", correo === true && s3.textos.what === "el correo" && s3.textos.new_value === "j***@gmail.com" && botonBien(s3.boton), JSON.stringify(s3.textos));
-  check("2j2. a un negocio colombiano, la hora es la de Colombia", horaEn("America/Bogota").some((x) => (s3.textos.when ?? "").includes(x)), `${s3.textos.when} · esperada ${horaEn("America/Bogota")[0]}`);
+  check("2j2. a un negocio colombiano, la hora es la de Colombia", FORMA_DE_LA_HORA.test(s3.textos.when ?? "") && horaEn("America/Bogota").some((x) => (s3.textos.when ?? "").endsWith(`a las ${x}`) || (s3.textos.when ?? "").endsWith(`a la ${x}`)), `${s3.textos.when} · esperada ${horaEn("America/Bogota")[0]}`);
 
   const sinNumero = await notifyAccountChange({ ...cambio, to: null });
   check("2k. sin número al que avisar: no se llama a nadie", sinNumero === false && aKapso.length === antes + 2, String(sinNumero));

@@ -1,5 +1,5 @@
 import { browserOf, osOf } from "@/lib/user-agent";
-import { formatDateTime, zonaDelNegocio } from "@/lib/format";
+import { zonaDelNegocio } from "@/lib/format";
 
 // THE WORDS OF THE NEW-DEVICE ALERT, AND WHAT A DEVICE IS. Pure, so qa/new-device.mjs runs
 // every branch without a database or a network.
@@ -85,11 +85,34 @@ export function placeText(d: Pick<DeviceIdentity, "country" | "city">): string {
   return "un lugar desconocido";
 }
 
-/** «5 de noviembre a las 2:10 p. m.», in the business's zone, never the server's (PL-1). */
+/**
+ * «5 de noviembre a las 2:10 p. m.», in the business's zone, never the server's (PL-1).
+ *
+ * WRITTEN OUT BY HAND, NOT WITH THE APP'S `formatDateTime`. Until 2026-11-09 this returned
+ * that helper's «09 de nov de 2026, 16:25», which is how a table cell reads and not how the
+ * owner approved the sentence on 2026-11-05 nor the example Meta was given. Nobody had seen
+ * it: the alert was switched off and no suite ran this function. Found by
+ * `qa:security-alerts` the day both alerts were queued for v0.5.1; owner's decision that day
+ * to match the approved copy.
+ *
+ * The pieces are assembled here because `Intl` writes «p. m.» with narrow and non-breaking
+ * spaces that change with the ICU version, and a template parameter should not depend on
+ * that. «a la 1:10», «a las 2:10»: the article follows the hour.
+ */
 export function whenText(iso: string, ownerCountry: string | null): string {
-  const zona = zonaDelNegocio(ownerCountry);
-  const texto = formatDateTime(iso, zona);
-  return texto;
+  const partes = new Intl.DateTimeFormat("es", {
+    timeZone: zonaDelNegocio(ownerCountry),
+    day: "numeric",
+    month: "long",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  const parte = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? "";
+  const hora24 = Number(parte("hour")) % 24;
+  const hora12 = hora24 % 12 || 12;
+  const minutos = parte("minute").padStart(2, "0");
+  return `${parte("day")} de ${parte("month")} ${hora12 === 1 ? "a la" : "a las"} ${hora12}:${minutos} ${hora24 < 12 ? "a. m." : "p. m."}`;
 }
 
 /** Meta's template parameters cannot carry line breaks, tabs or more than four spaces in a row. */

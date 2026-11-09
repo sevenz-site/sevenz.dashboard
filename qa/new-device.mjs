@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { deviceText, identityFromHeaders, placeText, templateSafe } from "../lib/security/device-text.ts";
+import { deviceText, identityFromHeaders, placeText, templateSafe, whenText } from "../lib/security/device-text.ts";
 import { browserOf, osOf } from "../lib/user-agent.ts";
 
 const filas = [];
@@ -36,6 +36,13 @@ const WINDOWS_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/53
   check("1g. una ciudad mal codificada no revienta", typeof bad.city === "string", JSON.stringify(bad));
   check("1h. Chrome en iPhone no es Chrome de escritorio", browserOf("Mozilla/5.0 (iPhone) CriOS/125.0 Mobile Safari/604.1") === "Chrome iOS" && osOf("Mozilla/5.0 (iPhone)") === "iOS");
   check("1i. un parámetro de plantilla no lleva saltos de línea ni más de cuatro espacios", templateSafe("a\nb\tc") === "a b c" && templateSafe("x      y") === "x    y", JSON.stringify([templateSafe("a\nb\tc"), templateSafe("x      y")]));
+  // The sentence the owner approved on 2026-11-05, and the example Meta was given.
+  check("1j. la hora, como se aprobó: «5 de noviembre a las 2:10 p. m.», en Venezuela", whenText("2026-11-05T18:10:00Z", "VE") === "5 de noviembre a las 2:10 p. m.", whenText("2026-11-05T18:10:00Z", "VE"));
+  check("1k. el mismo instante en Colombia es una hora menos, y «a la 1»", whenText("2026-11-05T18:10:00Z", "CO") === "5 de noviembre a la 1:10 p. m.", whenText("2026-11-05T18:10:00Z", "CO"));
+  check("1l. medianoche es «12:00 a. m.» del día que empieza", whenText("2026-11-06T04:00:00Z", "VE") === "6 de noviembre a las 12:00 a. m.", whenText("2026-11-06T04:00:00Z", "VE"));
+  check("1m. de noche en Venezuela sigue siendo el día de Venezuela, no el de UTC", whenText("2026-11-06T03:30:00Z", "VE") === "5 de noviembre a las 11:30 p. m.", whenText("2026-11-06T03:30:00Z", "VE"));
+  check("1n. mediodía es «12:05 p. m.», y sin país manda la zona de Colombia", whenText("2026-11-05T17:05:00Z", null) === "5 de noviembre a las 12:05 p. m.", whenText("2026-11-05T17:05:00Z", null));
+  check("1o. solo espacios corrientes: nada que dependa de la versión de ICU", /^[\x20-\x7eáéíóúñ]+$/.test(whenText("2026-11-05T18:10:00Z", "VE")));
 }
 
 // ── Part 2: DEV ───────────────────────────────────────────────────────────────
