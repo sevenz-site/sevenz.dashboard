@@ -1416,6 +1416,33 @@ movement — each of those is a paragraph somewhere, or should be.
 Two surfaces, two deploys: a dashboard merge does not publish the website. A
 release that changes both has to merge both, and the checklist says which.
 
+### Una página legal que cambia lleva la fecha del día en que se PUBLICA
+
+**Regla del dueño del 2026-11-09, pedida dos veces ese mismo día**: primero para la
+Política de privacidad (*«Sí, actualízala»*) y después para los Términos (*«Sí,
+también»*). A la segunda: *«sí escríbelo»*.
+
+**La regla**: si una liberación cambia cualquier frase de
+`Web/app/politica-de-privacidad/page.tsx` o de `Web/app/terminos-y-condiciones/page.tsx`,
+su `updated="…"` («Última actualización») pasa en la misma liberación a la fecha
+del día en que esa liberación **sale a producción**, no a la del día en que se
+escribió la frase. Se cambia sin preguntar: ya está decidido.
+
+- **Si la liberación se retrasa**, la fecha se corrige en la rama release de
+  `Web/` antes de publicar. Una fecha anterior a la publicación diría que el texto
+  rigió desde un día en que todavía no estaba publicado.
+- **Si la liberación no toca una frase de la página**, su fecha no se mueve.
+- **Vale igual para un arreglo urgente** que toque una de las dos.
+- **El checklist lo comprueba**, sección 4b: cada página legal que el diff de
+  `Web/` cambia lleva la fecha del lanzamiento.
+
+**Por qué merece regla propia.** La Política decía «2 noviembre 2026» con el texto
+cambiado el 4, el 5 y el 7, y los Términos «3 noviembre» con `CT-103` cambiándolos
+el 9. Nadie lo había notado: la fecha está arriba, en pequeño, y no la lee quien
+edita un párrafo de más abajo. En un texto legal es la única cifra que dice desde
+cuándo rige lo que el usuario está leyendo, y quedarse atrás la convierte en falsa
+sin que nada avise.
+
 ### `Web/` ships a BUILD, not a branch — build it, then verify the live page
 
 `npx wrangler deploy` uploads whatever is sitting in `Web/out/`. It does not

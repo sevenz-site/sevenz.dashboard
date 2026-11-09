@@ -786,6 +786,13 @@ answered *"No tienes que instalar nada"*. Both sentences were written in good
 faith, months apart, and the contradiction was caught by accident while adding
 an unrelated FAQ entry — not by any check. That is the gap this section closes.
 
+**The legal pair also carries a date.** If the `Web/` diff changes any sentence
+of the Política or the Términos, its `updated="…"` must be the day this release
+goes to production — and re-checked on launch night if the launch slipped. A
+page whose text changed and whose date did not is a stop for that page: fix the
+date on the release branch. Owner's rule of 2026-11-09, written in CLAUDE.md
+(«Una página legal que cambia lleva la fecha del día en que se PUBLICA»).
+
 If a surface needs an edit, say so in the report and remember it is a **second
 merge**: a dashboard release does not publish the website.
 
