@@ -137,10 +137,12 @@ try {
   const b = await signIn(user, a.cookie, UA.iphone, "VE", "Caracas");
   check("1c. la misma cookie desde otra ciudad: conocido, sin aviso", b.r.isNew === false && b.r.alerted === false && aKapso.length === 0, JSON.stringify(b.r));
 
-  // The place a device is known by is its LAST one: 1c moved this iPhone to Caracas, so a
-  // cookie-less sign-in is recognised from Caracas and would NOT be from Barquisimeto.
   const c = await signIn(user, null, UA.iphone, "VE", "Caracas");
   check("1d. cookie borrada, mismo navegador y su última ciudad: conocido por lugar, sin aviso", c.r.isNew === false && aKapso.length === 0, JSON.stringify(c.r));
+  // The false alert this suite found on 2026-11-09, fixed by migration 199: 1c moved this
+  // iPhone to Caracas, and coming back to Barquisimeto without the cookie wrote to the owner.
+  const c2 = await signIn(user, null, UA.iphone, "VE", "Barquisimeto");
+  check("1d2. cookie borrada y de vuelta en su ciudad de siempre: conocido, sin aviso falso (199)", c2.r.isNew === false && aKapso.length === 0, `${JSON.stringify(c2.r)} · ${aKapso.length} a Kapso`);
 
   delete process.env.NEW_DEVICE_ALERTS;
   const d = await signIn(user, null, UA.windows, "CO", "Bogot%C3%A1");
