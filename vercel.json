@@ -1,5 +1,4 @@
 {
-  "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
       "path": "/api/cron/exchange-rate",
