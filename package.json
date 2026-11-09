@@ -83,6 +83,7 @@
     "qa:fuentes-tasa": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/fuentes-tasa.mjs",
     "qa:credit-watch": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/credit-watch.mjs",
     "qa:new-device": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/new-device.mjs",
+    "qa:security-alerts": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/security-alerts.mjs",
     "qa:diagnostico-tasas": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/diagnostico-tasas.mjs",
     "qa:venta-colombia:fixture": "node qa/fixtures-venta-colombia.mjs",
     "qa:venta-mixta:fixture": "node qa/fixtures-venta-mixta.mjs",

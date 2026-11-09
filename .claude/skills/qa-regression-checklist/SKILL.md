@@ -486,6 +486,14 @@ that lives outside this repo.
   so zero messages leave. It **does write** reservation rows in dev — on
   purpose, so the 067 gate is exercised too — and deletes exactly the rows it
   created, by id.
+- **`npm run qa:security-alerts`** — the same envelope check for the two
+  security alerts, `new_device_login_alert` and `account_change_alert`
+  (`PL-40`): it runs the real sign-in and account-change functions with the
+  switches on and `fetch` intercepted, and compares body parameters and the
+  «No fui yo» button with `qa/plantillas-esperadas.mjs`. Run it whenever the
+  diff touches `lib/security/`, `lib/whatsapp/` or either switch is about to
+  be turned on in production. Writes one throw-away business in dev and
+  removes it.
 
 **Both, not one.** On 2026-09-28 `qa:pausados` was green, 5 of 5, while a bug
 would have left every paused owner with no message at all: the template was
