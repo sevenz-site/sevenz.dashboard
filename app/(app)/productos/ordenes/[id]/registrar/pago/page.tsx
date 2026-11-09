@@ -94,6 +94,7 @@ export default async function PagoDeBloquePage({
           .in("client_id", idsMarcados)
           .is("unflagged_at", null)
           .order("flagged_at", { ascending: false }),
+        // bounded: the flagged clients that match ONE order's buyer.
         supabase
           .from("client_summary")
           .select("client_id, balance, balance_usd, balance_eur")

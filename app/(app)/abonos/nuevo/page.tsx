@@ -90,6 +90,7 @@ export default async function NuevoAbonoPage({
   const saleIds = [...new Set(filas.map((f) => f.sale_id).filter((x): x is string => x != null))];
   const nombresPorVenta = new Map<string, string[]>();
   if (saleIds.length > 0) {
+    // bounded: the product names of ONE client's open fiados.
     const { data: lineas } = await supabase
       .from("sale_lines")
       .select("sale_id, name")

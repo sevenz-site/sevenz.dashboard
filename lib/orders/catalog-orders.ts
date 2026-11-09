@@ -268,6 +268,7 @@ export async function readOrderProducts(
   const ids = [...new Set(items.map((i) => i.product_id).filter((v): v is string => v !== null))];
   if (ids.length === 0) return new Map();
 
+  // bounded: the products of ONE order's lines.
   const { data, error } = await supabase
     .from("products")
     .select(ORDER_PRODUCT_COLUMNS)

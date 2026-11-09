@@ -25,6 +25,7 @@ import {
 } from "@/lib/products/catalog";
 import { ownerPreviewPriceInput, previewPriceLine } from "@/lib/products/preview-price";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 
 // EL CATÁLOGO. Primera pantalla de la etapa 1 de inventario.
 //
@@ -57,12 +58,23 @@ export default async function ProductosPage() {
     ordenesSinAtender,
     { data: categorias },
   ] = await Promise.all([
-      supabase
-        .from("products")
-        .select(PRODUCT_COLUMNS)
-        .eq("owner_id", user!.id)
-        .is("trashed_at", null)
-        .order("name"),
+      // PL-34: every product, not the first 1,000 (lib/supabase/read-all.ts). Kept in the
+      // `{ data, error }` shape so the read-failure screen below still sees the error.
+      readAllPages<Record<string, unknown>>((from, to) =>
+        supabase
+          .from("products")
+          .select(PRODUCT_COLUMNS, { count: "exact" })
+          .eq("owner_id", user!.id)
+          .is("trashed_at", null)
+          .order("name")
+          .order("id")
+          .range(from, to)
+          // `PRODUCT_COLUMNS` is a joined string, so the client cannot infer the row.
+          .overrideTypes<Record<string, unknown>[], { merge: false }>(),
+      ).then(
+        (data) => ({ data, error: null }),
+        (e: Error) => ({ data: null, error: { message: e.message } }),
+      ),
       // AQUÍ IBAN TRES CONSULTAS MÁS --los precios fijados, las monedas
       // activas y el último producto creado-- que esta pantalla NO usa: eran
       // para los dos diálogos que montaba. Desde el 2026-10-20 el alta y la
@@ -138,25 +150,49 @@ export default async function ProductosPage() {
   // of the screen still does not use them. Two queries, scoped by product id;
   // with nothing published, none.
   const publicados = rows.filter(isPublished).map((p) => p.id);
-  const [{ data: overrideRows }, { data: currencyRows }] = publicados.length
+  //
+  // Paged by ids (PL-34): two to six rows per product pass 1,000 well before the catalogue
+  // does. A failed read only costs the price in the message, never the screen.
+  const [overrideRows, currencyRows] = publicados.length
     ? await Promise.all([
-        supabase
-          .from("product_price_overrides")
-          .select("product_id, tier, currency, amount")
-          .in("product_id", publicados),
-        supabase.from("product_currencies").select("product_id, tier, currency").in("product_id", publicados),
+        readAllByIds<PriceOverrideRow>(publicados, (batch, from, to) =>
+          supabase
+            .from("product_price_overrides")
+            .select("product_id, tier, currency, amount", { count: "exact" })
+            .in("product_id", batch)
+            .order("product_id")
+            .order("tier")
+            .order("currency")
+            .range(from, to),
+        ).catch((e: Error) => {
+          console.error("[productos] precios fijados:", e.message);
+          return [] as PriceOverrideRow[];
+        }),
+        readAllByIds<ProductCurrencyRow>(publicados, (batch, from, to) =>
+          supabase
+            .from("product_currencies")
+            .select("product_id, tier, currency", { count: "exact" })
+            .in("product_id", batch)
+            .order("product_id")
+            .order("tier")
+            .order("currency")
+            .range(from, to),
+        ).catch((e: Error) => {
+          console.error("[productos] monedas activas:", e.message);
+          return [] as ProductCurrencyRow[];
+        }),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [[] as PriceOverrideRow[], [] as ProductCurrencyRow[]];
   const sharePriceLines: Record<string, string | null> = Object.fromEntries(
     rows.filter(isPublished).map((p) => [
       p.id,
       previewPriceLine(
         ownerPreviewPriceInput(
           p,
-          overridesByTier((overrideRows ?? []) as PriceOverrideRow[], p.id),
+          overridesByTier(overrideRows, p.id),
           {
-            retail: currenciesOf((currencyRows ?? []) as ProductCurrencyRow[], p.id, "retail", p.base_currency_retail),
-            wholesale: currenciesOf((currencyRows ?? []) as ProductCurrencyRow[], p.id, "wholesale", p.base_currency_wholesale),
+            retail: currenciesOf(currencyRows, p.id, "retail", p.base_currency_retail),
+            wholesale: currenciesOf(currencyRows, p.id, "wholesale", p.base_currency_wholesale),
           },
           rates,
         ),

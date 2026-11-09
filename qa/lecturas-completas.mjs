@@ -17,6 +17,7 @@ import { createClient } from "@supabase/supabase-js";
 import { IDS_PER_BATCH, PAGE_ROWS, readAllByIds, readAllPages } from "../lib/supabase/read-all.ts";
 import { computeCreditScoresForClients } from "../lib/credit-score-batch.ts";
 import { computeCreditScore } from "../lib/credit-score.ts";
+import { cargarFacturacion } from "../lib/reports/facturacion.ts";
 
 const filas = [];
 const check = (nombre, pasa, detalle = "") => {
@@ -145,6 +146,18 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes("vzqppwrwnmlbrxizskdh")) {
     check(`2d. el puntaje de la lista es el de la ficha en los ${CLIENTES} clientes`, distintos.length === 0, `${distintos.length} distintos · ${distintos.slice(0, 3).join(" · ")}`);
     const niveles = new Set(Object.values(lista).map((x) => x.tier));
     check("2e. los hábitos dan puntajes distintos (si todos fueran iguales, 2d no probaría nada)", niveles.size >= 2, [...niveles].join(", "));
+
+    // PL-34: Reportes over the same 1,500 rows. Every charge and payment is $10 inside the last
+    // 100 days: 150 clients × 5 charges, plus 5 more for one in three, is $10,000 lent; the
+    // other two in three pay 5 times, $5,000. Read in one request, the period stopped at the
+    // first 1,000 rows and summed less, with nothing on screen saying so.
+    const rango = { desde: new Date(Date.now() - 100 * 86400000), hasta: new Date() };
+    const informe = await cargarFacturacion({ supabase: dueno, ownerId, rango, dosLibros: true, effectiveRate: null });
+    check(
+      "2g. Reportes suma los 1.500: $10.000 fiados y $5.000 abonados",
+      Math.round(informe.fiados.USD ?? 0) === 10000 && Math.round(informe.abonos.USD ?? 0) === 5000,
+      `fiados ${informe.fiados.USD} · abonos ${informe.abonos.USD}`,
+    );
 
     const { count: envios } = await admin.from("whatsapp_sends").select("id", { count: "exact", head: true }).eq("owner_id", ownerId);
     check("2f. ningún envío de WhatsApp", envios === 0, String(envios));

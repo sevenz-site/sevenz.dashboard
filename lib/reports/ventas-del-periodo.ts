@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 import type { Rango } from "@/lib/reports/rango";
 import { cargarDevoluciones } from "@/lib/reports/devoluciones";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
@@ -70,19 +71,32 @@ export async function ventasDelPeriodo({
   ownerId: string;
   rango: Rango;
 }): Promise<Partial<Record<Libro, number>>> {
-  const { data: ventas, error: errorVentas } = await supabase
-    .from("sales")
-    .select("id")
-    .eq("owner_id", ownerId)
-    .is("deleted_at", null)
-    .gte("created_at", rango.desde.toISOString())
-    .lte("created_at", rango.hasta.toISOString());
+  // The paged reads throw on any page's error; same messages as before.
+  const conNombre = <T,>(que: string, p: Promise<T>) =>
+    p.catch((e: Error) => {
+      throw new Error(`${que}: ${e.message}`);
+    });
+
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
   // SE MIRA EL ERROR. Descartarlo pondría un «$0,00» en el Inicio de un
   // negocio que vendió -- un cero creíble, que es el fallo que costó un día
   // entero en Reportes el 2026-10-27.
-  if (errorVentas) throw new Error(`ventas: ${errorVentas.message}`);
+  const ventas = await conNombre(
+    "ventas",
+    readAllPages<Record<string, unknown>>((from, to) =>
+      supabase
+        .from("sales")
+        .select("id", { count: "exact" })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .gte("created_at", rango.desde.toISOString())
+        .lte("created_at", rango.hasta.toISOString())
+        .order("id")
+        .range(from, to),
+    ),
+  );
 
-  const ids = (ventas ?? []).map((v) => v.id as string);
+  const ids = ventas.map((v) => v.id as string);
 
   // THE MONEY THAT WENT BACK from cash sales, on the day it went back. Read
   // first and not after the early return below: a day with no sales can still
@@ -116,21 +130,36 @@ export async function ventasDelPeriodo({
   // enlaza a Reportes. Si solo cambiara Reportes, el tendero tocaría la
   // tarjeta y el número cambiaría delante de sus ojos. Es exactamente lo que
   // `npm run qa:ventas-inicio` existe para impedir.
-  const [{ data: pagos, error: errorPagos }, { data: cargos, error: errorCargos }] =
-    await Promise.all([
-      supabase.from("sale_payments").select("sale_id, amount, currency").in("sale_id", ids),
-      // Los cargos dicen qué par (venta, libro) quedó fiado. Sin filtro de
-      // fecha a propósito: la pregunta es sobre ESTAS ventas, no sobre el
-      // periodo, y un cargo que cayera un segundo fuera convertiría un fiado
-      // en una venta de contado.
-      supabase
-        .from("movements")
-        .select("sale_id, currency, type, paid_with_credit")
-        .in("sale_id", ids)
-        .is("deleted_at", null),
-    ]);
-  if (errorPagos) throw new Error(`ventas: pagos: ${errorPagos.message}`);
-  if (errorCargos) throw new Error(`ventas: cargos: ${errorCargos.message}`);
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  const [pagos, cargos] = await Promise.all([
+    conNombre(
+      "ventas: pagos",
+      readAllByIds<Record<string, unknown>>(ids, (batch, from, to) =>
+        supabase
+          .from("sale_payments")
+          .select("sale_id, amount, currency", { count: "exact" })
+          .in("sale_id", batch)
+          .order("id")
+          .range(from, to),
+      ),
+    ),
+    // Los cargos dicen qué par (venta, libro) quedó fiado. Sin filtro de
+    // fecha a propósito: la pregunta es sobre ESTAS ventas, no sobre el
+    // periodo, y un cargo que cayera un segundo fuera convertiría un fiado
+    // en una venta de contado.
+    conNombre(
+      "ventas: cargos",
+      readAllByIds<Record<string, unknown>>(ids, (batch, from, to) =>
+        supabase
+          .from("movements")
+          .select("sale_id, currency, type, paid_with_credit", { count: "exact" })
+          .in("sale_id", batch)
+          .is("deleted_at", null)
+          .order("id")
+          .range(from, to),
+      ),
+    ),
+  ]);
 
   const librosFiados = new Set(
     (cargos ?? [])

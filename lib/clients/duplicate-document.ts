@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeDocumentId } from "@/lib/format";
+import { readAllPages } from "@/lib/supabase/read-all";
 
 // ¿YA EXISTE UN CLIENTE DE ESTE DUEÑO CON ESTE DOCUMENTO?
 //
@@ -69,13 +70,22 @@ export async function buscarDocumentoDuplicado(
   if (!normalizado) return null;
   const tipo = documentType?.trim() || null;
 
-  const { data } = await supabase
-    .from("clients")
-    .select("id, name, document_id, document_type, trashed_at, deleted_at")
-    .eq("owner_id", ownerId)
-    .not("document_id", "is", null);
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  // It THROWS on a failed read instead of answering «no duplicate»: the dropped error used
+  // to let the same person through as a second client. The caller turns it into a message.
+  const data = await readAllPages<Record<string, unknown>>((from, to) =>
+    supabase
+      .from("clients")
+      .select("id, name, document_id, document_type, trashed_at, deleted_at", { count: "exact" })
+      .eq("owner_id", ownerId)
+      .not("document_id", "is", null)
+      .order("id")
+      .range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`documento duplicado: ${e.message}`);
+  });
 
-  const encontrado = data?.find((c) => {
+  const encontrado = data.find((c) => {
     if (!c.document_id) return false;
     if (normalizeDocumentId(c.document_id as string) !== normalizado) return false;
 

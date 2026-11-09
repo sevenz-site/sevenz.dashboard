@@ -1,5 +1,6 @@
 import { cargarDevoluciones, lineasDevueltas, rankingDeDevueltos } from "@/lib/reports/devoluciones";
 import type { createClient } from "@/lib/supabase/server";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 import type { Rango } from "@/lib/reports/rango";
 import type { BolivarRates } from "@/lib/products/price";
 import {
@@ -343,39 +344,51 @@ export async function cargarInventario({
   // EL FILTRO SE APLICA A LA CONSULTA, no al pintar: así todo lo que se
   // deriva de `productos` --los tres cubos, el capital, el margen, las
   // listas-- queda acotado sin un `if` repartido por la función.
-  const qProductos = supabase
-    .from("products")
-      .select(
-        "id, name, unit, stock_opening, cost, cost_currency, cost_currency_other, margin_retail_pct, photo_path, price_retail, base_currency_retail, base_currency",
-      )
-    .eq("owner_id", ownerId)
-    .is("trashed_at", null)
-    .order("name");
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  const leerProductos = () =>
+    readAllPages<Record<string, unknown>>((from, to) => {
+      let q = supabase
+        .from("products")
+        .select(
+          "id, name, unit, stock_opening, cost, cost_currency, cost_currency_other, margin_retail_pct, photo_path, price_retail, base_currency_retail, base_currency",
+          { count: "exact" },
+        )
+        .eq("owner_id", ownerId)
+        .is("trashed_at", null);
+      if (productId) q = q.eq("id", productId);
+      return q.order("name").order("id").range(from, to);
+    });
 
-  const [resProductos, resDueno, resVentas] = await Promise.all([
-    productId ? qProductos.eq("id", productId) : qProductos,
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  const leerVentas = () =>
+    readAllPages<Record<string, unknown>>((from, to) =>
+      supabase
+        .from("sales")
+        .select("id", { count: "exact" })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .gte("created_at", rango.desde.toISOString())
+        .lte("created_at", rango.hasta.toISOString())
+        .order("id")
+        .range(from, to),
+    );
+
+  // The paged reads throw on any page's error; same message as before.
+  const conNombre = <T,>(que: string, p: Promise<T>) =>
+    p.catch((e: Error) => {
+      throw new Error(`inventario: ${que}: ${e.message}`);
+    });
+
+  const [productos, resDueno, ventas] = await Promise.all([
+    conNombre("productos", leerProductos()),
     supabase.from("owners").select("low_stock_threshold").eq("id", ownerId).single(),
-    supabase
-      .from("sales")
-      .select("id")
-      .eq("owner_id", ownerId)
-      .is("deleted_at", null)
-      .gte("created_at", rango.desde.toISOString())
-      .lte("created_at", rango.hasta.toISOString()),
+    conNombre("ventas", leerVentas()),
   ]);
 
   // SE MIRA EL ERROR DE LAS TRES. Es la lección que costó un día entero el
   // 2026-10-27: una consulta que fallaba con el error descartado dibujaba
   // ceros perfectamente creíbles en la pestaña de al lado.
-  for (const [que, r] of [
-    ["productos", resProductos],
-    ["dueño", resDueno],
-    ["ventas", resVentas],
-  ] as const) {
-    if (r.error) throw new Error(`inventario: ${que}: ${r.error.message}`);
-  }
-
-  const productos = resProductos.data ?? [];
+  if (resDueno.error) throw new Error(`inventario: dueño: ${resDueno.error.message}`);
   const umbral = Number(resDueno.data?.low_stock_threshold ?? 5);
 
   // ── LAS TRES TARJETAS ────────────────────────────────────────────────
@@ -504,7 +517,7 @@ export async function cargarInventario({
     .slice(0, EN_EL_GRAFICO);
 
   // ── MÁS VENDIDOS ─────────────────────────────────────────────────────
-  const idsDeVenta = (resVentas.data ?? []).map((v) => v.id as string);
+  const idsDeVenta = ventas.map((v) => v.id as string);
   let masVendidos: ProductoVendido[] = [];
   let lineasSueltas = 0;
   const fueraDelCatalogo: ProductoEnAviso[] = [];
@@ -541,7 +554,8 @@ export async function cargarInventario({
   // returns, and the list has to add up with the chart beside it.
   const rankingDevueltos = rankingDeDevueltos(devoluciones);
   const { data: fichasDevueltas, error: errorDevueltos } = rankingDevueltos.length
-    ? await supabase
+    ? // bounded: the top of the returns ranking, one row per id.
+      await supabase
         .from("products")
         .select("id, name, unit, photo_path, stock_opening, trashed_at")
         .eq("owner_id", ownerId)
@@ -551,11 +565,18 @@ export async function cargarInventario({
   const fichaDevuelta = new Map((fichasDevueltas ?? []).map((p) => [p.id as string, p]));
 
   if (idsDeVenta.length) {
-    const { data: lineas, error } = await supabase
-      .from("sale_lines")
-      .select("product_id, quantity, currency, unit_price, unit_cost")
-      .in("sale_id", idsDeVenta);
-    if (error) throw new Error(`inventario: líneas: ${error.message}`);
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    const lineas = await conNombre(
+      "líneas",
+      readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
+        supabase
+          .from("sale_lines")
+          .select("product_id, quantity, currency, unit_price, unit_cost", { count: "exact" })
+          .in("sale_id", batch)
+          .order("id")
+          .range(from, to),
+      ),
+    );
 
     const porProducto: Record<string, number> = {};
     for (const d of devueltas) porProducto[d.productId] = (porProducto[d.productId] ?? 0) + d.quantity;
@@ -604,13 +625,22 @@ export async function cargarInventario({
     const huerfanos = [...new Set(Object.keys(porProducto))].filter((id) => !nombres.has(id));
     const delRanking = new Set(idsDelRanking);
     if (huerfanos.length) {
-      const { data: fuera, error: eFuera } = await supabase
-        .from("products")
-        .select("id, name, unit, photo_path, price_retail, base_currency_retail, base_currency, stock_opening")
-        .eq("owner_id", ownerId)
-        .in("id", huerfanos);
-      if (eFuera) throw new Error(`inventario: fuera del catálogo: ${eFuera.message}`);
-      for (const p of fuera ?? []) {
+      // PL-34: in batches of 100 ids, read to the end (lib/supabase/read-all.ts). Every
+      // product ever sold and since removed can be on this list, so it grows.
+      const fuera = await readAllByIds<Record<string, unknown>>(huerfanos, (batch, from, to) =>
+        supabase
+          .from("products")
+          .select("id, name, unit, photo_path, price_retail, base_currency_retail, base_currency, stock_opening", {
+            count: "exact",
+          })
+          .eq("owner_id", ownerId)
+          .in("id", batch)
+          .order("id")
+          .range(from, to),
+      ).catch((e: Error) => {
+        throw new Error(`inventario: fuera del catálogo: ${e.message}`);
+      });
+      for (const p of fuera) {
         borrados.set(p.id as string, p);
         if (delRanking.has(p.id as string)) fueraDelCatalogo.push(comoAviso(p));
       }

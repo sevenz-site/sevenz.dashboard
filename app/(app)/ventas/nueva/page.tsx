@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/products/availability";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -72,17 +73,27 @@ export default async function NuevaVentaPage({
   // llamado «Mostrador» al que se le puede fiar, que es justo lo que el paso 3
   // prohíbe; se llega a él sin elegirlo, con el botón de finalizar.
   const [{ data: comodin }, rateContext] = await Promise.all([
+    // bounded: the walk-in client, one per business.
     supabase.from("clients").select("id").eq("owner_id", user.id).eq("is_walk_in", true),
     getOwnerRateContext(supabase, user.id),
   ]);
   const idsComodin = new Set((comodin ?? []).map((c) => c.id as string));
 
-  const { data: filas } = await supabase
-    .from("client_summary")
-    .select("*")
-    .eq("owner_id", user.id)
-    .order("name");
-  const clientes = ((filas ?? []) as ClientSummary[]).filter((c) => !idsComodin.has(c.client_id));
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  // A failed read still draws an empty list, as when the error was dropped.
+  const filas = await readAllPages<ClientSummary>((from, to) =>
+    supabase
+      .from("client_summary")
+      .select("*", { count: "exact" })
+      .eq("owner_id", user.id)
+      .order("name")
+      .order("client_id")
+      .range(from, to),
+  ).catch((e: unknown) => {
+    console.error("[nueva venta] client_summary:", e instanceof Error ? e.message : e);
+    return [] as ClientSummary[];
+  });
+  const clientes = filas.filter((c) => !idsComodin.has(c.client_id));
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
   // solo por RLS. Es la regla de `CLAUDE.md` para toda lectura por un id que

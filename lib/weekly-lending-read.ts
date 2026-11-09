@@ -6,6 +6,7 @@ import {
   type LendingPeriod,
   type WeeklyLendingPoint,
 } from "@/lib/lending-charts";
+import { readAllByIds } from "@/lib/supabase/read-all";
 
 // READING THE WEEK'S MOVEMENTS FOR THE CHARTS — the I/O half of
 // `lib/lending-charts.ts`, which stays pure.
@@ -64,19 +65,30 @@ export async function readWeeklyLending(
   // filter at all: it pulled every movement the shop had ever recorded — 411 ms
   // and climbing forever on a 10,560-movement shop — to render a rolling 7-day
   // chart.
-  const { data } = await supabase
-    .from("movements")
-    .select("type, amount, currency, created_at")
-    .in("client_id", clientIds)
-    .is("deleted_at", null)
-    .gte("created_at", lendingFetchWindowStart(period));
-
-  const rows = (data ?? []) as {
+  //
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  // On a failed read the charts stay empty, as they did when the error was dropped: these
+  // charts are drawn on Inicio and must not take the page down.
+  type Row = {
     type: "charge" | "payment" | "return";
     amount: number;
     currency: "USD" | "EUR" | null;
     created_at: string;
-  }[];
+  };
+  const desde = lendingFetchWindowStart(period);
+  const rows = await readAllByIds<Row>(clientIds, (batch, from, to) =>
+    supabase
+      .from("movements")
+      .select("type, amount, currency, created_at", { count: "exact" })
+      .in("client_id", batch)
+      .is("deleted_at", null)
+      .gte("created_at", desde)
+      .order("id")
+      .range(from, to),
+  ).catch((e: unknown) => {
+    console.error("[gráficos de fiado] lectura:", e instanceof Error ? e.message : e);
+    return [] as Row[];
+  });
 
   // The chart sums raw movement amounts, which only means something within one
   // currency — a VE owner gets one chart per currency, each filtered to its own

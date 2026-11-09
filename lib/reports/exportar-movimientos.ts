@@ -3,6 +3,7 @@ import type { OwnerCountry } from "@/lib/types";
 import { documento, fila, importe } from "@/lib/reports/csv";
 import { ventanaDelNegocio } from "@/lib/reports/zona-del-negocio";
 import { claveDeFila, libroDeVenta } from "@/lib/ventas-de-contado";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL FICHERO DE MOVIMIENTOS — fiados y abonos del libro, en CSV
@@ -292,8 +293,10 @@ export async function exportarMovimientos({
     // tabla de más abajo.
     totalAntes = await contar(true);
     [filasAntes, filasEnRango] = await Promise.all([
+      // bounded: `leerTodo` pages these to the end with `.range()` and a count.
       leerTodo(() => conFiltros(supabase.from("movements").select(COLUMNAS_ANTES), false)),
       leerTodo(() =>
+        // bounded: `leerTodo` pages these to the end with `.range()` and a count.
         conFiltros(supabase.from("movements").select(COLUMNAS_EN_RANGO), true),
       ),
     ]);
@@ -406,30 +409,60 @@ export async function exportarMovimientos({
   // misma que decide eso en el historial del cliente y en Reportes. Un par
   // (venta, libro) que dejó cargo es fiado entero y su pago es un abono --ya
   // cubierto por `movements`--; el que no, es contado.
-  const { data: ventasDelRango } = await supabase
-    .from("sales")
-    .select("id, created_at, client_id, transaction_code, clients!inner(name, document_id, owner_id)")
-    .eq("owner_id", ownerId)
-    .is("deleted_at", null)
-    .gte("created_at", ventana.desdeUtc)
-    .lt("created_at", ventana.hastaExclusivoUtc)
-    .order("created_at");
+  //
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts). These three reads
+  // dropped their errors, so a failure wrote a file without its cash sales; now it is the
+  // same «lectura» failure as the movements read above.
+  let ventasDelRango: Record<string, unknown>[];
+  let pagosV: Record<string, unknown>[];
+  let cargosV: Record<string, unknown>[];
+  let ventas: FilaDeVenta[];
+  try {
+    ventasDelRango = await readAllPages<Record<string, unknown>>((from, to) =>
+      supabase
+        .from("sales")
+        .select("id, created_at, client_id, transaction_code, clients!inner(name, document_id, owner_id)", {
+          count: "exact",
+        })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .gte("created_at", ventana.desdeUtc)
+        .lt("created_at", ventana.hastaExclusivoUtc)
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+    );
 
-  const ventas = ((ventasDelRango ?? []) as unknown as FilaDeVenta[]).filter(
-    (v) => !clientId || v.client_id === clientId,
-  );
-  const idsV = ventas.map((v) => v.id);
+    ventas = (ventasDelRango as unknown as FilaDeVenta[]).filter(
+      (v) => !clientId || v.client_id === clientId,
+    );
+    const idsV = ventas.map((v) => v.id);
 
-  const [{ data: pagosV }, { data: cargosV }] = idsV.length
-    ? await Promise.all([
-        supabase.from("sale_payments").select("sale_id, amount, currency").in("sale_id", idsV),
-        supabase
-          .from("movements")
-          .select("sale_id, currency, type, paid_with_credit")
-          .in("sale_id", idsV)
-          .is("deleted_at", null),
-      ])
-    : [{ data: [] }, { data: [] }];
+    [pagosV, cargosV] = idsV.length
+      ? await Promise.all([
+          readAllByIds<Record<string, unknown>>(idsV, (batch, from, to) =>
+            supabase
+              .from("sale_payments")
+              .select("sale_id, amount, currency", { count: "exact" })
+              .in("sale_id", batch)
+              .order("id")
+              .range(from, to),
+          ),
+          readAllByIds<Record<string, unknown>>(idsV, (batch, from, to) =>
+            supabase
+              .from("movements")
+              .select("sale_id, currency, type, paid_with_credit", { count: "exact" })
+              .in("sale_id", batch)
+              .is("deleted_at", null)
+              .order("id")
+              .range(from, to),
+          ),
+        ])
+      : [[], []];
+  } catch (e) {
+    console.error("[exportar-movimientos] lectura de ventas", e);
+    return { motivo: "lectura" };
+  }
 
   const librosFiados = new Set(
     (cargosV ?? [])

@@ -180,7 +180,9 @@ async function armarProductos(
   if (ids.length === 0) return [];
 
   const [{ data: overrides }, { data: activas }] = await Promise.all([
+    // bounded: the prices of a search page (`.limit(12)`) or of ONE sale's products.
     supabase.from("product_price_overrides").select("product_id, tier, currency, amount").in("product_id", ids),
+    // bounded: the currencies of a search page (`.limit(12)`) or of ONE sale's products.
     supabase.from("product_currencies").select("product_id, tier, currency").in("product_id", ids),
   ]);
 
@@ -632,7 +634,9 @@ export async function cuentaDelCliente(clientId: string): Promise<CuentaDelClien
   const idsDeVenta = (ventasCrudas ?? []).map((v) => v.id as string);
   if (idsDeVenta.length > 0) {
     const [{ data: pagos }, { data: lineasDeVenta }] = await Promise.all([
+      // bounded: the payments of ONE client's sales (PL-34 accepts the per-client bound).
       supabase.from("sale_payments").select("sale_id, currency, amount").in("sale_id", idsDeVenta),
+      // bounded: the lines of ONE client's sales (PL-34 accepts the per-client bound).
       supabase
         .from("sale_lines")
         .select("sale_id, name, quantity, unit_price, currency")
@@ -998,6 +1002,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
 
   // ── LOS PRECIOS SE VUELVEN A CALCULAR AQUÍ ──────────────────────────
   const ids = [...new Set(entrada.lineas.map((l) => l.productId))];
+  // bounded: the products on the lines of ONE sale.
   const { data: filas, error: errorProductos } = await supabase
     .from("products")
     .select(COLUMNAS_PRODUCTO)
@@ -1358,6 +1363,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   // A FAILURE HERE DOES NOT STOP THE SALE. The worst a missing cost does is leave that line
   // on the old behaviour in Reportes; refusing would lose a sale over a secondary figure,
   // with the client standing at the counter.
+  // bounded: the products on the lines of ONE sale.
   const { data: costos, error: errorCostos } = await supabase
     .from("products")
     .select("id, cost, cost_currency, supplier")
@@ -1724,10 +1730,12 @@ export async function resumenDeVenta(saleId: string): Promise<ResumenDeVenta> {
   }
 
   const [{ data: lineas }, { data: pagos }, { data: cliente }, contexto] = await Promise.all([
+    // bounded: the lines of ONE purchase.
     supabase
       .from("sale_lines")
       .select("name, quantity, unit_price, currency")
       .in("sale_id", idsDeLaCompra),
+    // bounded: the payments of ONE purchase.
     supabase.from("sale_payments").select("currency, amount").in("sale_id", idsDeLaCompra),
     supabase
       .from("clients")

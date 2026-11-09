@@ -3,6 +3,7 @@
 import { trackServer } from "@/lib/mixpanel-server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { isDocumentTypeFor } from "@/lib/document-id";
@@ -151,13 +152,25 @@ export async function updateClient(
   // aqui.
   if (documentId && documentChanged) {
     const normalizado = normalizeDocumentId(documentId);
-    const { data: suyos } = await supabase
-      .from("clients")
-      .select("id, name, document_id, whatsapp")
-      .eq("owner_id", user.id)
-      .neq("id", clientId)
-      .not("document_id", "is", null);
-    const chocan = (suyos ?? []).filter(
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts). A cut list let a
+    // duplicate document through, so a failed read now refuses the save instead of being
+    // dropped and checking against nobody.
+    let suyos: Record<string, unknown>[];
+    try {
+      suyos = await readAllPages<Record<string, unknown>>((from, to) =>
+        supabase
+          .from("clients")
+          .select("id, name, document_id, whatsapp", { count: "exact" })
+          .eq("owner_id", user.id)
+          .neq("id", clientId)
+          .not("document_id", "is", null)
+          .order("id")
+          .range(from, to),
+      );
+    } catch (e) {
+      return { error: mensajeDeError("guardar los cambios", e, "updateClient"), success: false };
+    }
+    const chocan = suyos.filter(
       (c) => c.document_id && normalizeDocumentId(c.document_id as string) === normalizado,
     );
     // CT-28: DEJA DE SER UN MURO Y PASA A SER UNA PREGUNTA.
