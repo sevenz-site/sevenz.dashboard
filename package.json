@@ -112,6 +112,7 @@
     "qa:kam": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/kam.mjs",
     "qa:segundo-factor": "node --experimental-strip-types --no-warnings qa/segundo-factor.mjs",
     "qa:bs-hoy": "node qa/bs-hoy.mjs",
+    "qa:precio-compartido": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/precio-compartido.mjs",
     "qa:destinos-plantillas": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/destinos-plantillas.mjs",
     "qa:aviso-tasa": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/aviso-tasa.mjs",
     "qa:costo-congelado": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/costo-congelado.mjs",

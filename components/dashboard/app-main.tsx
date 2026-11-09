@@ -72,8 +72,19 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     isProductDetailRoute(pathname);
   // "/profile" since 2026-11-02: must match MobileNavBar, which stops drawing
   // the bar there (see `enMiNegocio` in mobile-nav.tsx).
+  //
+  // "/transacciones" since 2026-11-09: MobileNavBar has returned null on every
+  // transaction screen (`enTransaccion`) since those screens got their own
+  // top bar, but this line never followed, so `main` kept reserving 104px for
+  // a bar that is not drawn. On a long fiado it hid at the end of the scroll;
+  // on a short cash sale it left the new «Compartir» floating 104px above the
+  // edge, which is how it was found (measured: button bottom at 708 of 812).
   const hasBar =
-    !pathname.startsWith("/clients/") && !enAsistenteDeVenta && !revisando && pathname !== "/profile";
+    !pathname.startsWith("/clients/") &&
+    !pathname.startsWith("/transacciones") &&
+    !enAsistenteDeVenta &&
+    !revisando &&
+    pathname !== "/profile";
 
   // ── CUÁNTO AIRE DEBAJO DEL ÚLTIMO BOTÓN ────────────────────────────
   //
@@ -144,6 +155,10 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // (`/transacciones/venta/<id>/<moneda>`) no monta esos botones, así que
     // quitarle el aire la dejaría pegada al filo sin nada que lo ocupe.
     /^\/transacciones\/[^/]+$/.test(pathname) ||
+    // SINCE 2026-11-09 IT DOES: the cash sale got «Compartir» at the bottom at
+    // the owner's request. The Mostrador's sale draws no bar, and that page
+    // puts its own 16px spacer back instead.
+    /^\/transacciones\/venta\/[^/]+\/[^/]+$/.test(pathname) ||
     // "MI NEGOCIO", since 2026-11-02: its "Guardar cambios" moved into
     // `StickyActions` at the owner's request («Fijo abajo, siempre visible»),
     // and that bar brings its own 40px.

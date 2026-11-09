@@ -17,6 +17,7 @@ import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
+import { previewPriceLine } from "@/lib/products/preview-price";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   formatPriceAmount,
@@ -90,6 +91,9 @@ type SharedProduct = {
   // la equivalencia por su cuenta, el candado seria cierto en la ficha y falso
   // justo en la pantalla donde se fijo para que se viera.
   pinned: Partial<Record<PriceCurrency, number>>;
+  // The tier's enabled currencies, base first (`product_catalog_currencies`).
+  // Read since 2026-11-09 for the price in the «Compartir» message.
+  currencies?: PriceCurrency[] | null;
   base_currency: PriceCurrency;
   // TRES ESTADOS Y EL TERCERO ES `null`. Migración 107: `> 0` es «Disponible:
   // NN», `0` es «No disponible», y `null` es «Disponible» sin cifra — porque
@@ -412,7 +416,24 @@ export default async function CatalogoPublicoPage({
                     <ProductShareButton
                       productId={p.id}
                       productName={p.name}
-                      businessName={shared.business_name || "este negocio"}
+                      // THE PREVIEW'S OWN LINE, from the one tier this list
+                      // carries -- the one the product page opens on, which is
+                      // the one the preview quotes. What this list lacks is the
+                      // wholesale minimum, so a wholesale-only product reads
+                      // «al mayor» here and «al mayor (desde N)» in the preview.
+                      priceLine={previewPriceLine({
+                        retail:
+                          p.tier === "retail"
+                            ? { price: p.price, pinned: p.pinned, base_currency: p.base_currency, currencies: p.currencies ?? null }
+                            : null,
+                        wholesale:
+                          p.tier === "wholesale"
+                            ? { price: p.price, pinned: p.pinned, base_currency: p.base_currency, currencies: p.currencies ?? null }
+                            : null,
+                        wholesale_min_quantity: null,
+                        base_currency: p.base_currency,
+                        rates: tasaBase,
+                      })}
                       initialToken={token}
                       sinServidor
                     />

@@ -9,7 +9,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { StepProgress } from "@/components/dashboard/step-progress";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ConsentCheckboxRow } from "@/components/dashboard/whatsapp-consent-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -289,14 +289,9 @@ export function NewClientForm({
           {permiso?.granted ? (
             <AvisoNumeroYaAcepta clientName={permiso.clientName} />
           ) : (
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-              <Checkbox
-                checked={acepta}
-                onCheckedChange={(v) => setAcepta(v === true)}
-                className="mt-0.5"
-              />
-              <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
-            </label>
+            <ConsentCheckboxRow checked={acepta} onCheckedChange={setAcepta}>
+              {textoPermisoDeclarado(nombre)}
+            </ConsentCheckboxRow>
           )}
         </div>
 

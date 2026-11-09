@@ -46,8 +46,16 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 // menú «⋮» y el botón «Compartir» de abajo, que el dueño pidió que se
 // repitieran. Dos copias de esta función es exactamente como acaban mandando
 // mensajes distintos.
-async function compartirTransaccion(compartir: DatosParaCompartir | null, movementId: string) {
+//
+// `rutaPublica` IS THE PATH AFTER `/s/<token>/`, since 2026-11-09: `t/<movementId>`
+// for a fiado, an abono or a return, `v/<saleId>/<book>` for a cash sale. The
+// owner asked that day for «Compartir» on a cash sale «igual que abono y fiado»,
+// and a cash sale has no movement: its public page is `/s/[token]/v/...`.
+export async function compartirTransaccion(compartir: DatosParaCompartir | null, rutaPublica: string) {
   if (!compartir) return;
+  // WHICH KIND OF TRANSACTION IS SHARED, so the cash-sale door added on
+  // 2026-11-09 does not silently inflate the series it joins.
+  const kind = rutaPublica.startsWith("v/") ? "cash_sale" : "movement";
   try {
     // El dueño no tiene el enlace a mano y hay que pedirlo. El cliente lo
     // tiene en la barra de direcciones — y además no podría pedirlo, porque
@@ -67,7 +75,7 @@ async function compartirTransaccion(compartir: DatosParaCompartir | null, moveme
       }
       token = result.token;
     }
-    const url = `${window.location.origin}/s/${token}/t/${movementId}`;
+    const url = `${window.location.origin}/s/${token}/${rutaPublica}`;
 
     const mensaje = mensajeDeTransaccion(compartir.clientName, compartir.transactionCode, url);
 
@@ -77,12 +85,12 @@ async function compartirTransaccion(compartir: DatosParaCompartir | null, moveme
     if (typeof navigator !== "undefined" && navigator.share) {
       // DO THEY SHARE ONE TRANSACTION? `Share Link Opened` never counted this door. This
       // screen also serves the client's link, which has no session to send it with.
-      if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "native" });
+      if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "native", kind });
       await navigator.share({ text: mensaje });
       return;
     }
     await navigator.clipboard.writeText(mensaje);
-    if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "clipboard" });
+    if (compartir.enlace.de !== "cliente") track("Transaction Shared", { method: "clipboard", kind });
     toast.success("Mensaje copiado", { description: mensaje });
   } catch (error) {
     // Cerrar el menú de compartir cuenta como un error para el navegador, y no
@@ -153,7 +161,7 @@ export function DetalleAcciones({
   // Cuenta pausada: borrar un movimiento cambia saldos.
   const guardia = useGuardiaDeCuentaPausada();
 
-  const handleShare = () => compartirTransaccion(compartir, movementId);
+  const handleShare = () => compartirTransaccion(compartir, `t/${movementId}`);
 
   async function handleDelete() {
     if (guardia()) return;
@@ -328,11 +336,17 @@ export function DetalleBotones({
   movementId,
   compartir,
   puedePagar,
+  rutaPublica,
 }: {
+  // A cash sale passes its sale id here and `puedePagar={false}`: there is no
+  // movement, and nothing to pay.
   movementId: string;
   compartir: DatosParaCompartir | null;
   puedePagar: boolean;
+  // Defaults to the movement's public page. See `compartirTransaccion`.
+  rutaPublica?: string;
 }) {
+  const ruta = rutaPublica ?? `t/${movementId}`;
   return (
     // ── PEGADOS AL BORDE DE ABAJO, SIEMPRE A LA VISTA ──────────────────
     //
@@ -360,7 +374,7 @@ export function DetalleBotones({
           type="button"
           variant="outline"
           className="h-10 w-full"
-          onClick={() => void compartirTransaccion(compartir, movementId)}
+          onClick={() => void compartirTransaccion(compartir, ruta)}
         >
           <Share2 className="size-5" aria-hidden />
           Compartir

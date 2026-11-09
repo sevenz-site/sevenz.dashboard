@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { ownerPreviewPriceInput, previewPriceLine } from "@/lib/products/preview-price";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/products/availability";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -72,7 +73,11 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
     <ProductDetail
       product={cargado.product}
       rates={rates}
-      businessName={owner?.business_name ?? "mi negocio"}
+      // The price its «Compartir» message carries (owner's request of
+      // 2026-11-09), from the same rows the screen already loaded.
+      sharePriceLine={previewPriceLine(
+        ownerPreviewPriceInput(cargado.product, cargado.overrides, cargado.initialCurrencies, rates),
+      )}
       catalogToken={catalogLink?.token ?? null}
       lowStockThreshold={Number(
         owner?.low_stock_threshold ?? DEFAULT_LOW_STOCK_THRESHOLD,

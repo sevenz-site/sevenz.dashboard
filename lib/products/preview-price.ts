@@ -79,6 +79,71 @@ export type PreviewPriceInput = {
   rates: { usd: number; eur: number } | null;
 };
 
+// ===========================================================================
+// THE SAME LINE FROM THE OWNER'S OWN ROWS — 2026-11-09
+//
+// The owner asked that day that the text sent with a product link carry «Nombre
+// + precio (puede tener precio en USD y/o EUR)». The preview already computes
+// that price, so the message uses THIS function too: the chat bubble and the
+// card under it cannot then disagree.
+//
+// The owner's screens do not call `get_shared_product`; they hold the product
+// row, its pinned prices and its enabled currencies. This rebuilds the blocks
+// that RPC returns from them, by the same rules: only a PUBLISHED tier with a
+// price counts (the link is for customers), `pinned` is that tier's overrides,
+// and the currencies are the tier's base plus the enabled ones, which is
+// `product_catalog_currencies` (migration 114). `qa:precio-compartido` compares
+// the two faces product by product, because this is a second writer of a rule
+// SQL already owns.
+export type OwnerProductForPreview = {
+  base_currency: PriceCurrency;
+  base_currency_retail: PriceCurrency;
+  base_currency_wholesale: PriceCurrency;
+  price_retail: number | null;
+  price_wholesale: number | null;
+  published_retail: boolean;
+  published_wholesale: boolean;
+  wholesale_min_quantity: number | null;
+};
+
+type Tier = "retail" | "wholesale";
+
+export function ownerPreviewPriceInput(
+  product: OwnerProductForPreview,
+  pinned: Record<Tier, Partial<Record<PriceCurrency, number>>>,
+  currencies: Record<Tier, PriceCurrency[]>,
+  rates: { usd: number; eur: number } | null,
+): PreviewPriceInput {
+  const block = (tier: Tier): BloqueCrudo | null => {
+    const published = tier === "retail" ? product.published_retail : product.published_wholesale;
+    const price = tier === "retail" ? product.price_retail : product.price_wholesale;
+    if (!published || price == null) return null;
+    return {
+      price: Number(price),
+      pinned: Object.fromEntries(
+        Object.entries(pinned[tier] ?? {}).map(([c, v]) => [c, Number(v)]),
+      ) as Partial<Record<PriceCurrency, number>>,
+      base_currency: tier === "retail" ? product.base_currency_retail : product.base_currency_wholesale,
+      currencies: currencies[tier] ?? [],
+    };
+  };
+  return {
+    retail: block("retail"),
+    wholesale: block("wholesale"),
+    wholesale_min_quantity:
+      product.wholesale_min_quantity == null ? null : Number(product.wholesale_min_quantity),
+    base_currency: product.base_currency,
+    rates: rates ? { usd: rates.usd, eur: rates.eur } : null,
+  };
+}
+
+// THE MESSAGE ITSELF: the product, its price, and the link on its own line so
+// WhatsApp draws the preview under it. Without a price (nothing published, or
+// no rate to quote it) it is the name and the link.
+export function productShareMessage(name: string, priceLine: string | null, url: string): string {
+  return priceLine ? `${name} · ${priceLine}\n${url}` : `${name}\n${url}`;
+}
+
 /** The price line, or null when the product carries no price to show. */
 export function previewPriceLine(p: PreviewPriceInput): string | null {
   const product: ProductoPublico = {

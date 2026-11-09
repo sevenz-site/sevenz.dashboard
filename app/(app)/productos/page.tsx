@@ -14,11 +14,16 @@ import type { Categoria } from "@/lib/products/categories";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
+  currenciesOf,
   getBolivarRates,
   isPublished,
+  overridesByTier,
   PRODUCT_COLUMNS,
+  type PriceOverrideRow,
+  type ProductCurrencyRow,
   type ProductRow,
 } from "@/lib/products/catalog";
+import { ownerPreviewPriceInput, previewPriceLine } from "@/lib/products/preview-price";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // EL CATÁLOGO. Primera pantalla de la etapa 1 de inventario.
@@ -124,6 +129,41 @@ export default async function ProductosPage() {
   // Se cuenta aquí y no en el diálogo de compartir: ese es un componente de
   // cliente y tendría que pedir la lista otra vez para saber un número que
   // esta consulta ya trajo.
+  // ── THE PRICE EACH CARD'S «COMPARTIR» SENDS — 2026-11-09 ─────────────────
+  //
+  // The owner's request that day: the message beside a product link carries
+  // the name and the price. It needs the pinned prices and enabled currencies
+  // this screen stopped loading on 2026-10-20, so they come back, but ONLY for
+  // published products — an unpublished one cannot be shared, and the rest
+  // of the screen still does not use them. Two queries, scoped by product id;
+  // with nothing published, none.
+  const publicados = rows.filter(isPublished).map((p) => p.id);
+  const [{ data: overrideRows }, { data: currencyRows }] = publicados.length
+    ? await Promise.all([
+        supabase
+          .from("product_price_overrides")
+          .select("product_id, tier, currency, amount")
+          .in("product_id", publicados),
+        supabase.from("product_currencies").select("product_id, tier, currency").in("product_id", publicados),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const sharePriceLines: Record<string, string | null> = Object.fromEntries(
+    rows.filter(isPublished).map((p) => [
+      p.id,
+      previewPriceLine(
+        ownerPreviewPriceInput(
+          p,
+          overridesByTier((overrideRows ?? []) as PriceOverrideRow[], p.id),
+          {
+            retail: currenciesOf((currencyRows ?? []) as ProductCurrencyRow[], p.id, "retail", p.base_currency_retail),
+            wholesale: currenciesOf((currencyRows ?? []) as ProductCurrencyRow[], p.id, "wholesale", p.base_currency_wholesale),
+          },
+          rates,
+        ),
+      ),
+    ]),
+  );
+
   const publishedCount = {
     retail: rows.filter((p) => p.published_retail).length,
     wholesale: rows.filter((p) => p.published_wholesale).length,
@@ -179,7 +219,7 @@ export default async function ProductosPage() {
             edición son rutas propias y cada una pide sus datos. */}
         <CatalogTable
                 loadFailed={productsError != null}
-                businessName={owner?.business_name || "mi negocio"}
+                sharePriceLines={sharePriceLines}
                 catalogToken={catalogLink?.token ?? null}
               />
       </CatalogFilterProvider>

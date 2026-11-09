@@ -1231,6 +1231,29 @@ añada una propiedad, se mueva de sitio— se le escribe su pregunta entonces.
   que iOS se niega a hacer. Decir «este número es un suelo, no un recuento» en
   el código evita que alguien lo presente como exacto en seis meses.
 
+## Todo ajuste se evalúa también en la resolución web
+
+**Pedido por el dueño el 2026-11-09**, al encargar que el paso 2 del tour señalara
+el botón «Registrar»: *«también corrígelo en web. Ajusta la regla, todo ajuste debe
+considerar también la resolución web, ante la duda o falta de explicidad por mi
+parte respecto a web debes preguntarlo»*.
+
+**La regla**: cualquier cambio de interfaz se diseña, se construye y se prueba en
+las dos anchuras —teléfono (375px) y web (de `md`, 768px, hacia arriba)—, aunque el
+encargo solo nombre una. Y **si el encargo no dice qué pasa en web**, o lo que pasa
+en web tiene más de una lectura razonable, **se le pregunta antes de construir**, no
+se decide solo.
+
+Va aparte de la regla del iPhone de abajo porque falla al revés: aquella cuida que
+lo verificado en el escritorio valga en el teléfono, y esta que lo pedido desde el
+teléfono no se quede sin hacer en web. En este repo las dos anchuras montan con
+frecuencia **componentes distintos** —el botón flotante «Registrar» del teléfono y
+`RegisterButton` de escritorio, la barra de abajo y la lateral—, así que un arreglo
+hecho en uno no llega al otro y nada lo avisa.
+
+**En el informe de QA**, cada fila nombra la anchura en que se probó. Una fila sin
+anchura se lee como probada en las dos.
+
 ## Every requirement must account for iPhone
 
 Sevenz owners work from their phones, and a large share of those are

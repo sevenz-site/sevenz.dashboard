@@ -1712,6 +1712,26 @@ solución fue envolver cada gráfico en su propia fila
 **La regla general:** antes de mover un componente con `flex-1` a otra pantalla,
 mira en qué dirección fluye el contenedor nuevo. Si no es la misma, envúelvelo.
 
+## Una casilla se ve: blanca, con borde de 3:1, y nunca sobre gris
+
+**Desde el 2026-11-09.** Los tenderos reportaron que no encontraban la casilla
+del permiso de WhatsApp en «Nuevo cliente». El borde de `Checkbox` era
+`border-input` sin relleno: alrededor de 1,25:1 sobre blanco, y menos todavía
+sobre el `bg-accent` de la fila que la contenía. Para el dueño la casilla «está
+toda en gris».
+
+- **El borde de un control va a 3:1 como mínimo** (WCAG 1.4.11). `Checkbox` usa
+  `border-muted-foreground` (4,74:1 sobre blanco, medido) y `bg-background`, así
+  que es blanca en cualquier superficie. Se arregló **en el componente** y llega
+  a las catorce pantallas que lo montan.
+- **La fila que la acompaña es blanca con borde**, no `bg-accent`. Es
+  `ConsentCheckboxRow` (`whatsapp-consent-field.tsx`), y las altas lo montan en
+  vez de copiar sus clases: hubo tres copias a mano, y por eso las tres fallaron
+  igual.
+- **Lo mismo vale para cualquier control nuevo** (radio, interruptor, campo): un
+  borde `border-input` sobre un fondo gris no se ve, aunque el contraste del
+  texto pase.
+
 ## Una elección se marca; una acción se pulsa
 
 Si dos botones representan **un valor elegido** —no dos acciones distintas—,

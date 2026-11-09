@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
+import { productShareMessage } from "@/lib/products/preview-price";
 
 // COMPARTIR UN PRODUCTO SUELTO — frames `1175:5758` (la tarjeta) y
 // `1730:14329` (el detalle).
@@ -41,14 +42,18 @@ import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
 export function ProductShareButton({
   productId,
   productName,
-  businessName,
+  priceLine,
   initialToken,
   variante = "flotante",
   sinServidor = false,
 }: {
   productId: string;
   productName: string;
-  businessName: string;
+  // `previewPriceLine(...)`, computed by the page from the data it already
+  // holds — never fetched at tap time: `navigator.share` has to leave the
+  // finger's gesture, and an `await` in between is what iOS Safari refuses.
+  // Null when the product has no published price to quote.
+  priceLine: string | null;
   // El que el negocio YA tiene, leído sin crear nada. `null` = todavía no hay.
   initialToken: string | null;
   // `flotante` = el disco blanco sobre la foto de una TARJETA del catálogo,
@@ -107,10 +112,14 @@ export function ProductShareButton({
     if (!t) return;
 
     const url = `${window.location.origin}/c/${t}/${productId}`;
-    // EL NOMBRE DEL NEGOCIO VA EN EL MENSAJE, no solo en la vista previa: el
-    // cliente recibe el enlace en un chat donde ya hay veinte enlaces, y «Mira
-    // esto» sin decir de quién es no se abre.
-    const mensaje = `${productName} en ${businessName}: ${url}`;
+    // NAME AND PRICE, since 2026-11-09 — the owner's request that day: the text
+    // beside the link carries «Nombre + precio (puede tener precio en USD y/o
+    // EUR)». It replaced «<producto> en <negocio>: <url>»; the business name
+    // went with it because the request lists what the text carries, and it is
+    // not on that list. Confirmed by the owner the same day («sin nombre del
+    // negocio»), told what it costs: a customer who forwards the link to a
+    // friend sends no shop name with it.
+    const mensaje = productShareMessage(productName, priceLine, url);
 
     // WHOLE CATALOGUE OR SINGLE PRODUCTS? `sinServidor` is the customer's own screen,
     // which has no session to send this with. Filed under the owner.

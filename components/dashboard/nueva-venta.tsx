@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConsentCheckboxRow } from "@/components/dashboard/whatsapp-consent-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
@@ -2030,14 +2031,9 @@ function PasoCliente({
                 {cliente.name} ya recibe notificaciones de abono y cobro por WhatsApp.
               </p>
             ) : aceptaAvisos === false ? (
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-                <Checkbox
-                  checked={acepta}
-                  onCheckedChange={(v) => setAcepta(v === true)}
-                  className="mt-0.5"
-                />
-                <span className="text-xs leading-4">{textoPermisoDeclarado(cliente.name)}</span>
-              </label>
+              <ConsentCheckboxRow checked={acepta} onCheckedChange={setAcepta}>
+                {textoPermisoDeclarado(cliente.name)}
+              </ConsentCheckboxRow>
             ) : null}
           </div>
         </div>
@@ -2188,14 +2184,9 @@ function PasoCliente({
         {permisoAlta?.granted ? (
           <AvisoNumeroYaAcepta clientName={permisoAlta.clientName} />
         ) : (
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-accent p-2.5">
-            <Checkbox
-              checked={acepta}
-              onCheckedChange={(v) => setAcepta(v === true)}
-              className="mt-0.5"
-            />
-            <span className="text-xs leading-4">{textoPermisoDeclarado(nombre)}</span>
-          </label>
+          <ConsentCheckboxRow checked={acepta} onCheckedChange={setAcepta}>
+            {textoPermisoDeclarado(nombre)}
+          </ConsentCheckboxRow>
         )}
       </form>
 

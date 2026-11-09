@@ -58,7 +58,7 @@ import {
 // dos diálogos que esta lista montaba. Con el alta y la edición en sus
 // propias rutas, cada una pide lo suyo al servidor y esta tabla vuelve a ser
 // lo que su nombre dice: la rejilla.
-export function CatalogTable({ loadFailed, businessName, catalogToken }: {
+export function CatalogTable({ loadFailed, sharePriceLines, catalogToken }: {
   // La consulta del catalogo fallo. NO es lo mismo que no tener productos, y
   // esa diferencia tiene su propia pantalla — ver la pagina.
   loadFailed: boolean;
@@ -66,7 +66,11 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
   // del SERVIDOR por la misma razon que en `catalog-share.tsx`: con el token
   // ya en la mano no hay ningun `await` entre el toque y la hoja nativa, que
   // es lo que iOS Safari rechaza. Solo la primerisima vez hay espera.
-  businessName: string;
+  //
+  // `sharePriceLines` SINCE 2026-11-09, replacing `businessName`: the price
+  // each card's «Compartir» message carries, by product id, computed on the
+  // server with `previewPriceLine` (see `ProductShareButton`).
+  sharePriceLines: Record<string, string | null>;
   catalogToken: string | null;
 }) {
   const router = useRouter();
@@ -219,7 +223,7 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
               <ProductCard
                 key={p.id}
                 product={p}
-                businessName={businessName}
+                sharePriceLine={sharePriceLines[p.id] ?? null}
                 catalogToken={catalogToken}
                 // ── A LA FICHA, NO AL EDITOR, DESDE EL 2026-10-26 ──────
                 // La tarjeta abría `/productos/<id>/editar` directamente, y la
@@ -245,14 +249,14 @@ export function CatalogTable({ loadFailed, businessName, catalogToken }: {
 
 function ProductCard({
   product,
-  businessName,
+  sharePriceLine,
   catalogToken,
   onEdit,
 }: {
   product: ProductRow;
   // Los dos solo existen para el botón «Compartir», que arma el mensaje y la
   // URL del catálogo público. Ver `ProductShareButton`.
-  businessName: string;
+  sharePriceLine: string | null;
   catalogToken: string | null;
   onEdit: () => void;
 }) {
@@ -330,7 +334,7 @@ function ProductCard({
       <ProductShareButton
         productId={product.id}
         productName={product.name}
-        businessName={businessName}
+        priceLine={sharePriceLine}
         initialToken={catalogToken}
       />
       {/* «Abrir» Y NO «Editar» desde el 2026-10-26: la tarjeta lleva a la
