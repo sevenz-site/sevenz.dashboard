@@ -35,7 +35,7 @@ is a bug, not a style choice.
 ## Step 1 — What the release changes, in the owner's screens
 
 ```sh
-git diff origin/main origin/dev --name-only
+git diff origin/main origin/release/vX.Y.Z --name-only   # the frozen release branch, since 2026-11-09
 ```
 
 From `dashboard/`. Classify each touched file:

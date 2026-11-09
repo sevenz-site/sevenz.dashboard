@@ -109,6 +109,98 @@ receipt across — and it's what keeps step 2's check meaningful. Without it the
 gap grows by one every release, until "6 commits on main" is background noise
 nobody reads, and a real hotfix eventually gets overwritten unnoticed.
 
+### Cada versión se congela en `release/vX.Y.Z` y sale de noche
+
+**Decisión del dueño el 2026-11-09**, con clientes nuevos ya usando la app:
+*«no quiero hacer deployment durante el día mientras usan la app»*. Eligió una
+rama release por versión y quedarse en el plan Hobby de Vercel.
+
+**Por qué de noche, y no es solo prudencia.** Vercel cambia de versión sin caída,
+pero **Hobby no tiene Skew Protection** (solo Pro y Enterprise, comprobado en su
+documentación ese día). Un teléfono que tenía la app abierta durante el despliegue
+sigue con el código viejo, y su siguiente acción de servidor falla: la venta que
+el tendero tenía armada, con el cliente delante. En Hobby, lo único que lo evita
+es desplegar cuando nadie está escribiendo.
+
+**La ventana: 22:00 a 23:00, hora de Venezuela (21:00 en Colombia).** Medido en
+producción el 2026-11-09, ventas y movimientos de 30 días por hora: a las 22h hubo
+14, el mínimo de la noche (21h: 32, 23h: 22, 0h: 17; de 15h a 17h, entre 78 y 86).
+La madrugada está casi vacía, pero a esa hora nadie ve si algo se rompió. **Se
+vuelve a medir cuando el número de negocios se duplique**, con esta consulta en
+**PRODUCCIÓN** (`rabmiyqodnvnrwiartuj`), de solo lectura:
+
+```sql
+select extract(hour from (x.created_at at time zone 'America/Caracas'))::int as hora_venezuela,
+       count(*) as registros
+from (
+  select created_at from public.movements where created_at > now() - interval '30 days'
+  union all
+  select created_at from public.sales where created_at > now() - interval '30 days'
+) x
+group by 1
+order by 1;
+```
+
+**El recorrido.** No cambia los cuatro pasos de arriba: los aplica a la rama
+release en vez de a `dev`.
+
+1. **Congelar**, cuando la versión está completa: `git switch -c release/vX.Y.Z
+   origin/dev` y su push. Desde ese momento `dev` ya es la versión siguiente.
+2. **Cortar la rama release dispara el `qa-regression-checklist`, siempre.**
+   Pedido por el dueño el 2026-11-09: *«Se debe ejecutar QA checklist al lanzar a
+   la rama release/»*. Corre de día sobre la rama recién cortada, con Fable 5.1 y
+   con la misma parada para confirmar el modelo; con `npm run dev` desde esa rama
+   y contra la base dev. Su alcance es `git diff origin/main
+   origin/release/vX.Y.Z`. Una rama release sin checklist corrido no se mergea a
+   `main`. Si después del checklist entra un arreglo a la rama, se vuelven a
+   correr las filas que ese arreglo toca antes de la ventana.
+3. **Un arreglo que salga del checklist se hace en la rama release** y se mergea a
+   `dev` en el acto. Hecho en `dev`, no saldría; hecho solo en la rama, `dev` lo
+   rehace o lo pierde.
+4. **En la ventana**: migraciones en producción → `git diff
+   origin/release/vX.Y.Z...origin/main` vacío → `git merge --no-ff` de la rama en
+   `main` → push → comprobación en vivo → etiqueta → back-merge de `main` en `dev`.
+   La rama release se borra después; la etiqueta queda.
+5. **A la mañana siguiente, antes de las 8:00**, una pasada: el panel de salud de
+   `/admin`, y que las ventas del día empiecen a entrar. Los registros de Vercel
+   solo duran una hora, así que no sirven para revisar la noche.
+
+#### UNA URL DE VISTA PREVIA SE COMPRUEBA ANTES DE ESCRIBIR NADA EN ELLA
+
+**Regla del dueño el 2026-11-09, para que se cumpla siempre**: *«La URL de vista
+previa de la rama release apunta a la base de producción. El checklist
+registraría ventas de prueba en negocios reales y nada avisaría. Por eso la regla
+dice que, antes de escribir nada en esa URL, se comprueba que apunta a dev. Las
+pruebas normales corren en tu computadora y no tienen este riesgo.»*
+
+**Antes de la primera escritura** (una venta, un abono, un cliente, un inicio de
+sesión que cree algo) en cualquier URL de Vercel que no sea `localhost`: la de la
+rama release, `dev.sevenz.site` o cualquier otra vista previa. **Cómo se
+comprueba, sin escribir**: se abre la URL, se leen las peticiones de red, y el
+host de Supabase tiene que ser **`vzqppwrwnmlbrxizskdh.supabase.co`**. Si sale
+**`rabmiyqodnvnrwiartuj`**, o no se puede ver, **se para ahí**: no se escribe, se
+le dice al dueño, y se prueba en `localhost`.
+
+**Por qué no basta con suponerlo**: las variables de una vista previa las decide
+Vercel por entorno y por rama, y una rama nueva puede heredar otras distintas de
+las de `dev`. El fallo no da error: la venta de prueba se guarda bien, en el
+negocio de alguien, y aparece en su historial y en el enlace que ve su cliente. Es
+la misma trampa que «Always name the environment», pero en una URL en vez de en
+una consulta.
+
+**La comprobación va en el informe de QA** como una fila: URL, host de Supabase
+visto y resultado. Una fila que dice «probado en la vista previa» sin esa
+comprobación no vale.
+
+**Lo que sale fuera de la ventana:**
+
+- **Un arreglo urgente de algo roto en producción**, a cualquier hora, por el
+  camino de los arreglos urgentes. Dejar la app rota hasta la noche cuesta más que
+  una pestaña vieja.
+- **`Web/`** no tiene acciones de servidor y no sufre este fallo. Solo entra en la
+  ventana cuando describe algo de esa versión (ayuda, FAQ), para que no explique
+  una pantalla que todavía no existe.
+
 ### Cuando la rama de release NO sale de `dev`
 
 A veces hay que desplegar una parte y dejar el resto en `dev` — porque `dev`
@@ -2070,7 +2162,8 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 
 ## Skills that apply automatically
 
-- Before merging `dev` into `main`, or making any change to the production
+- When a `release/vX.Y.Z` branch is cut (owner's request of 2026-11-09), before
+  merging it into `main`, or before making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, always with
   the Fable 5.1 model (owner's decision of 2026-11-04). **Before the first check,
   ask the owner to switch the session to Fable 5.1 and stop there until he

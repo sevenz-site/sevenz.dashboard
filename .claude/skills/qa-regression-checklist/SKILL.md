@@ -1,7 +1,7 @@
 ---
 name: qa-regression-checklist
 model: claude-fable-5-1
-description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — merging dev into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
+description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — cutting a release/vX.Y.Z branch from dev (always triggers it), merging a release branch into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
 
 **Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04, y
@@ -85,7 +85,21 @@ estaban escritos.
 
 ## 1. Scope the change
 
-- `git diff origin/main origin/dev --name-only` (or equivalent) — what
+- **Desde el 2026-11-09 el checklist corre sobre la rama congelada
+  `release/vX.Y.Z`, no sobre `dev`** (CLAUDE.md, «Cada versión se congela en
+  `release/vX.Y.Z` y sale de noche»). Si todavía no existe, se corta de
+  `origin/dev` antes de la primera comprobación, y las suites se corren con
+  `npm run dev` desde esa rama. Un arreglo que salga de aquí se hace en la rama
+  y se mergea a `dev` en el acto. El lanzamiento va en la ventana de 22:00 a
+  23:00 de Venezuela, salvo un arreglo urgente.
+- **Parada dura, antes de escribir nada en una URL que no sea `localhost`**
+  (la vista previa de la rama release, `dev.sevenz.site`): se leen sus
+  peticiones de red y el host de Supabase tiene que ser
+  `vzqppwrwnmlbrxizskdh.supabase.co`. Si sale `rabmiyqodnvnrwiartuj` o no se
+  puede ver, no se escribe y se prueba en `localhost`. Va como fila propia en el
+  informe. Regla del dueño del 2026-11-09, entera en CLAUDE.md («UNA URL DE VISTA
+  PREVIA SE COMPRUEBA ANTES DE ESCRIBIR NADA EN ELLA»).
+- `git diff origin/main origin/release/vX.Y.Z --name-only` — what
   actually changed since the last production release. Read every touched
   file's diff, not just the commit messages.
 - Identify which of the flows below are actually affected. Don't run the
@@ -1073,7 +1087,7 @@ suena en cada lanzamiento deja de leerse.
 **1. Qué eventos se van.** Esto debe salir vacío:
 
 ```sh
-git diff origin/main origin/dev -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
+git diff origin/main origin/release/vX.Y.Z -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
 ```
 
 Cada línea es un evento que desaparece o que se movió. Si se movió, ya está. Si se
