@@ -3,6 +3,8 @@ import { getRateHealth } from "@/lib/admin/rate-health";
 import { getCreditWatch } from "@/lib/admin/credit-watch";
 import { creditWatchForLog } from "@/lib/returns/credit-watch";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
+import { getSaludDelCronWhatsapp } from "@/lib/admin/whatsapp-cron";
+import { cronForLog, dailyVerdict } from "@/lib/admin/daily-health";
 
 export const runtime = "nodejs";
 
@@ -24,14 +26,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
 
-  const [health, creditWatch] = await Promise.all([getRateHealth(), getCreditWatch()]);
+  const [health, creditWatch, cron] = await Promise.all([
+    getRateHealth(),
+    getCreditWatch(),
+    getSaludDelCronWhatsapp(),
+  ]);
   await avisarTasaRetenida(health);
+  // PL-28, since 2026-11-09: the WhatsApp cron's heartbeat rides the same question. Either
+  // failing answers 503, and `detail` names which one, because that line is what GitHub's
+  // failure notice prints. See lib/admin/daily-health.ts for what the log may carry.
+  const verdict = dailyVerdict(health, cron);
   // B OF PL-22 RIDES THE SAME MESSENGER, as a line of its own: counts and the window, never a
   // business name or an amount, because the workflow's logs are public. It does not decide the
   // status yet: a week of observation first, then the owner says whether it turns GitHub red
   // (lib/returns/credit-watch.ts).
   return NextResponse.json(
-    { ...health, credit_watch: creditWatchForLog(creditWatch) },
-    { status: health.status === "fail" ? 503 : 200 },
+    {
+      ...health,
+      detail: verdict.detail,
+      whatsapp_cron: cronForLog(cron),
+      credit_watch: creditWatchForLog(creditWatch),
+    },
+    { status: verdict.failed ? 503 : 200 },
   );
 }

@@ -1,5 +1,6 @@
 # Fails, and so makes GitHub notify the owner, when production has been showing a held
-# exchange rate for more than 24 hours. See app/api/cron/rate-health/route.ts for why this is
+# exchange rate for more than 24 hours — and, since 2026-11-09 (PL-28), when the WhatsApp
+# cron has not run for 26 hours or its last run errored (lib/admin/daily-health.ts). See app/api/cron/rate-health/route.ts for why this is
 # the channel. Runs after the 13:00 UTC rate cron; GitHub may start it some minutes late.
 #
 # Needs one repository secret, CRON_SECRET, with the same value Vercel has in production.
