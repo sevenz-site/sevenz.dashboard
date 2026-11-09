@@ -494,6 +494,12 @@ that lives outside this repo.
   diff touches `lib/security/`, `lib/whatsapp/` or either switch is about to
   be turned on in production. Writes one throw-away business in dev and
   removes it.
+- **`npm run qa:session-device`** — the proxy, over plain HTTP with a real
+  session cookie: an open session leaves the account's FIRST device in
+  silence, a second browser is not made known, and the app's background
+  requests ask nothing (`PL-40`). **Needs `npm run dev`**, like `qa:attack`.
+  Run it whenever the diff touches `lib/supabase/middleware.ts`, `proxy.ts`
+  or `lib/security/`: that file is in front of every screen of the app.
 
 **Both, not one.** On 2026-09-28 `qa:pausados` was green, 5 of 5, while a bug
 would have left every paused owner with no message at all: the template was

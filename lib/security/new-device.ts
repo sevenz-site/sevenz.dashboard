@@ -30,6 +30,11 @@ import {
 // regardless, which is the point of shipping the switch off: by the day it turns on, every
 // owner's phone is already known and the first alerts are real ones.
 //
+// THAT LAST SENTENCE WAS A HOPE, AND IT WAS WRONG. Measured in production on 2026-11-09,
+// three days after it shipped: 4 owners had a device, because sessions last and nobody had
+// signed in again. An open session now leaves the account's first device too: see
+// lib/security/session-device.ts, called from the proxy.
+//
 // THE NUMBER IS READ INSIDE THE FUNCTION, AT THIS SIGN-IN. A thief who changes the profile's
 // WhatsApp number in an earlier session would already own the account; this alert is for the
 // moment they come in. Changing the number also notifies the old one (TODO with C2's second
