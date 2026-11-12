@@ -15,7 +15,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { guardarAvisosWhatsapp, registrarPreguntaAvisos } from "@/app/(app)/profile/actions";
-import { TEXTO_AVISOS_WHATSAPP } from "@/lib/whatsapp-opt-in";
+import { TEXTO_AVISOS_WHATSAPP_V2 } from "@/lib/whatsapp-opt-in";
 
 // "Notificaciones por WhatsApp" — la pregunta a los dueños que ya estaban
 // cuando esto se construyó, y que por tanto nunca vieron nada.
@@ -60,7 +60,7 @@ export function PedirAvisosWhatsappDialog({ whatsapp }: { whatsapp: string | nul
 
   function responder() {
     startTransition(async () => {
-      const r = await guardarAvisosWhatsapp(activo, TEXTO_AVISOS_WHATSAPP);
+      const r = await guardarAvisosWhatsapp(activo, TEXTO_AVISOS_WHATSAPP_V2);
       if (r.error) {
         toast.error(r.error);
         return;
@@ -93,7 +93,7 @@ export function PedirAvisosWhatsappDialog({ whatsapp }: { whatsapp: string | nul
               interruptor que describe. Esta copia es solo para un lector de
               pantalla, que anuncia el diálogo antes de llegar al contenido. */}
           <DialogDescription className="sr-only">
-            Elige si quieres recibir el resumen semanal de tu cartera por WhatsApp.
+            Elige si quieres recibir el resumen semanal de tu negocio por WhatsApp.
           </DialogDescription>
         </DialogHeader>
 
@@ -101,10 +101,10 @@ export function PedirAvisosWhatsappDialog({ whatsapp }: { whatsapp: string | nul
           <div className="flex items-start justify-between gap-4">
             {/* EL MISMO STRING QUE SE GUARDA EN LA FICHA AL ACEPTAR. No es una
                 paráfrasis del consentimiento: es el consentimiento. Si esta
-                línea y `TEXTO_AVISOS_WHATSAPP` dejaran de coincidir, la
+                línea y `TEXTO_AVISOS_WHATSAPP_V2` dejaran de coincidir, la
                 evidencia que le enseñaríamos a Meta sería falsa. */}
             <Label htmlFor={switchId} className="text-sm leading-relaxed font-normal">
-              {TEXTO_AVISOS_WHATSAPP}
+              {TEXTO_AVISOS_WHATSAPP_V2}
             </Label>
             <div className="flex shrink-0 items-center gap-2">
               {guardando ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> : null}

@@ -37,6 +37,26 @@ export const TEXTO_AVISOS_WHATSAPP_REGISTRO =
   "Al crear tu cuenta aceptas recibir un resumen semanal de tu cartera en tu " +
   "WhatsApp. Puedes desactivarlo cuando quieras en Mi negocio.";
 
+// ── VERSION 2, from v0.6.0 (2026-11-12) ──────────────────────────────────
+//
+// The weekly message stops being only the collections summary: `negocio_resumen` adds sales,
+// `atencion_negocio` adds products and orders, and `account_ready` / `prueba_por_vencer` are
+// account notices. The two sentences above promise «resumen semanal de cartera» and nothing
+// else, so they stay as the record of what was accepted until today and new consent is
+// collected with these. Wording proposed and approved by the owner on 2026-11-12, frames
+// `2108:21609` in Figma.
+//
+// Owners who accepted with version 1 are NOT asked again (owner's decision of 2026-11-06):
+// they are told once, by the notice that `tocaAvisoDelResumen` gates below.
+export const TEXTO_AVISOS_WHATSAPP_V2 =
+  "Recibir en tu WhatsApp el resumen semanal de tu negocio y los avisos de tu cuenta.";
+
+export const TEXTO_AVISOS_WHATSAPP_REGISTRO_V2 =
+  "Al crear tu cuenta aceptas recibir en tu WhatsApp un resumen semanal de tu negocio y los " +
+  "avisos de tu cuenta. Puedes desactivarlo cuando quieras en Mi negocio.";
+
+const TEXTOS_V2 = new Set([TEXTO_AVISOS_WHATSAPP_V2, TEXTO_AVISOS_WHATSAPP_REGISTRO_V2]);
+
 // ── El del CLIENTE FINAL, que no es usuario de Sevenz ────────────────────
 //
 // Third surface, third constant, same rule: this is shown on /s/[token] and
@@ -80,6 +100,33 @@ export function aceptaAvisosWhatsapp(
   if (!owner.whatsapp_opt_in_at) return false;
   if (!owner.whatsapp_opt_out_at) return true;
   return new Date(owner.whatsapp_opt_in_at) > new Date(owner.whatsapp_opt_out_at);
+}
+
+// ── The one-time notice that the weekly message changed (v0.6.0) ─────────
+//
+// «Tu resumen semanal ahora incluye ventas y productos. Puedes desactivarlo en Mi negocio»,
+// the owner's words of 2026-11-06. Shown once, in Inicio, to whoever can be written to and
+// accepted with a sentence that did not mention any of that. The edges, each decided:
+//   - accepted with version 2 (signed up or switched on after v0.6.0): already read it, no;
+//   - switched off, or never accepted: nothing changes for them, no;
+//   - still in the welcome tour: another layer is already on screen, not yet;
+//   - already shown: never again, even if it was closed with the X. It is marked as seen the
+//     moment it appears, like the dialog that asks for permission.
+export function tocaAvisoDelResumen(
+  owner: Pick<
+    Owner,
+    | "whatsapp"
+    | "whatsapp_opt_in_at"
+    | "whatsapp_opt_out_at"
+    | "whatsapp_opt_in_text"
+    | "whatsapp_scope_notice_at"
+    | "onboarding_completed_at"
+  >,
+): boolean {
+  if (!aceptaAvisosWhatsapp(owner)) return false;
+  if (owner.whatsapp_opt_in_text && TEXTOS_V2.has(owner.whatsapp_opt_in_text)) return false;
+  if (!owner.onboarding_completed_at) return false;
+  return !owner.whatsapp_scope_notice_at;
 }
 
 // ── Cuándo volver a preguntar ────────────────────────────────────────────

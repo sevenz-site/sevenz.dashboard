@@ -15,7 +15,8 @@ import { ImportarCartera } from "@/components/dashboard/importar-cartera";
 import { InstallAppBanner } from "@/components/install-app";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { PedirAvisosWhatsappDialog } from "@/components/dashboard/pedir-avisos-whatsapp-dialog";
-import { tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
+import { tocaAvisoDelResumen, tocaPreguntarAvisos } from "@/lib/whatsapp-opt-in";
+import { AvisoResumenWhatsappDialog } from "@/components/dashboard/aviso-resumen-whatsapp-dialog";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { computeCreditScoresForClients } from "@/lib/credit-score-batch";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
@@ -106,7 +107,7 @@ export default async function DashboardPage({
     supabase
       .from("owners")
       .select(
-        "business_name, country, first_name, whatsapp, onboarding_completed_at, whatsapp_opt_in_at, whatsapp_opt_out_at, whatsapp_prompt_last_at, whatsapp_prompt_count",
+        "business_name, country, first_name, whatsapp, onboarding_completed_at, whatsapp_opt_in_at, whatsapp_opt_out_at, whatsapp_opt_in_text, whatsapp_scope_notice_at, whatsapp_prompt_last_at, whatsapp_prompt_count",
       )
       .eq("id", user!.id)
       .single(),
@@ -207,6 +208,9 @@ export default async function DashboardPage({
   // Sevenz no sirven. El resto de condiciones están en tocaPreguntarAvisos().
   const pedirAvisos =
     owner !== null && tocaPreguntarAvisos(owner, totalCop > 0 || totalUsd > 0 || totalEur > 0);
+  // The one-time notice that the weekly WhatsApp changed (v0.6.0). Never together with the
+  // dialog above: that one is for owners who have not accepted, this one for those who have.
+  const avisoDelResumen = owner !== null && !pedirAvisos && tocaAvisoDelResumen(owner);
 
   // WHICH OF THE TWO LEDGERS GOES BIG. The screen decides because the screen is
   // what holds both totals; the card only draws them. A tie goes to USD on
@@ -297,6 +301,7 @@ export default async function DashboardPage({
             un solo número para toda la plataforma, tres dueños marcando el
             mensaje como no deseado bajan el rating de los 24 a la vez. */}
         {pedirAvisos ? <PedirAvisosWhatsappDialog whatsapp={owner?.whatsapp ?? null} /> : null}
+        {avisoDelResumen ? <AvisoResumenWhatsappDialog /> : null}
 
         {/* El aviso va ARRIBA DEL TODO, antes de la cartera. Si estuviera junto
             al boton de agregar, el tendero solo se enteraria al ir a fiar — y ya

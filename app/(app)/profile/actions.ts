@@ -478,6 +478,23 @@ export async function guardarAvisosWhatsapp(
 // No devuelve error al llamante a propósito. Si esto falla, lo peor que pasa
 // es que el diálogo salga una vez de más; romperle la pantalla al dueño por no
 // poder escribir un contador sería un intercambio pésimo. Queda en el log.
+// The one-time notice «tu resumen semanal ahora incluye ventas y productos» (v0.6.0, migration
+// 202). Written the moment it appears, so the X does not bring it back. Only the signed-in
+// owner's own row, and only if it was still unset: a second call changes nothing.
+export async function registrarAvisoDelResumen(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase
+    .from("owners")
+    .update({ whatsapp_scope_notice_at: new Date().toISOString() })
+    .eq("id", user.id)
+    .is("whatsapp_scope_notice_at", null);
+  if (error) console.error("registrarAvisoDelResumen:", error);
+}
+
 export async function registrarPreguntaAvisos(): Promise<void> {
   const supabase = await createClient();
   const {

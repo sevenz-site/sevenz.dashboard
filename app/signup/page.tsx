@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
+import { TEXTO_AVISOS_WHATSAPP_REGISTRO_V2 } from "@/lib/whatsapp-opt-in";
 import Image from "next/image";
 import Link from "next/link";
 import { signup, type SignupState } from "./actions";
@@ -309,7 +309,7 @@ export default function SignupPage() {
                 El texto es literalmente el que se guarda en la ficha, para que
                 la evidencia no sea una reconstrucción. Ver lib/whatsapp-opt-in.ts. */}
             <p className="text-xs leading-relaxed text-muted-foreground">
-              {TEXTO_AVISOS_WHATSAPP_REGISTRO}
+              {TEXTO_AVISOS_WHATSAPP_REGISTRO_V2}
             </p>
             {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
             {state.alreadyRegistered ? (
