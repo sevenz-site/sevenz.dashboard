@@ -392,7 +392,7 @@ try {
     { clave: P("productos/actions.ts#renombrarCategoria"), fase: 2, ataques: [["renombra la categoría de B", A.cookie, () => [ctx.catB, "HACKED"]]], control: [A.cookie, () => [ctx.catA, "Categoría de A"]] },
     { clave: P("productos/actions.ts#eliminarCategoria"), fase: 2, ataques: [["elimina la categoría de B", A.cookie, () => [ctx.catB]]], control: [A.cookie, () => [ctx.catA2]] },
     ...[["actions.ts#getNotifications"], ["actions.ts#getUnreadNotificationCount"], ["actions.ts#completeOnboarding"], ["productos/actions.ts#getOrCreateCatalogLink"], ["ventas/actions.ts#resolverMostrador"],
-        ["profile/actions.ts#registrarPreguntaAvisos"]].map(([k]) => ({
+        ["profile/actions.ts#registrarPreguntaAvisos"], ["profile/actions.ts#registrarAvisoDelResumen"]].map(([k]) => ({
       clave: P(k), fase: 2, ataques: [["un anónimo la llama", null, () => []]], control: [A.cookie, () => []],
     })),
     { clave: P("actions.ts#recordImportNotification"), fase: 2, ataques: [["un anónimo la llama", null, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]]], control: [A.cookie, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]] },

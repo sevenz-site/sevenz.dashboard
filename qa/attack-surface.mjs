@@ -485,6 +485,8 @@ export const MANIFEST = {
     "app/(app)/profile/actions.ts#updatePaymentMethod": "atacada",
     "app/(app)/profile/actions.ts#guardarAvisosWhatsapp": "atacada",
     "app/(app)/profile/actions.ts#registrarPreguntaAvisos": "atacada",
+    // v0.6.0 (202): marks the «tu resumen cambia» notice as seen. Writes only the caller's own row.
+    "app/(app)/profile/actions.ts#registrarAvisoDelResumen": "atacada",
     "app/(app)/profile/actions.ts#updateBusinessSettings": "atacada",
     "app/(app)/reportes/actions.ts#calificarAsistente": "atacada",
     "app/(app)/reportes/actions.ts#guardarUmbralDeStock": "atacada",
