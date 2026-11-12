@@ -55,7 +55,7 @@ globalThis.fetch = async (url, init) => {
   return fetchReal(url, init);
 };
 
-const { trialEndText, accountReadyParameters, sendAccountReady } = await import("../lib/whatsapp/account-ready.ts");
+const { trialEndText, accountReadyParameters, sendAccountReady, sendPendingAccountReady } = await import("../lib/whatsapp/account-ready.ts");
 const { recordLoginDevice } = await import("../lib/security/new-device.ts");
 
 // ── 1. Pure ───────────────────────────────────────────────────────────────
@@ -147,6 +147,20 @@ try {
   check("3c. el fallo queda registrado y no gasta el turno", (fallida ?? []).length === 1 && fallida[0].ok === false, JSON.stringify(fallida));
   const r3 = await sendAccountReady(B.id);
   check("3d. el reintento (el cron) lo manda", r3.estado === "enviado" && sobre(aKapso.at(-1)).to === NUM_B, JSON.stringify(r3));
+
+  // ── 3e. The cron's catch-up, end to end. Only when the pending list holds nobody but this
+  // suite's accounts: with fetch intercepted, Kapso «accepts» every send, so running it over a
+  // real tester's account would mark their welcome as sent in dev without it ever leaving.
+  const D = await cuenta("d", "570000000014");
+  const { data: pend3 } = await admin.rpc("account_ready_pending");
+  const ajenos = (pend3 ?? []).map((x) => (typeof x === "string" ? x : Object.values(x)[0])).filter((id) => !usuarios.includes(id));
+  if (ajenos.length) {
+    console.log(`SKIP  3e. el envío de la mañana, de punta a punta — hay ${ajenos.length} cuenta(s) de dev en la lista que no son de esta suite`);
+  } else {
+    const antesD = aKapso.length;
+    const tanda = await sendPendingAccountReady();
+    check("3e. el envío de la mañana manda a quien falta y a nadie más", tanda.enviados === 1 && tanda.fallidos === 0 && aKapso.length === antesD + 1 && sobre(aKapso.at(-1)).to === "570000000014", JSON.stringify(tanda));
+  }
 
   // ── 4. The guards. Each one ON A FRESH ACCOUNT, so «already_sent» cannot hide them ──
   const C = await cuenta("c", "570000000013");
