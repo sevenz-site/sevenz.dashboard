@@ -142,6 +142,15 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "url_suffix",
   },
 
+  // Approved as Utility on 2026-11-12 (owner's report). Body, bullets, footer and the STATIC
+  // button «Ver mi negocio» → https://app.sevenz.site were compared with Kapso's preview that
+  // day. The variable NAMES and ORDER below are the ones the draft's curl showed on
+  // 2026-11-09; they are still to be read off the approved template before production.
+  account_ready: {
+    cuerpo: ["owner_name", "business_name", "trial_end_date"],
+    boton: "sin_parametros",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

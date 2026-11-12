@@ -255,6 +255,9 @@ export const MANIFEST = {
     admin_credit_watch: "service",
     // 192 (C2 of PL-22): sign-in devices and «No fui yo». Server only, except the boolean.
     register_login_device: "service",
+    // 200: who gets `account_ready`. Only the sign-in and the cron call them.
+    account_ready_target: "service",
+    account_ready_pending: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",

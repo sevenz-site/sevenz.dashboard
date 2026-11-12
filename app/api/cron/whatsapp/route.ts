@@ -7,6 +7,7 @@ import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getRateHealth } from "@/lib/admin/rate-health";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
+import { sendPendingAccountReady } from "@/lib/whatsapp/account-ready";
 
 export const runtime = "nodejs";
 
@@ -76,6 +77,15 @@ export async function GET(request: Request) {
   // throws, and the batch below does not depend on it.
   await avisarTasaRetenida(await getRateHealth());
 
+  // `account_ready` catch-up (2026-11-12): whoever confirmed in the last 3 days and still has
+  // no successful send. Its own try, so a failure here never costs the weekly summary.
+  let cuentasListas: Awaited<ReturnType<typeof sendPendingAccountReady>> | null = null;
+  try {
+    cuentasListas = await sendPendingAccountReady();
+  } catch (e) {
+    console.error("cron whatsapp: account_ready:", e);
+  }
+
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.
     const resumen = await enviarResumenSemanal();
@@ -112,6 +122,7 @@ export async function GET(request: Request) {
       },
       atencion,
       recordatorios,
+      cuentasListas,
       bloqueadasHoy,
     };
 
