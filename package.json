@@ -84,6 +84,7 @@
     "qa:credit-watch": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/credit-watch.mjs",
     "qa:new-device": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/new-device.mjs",
     "qa:account-ready": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/account-ready.mjs",
+    "qa:trial-ending": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/trial-ending.mjs",
     "qa:security-alerts": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/security-alerts.mjs",
     "qa:session-device": "node qa/session-device.mjs",
     "qa:diagnostico-tasas": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/diagnostico-tasas.mjs",

@@ -151,6 +151,14 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "sin_parametros",
   },
 
+  // Approved on 2026-11-07; body, footer and button text compared with Kapso's preview that
+  // day. The variable names below are the spec's; Kapso's preview does not show them, so they
+  // are still to be read off the approved template before production.
+  prueba_por_vencer: {
+    cuerpo: ["owner_name", "trial_end_date"],
+    boton: "sin_parametros",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

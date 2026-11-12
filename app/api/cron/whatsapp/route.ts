@@ -8,6 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getRateHealth } from "@/lib/admin/rate-health";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
 import { sendPendingAccountReady } from "@/lib/whatsapp/account-ready";
+import { sendTrialEndingNotices } from "@/lib/whatsapp/trial-ending";
 
 export const runtime = "nodejs";
 
@@ -86,6 +87,10 @@ export async function GET(request: Request) {
     console.error("cron whatsapp: account_ready:", e);
   }
 
+  // `prueba_por_vencer` (2026-11-12): trials ending exactly 7 days from today. The one
+  // extraordinary third message of the week; never throws.
+  const pruebaPorVencer = await sendTrialEndingNotices();
+
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.
     const resumen = await enviarResumenSemanal();
@@ -123,6 +128,7 @@ export async function GET(request: Request) {
       atencion,
       recordatorios,
       cuentasListas,
+      pruebaPorVencer,
       bloqueadasHoy,
     };
 

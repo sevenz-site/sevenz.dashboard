@@ -26,6 +26,7 @@ export const DESTINO_DE_PLANTILLA: Record<string, { seccion: Seccion; periodo?: 
   atencion_productos: { seccion: "metricas-inventario" },
   cierre_mensual: { seccion: "margen" },
   cuenta_lista: "inicio",
+  account_ready: "inicio",
   primera_semana: "inicio",
   negocio_estado: "inicio",
   prueba_por_vencer: "inicio",

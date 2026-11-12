@@ -258,6 +258,8 @@ export const MANIFEST = {
     // 200: who gets `account_ready`. Only the sign-in and the cron call them.
     account_ready_target: "service",
     account_ready_pending: "service",
+    // 201: whose trial ends in exactly 7 days. Only the cron calls it.
+    trial_ending_targets: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",
