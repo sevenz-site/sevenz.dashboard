@@ -92,9 +92,7 @@ export function OrderProductSheet({
         ? rates.usd
         : moneda === "EUR"
           ? rates.eur
-          : moneda === "USDT"
-            ? rates.usdt
-            : null;
+          : null;
   const enBolivares = bsPorUnidad == null ? null : totalLinea * bsPorUnidad;
 
   const fotoUrl = producto?.photo_path ? getPublicProductPhotoUrl(producto.photo_path) : null;

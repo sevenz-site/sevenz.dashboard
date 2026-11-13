@@ -27,7 +27,6 @@ import {
   formatAmountForInput,
   formatPercent,
   formatPriceAmount,
-  isSaleCurrencyLocked,
   marginFromPrice,
   parseAmount,
   parseTypedAmount,
@@ -37,7 +36,6 @@ import {
   type CostCurrency,
   type PriceCurrency,
   type PriceTier,
-  withoutLockedSaleCurrencies,
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
@@ -61,7 +59,9 @@ const DEFAULT_MARGIN: Record<PriceTier, string> = { retail: "30", wholesale: "15
 // Las monedas en las que un producto puede llevar precio. VES no está: es la
 // moneda en la que el cliente PAGA, y desde el frame 1192:4185 se enseña como
 // una línea «Hoy: Bs. …» DEBAJO de cada una, no como una fila propia.
-const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT"];
+// USDT left on 2026-11-12 (CT-171), owner's decision: «Quita USDT del precio de costo y
+// del precio de venta».
+const SELLABLE: PriceCurrency[] = ["USD", "EUR"];
 
 // LOS CUATRO PASOS, con los rótulos del frame `1465:18582` tal cual: «1/4
 // Información del producto», «2/4 Precio», «3/4 Detalles», «4/4 Verifica».
@@ -75,7 +75,6 @@ const ETIQUETA_DEL_PASO = [
 const CURRENCY_LABEL: Record<string, string> = {
   USD: "Dólar",
   EUR: "Euro",
-  USDT: "USDT",
   COP: "Peso",
   VES: "Bolívar",
 };
@@ -85,7 +84,6 @@ const CURRENCY_LABEL: Record<string, string> = {
 const COST_LABEL: Record<string, string> = {
   USD: "Dólares",
   EUR: "Euros",
-  USDT: "USDT",
   COP: "Pesos",
   OTHER: "Otro",
 };
@@ -325,17 +323,9 @@ export function ProductoFlujo({
   // 35 escrito encima.
   const [monedaSinTasa, setMonedaSinTasa] = useState(false);
 
-  // LAS MONEDAS BLOQUEADAS SE CAEN AL CARGAR, no solo al anadir (CT-79). Un
-  // producto que ya tenga USDT -- en dev hay dos -- se abre sin ella, y al
-  // guardar deja de tenerla. Es lo que "bloqueada" tiene que significar: si
-  // siguiera editable, el tendero podria mantener vivo un precio que el
-  // catalogo publicaria y que ninguna orden podria registrarse.
-  //
-  // Su base nunca se cae, por `withoutLockedSaleCurrencies`: eso repreciaria
-  // el producto en silencio en vez de ocultarle una moneda.
   const [currencies, setCurrencies] = useState<Record<PriceTier, PriceCurrency[]>>({
-    retail: withoutLockedSaleCurrencies(initialCurrencies.retail),
-    wholesale: withoutLockedSaleCurrencies(initialCurrencies.wholesale),
+    retail: initialCurrencies.retail,
+    wholesale: initialCurrencies.wholesale,
   });
 
   // LA BASE DE CADA ESCALÓN ES LA PRIMERA DE SU LISTA, y ese contrato lo
@@ -873,7 +863,7 @@ export function ProductoFlujo({
                    2026-10-14 porque el desplegable aceptaba la elección y luego
                    no cambiaba nada. */
                 <p className="text-xs leading-relaxed text-destructive">
-                  Para calcular el margen, elige Dólares, Euros o USDT: de «Otro» no tenemos la
+                  Para calcular el margen, elige Dólares o Euros: de «Otro» no tenemos la
                   tasa. Puedes dejarla en «Otro» y escribir tú los precios abajo — el producto se
                   guarda igual.
                 </p>
@@ -1176,7 +1166,9 @@ function CostCurrencySelect({
   // Mientras tanto, un tendero que compra en otra moneda apunta el costo en
   // dólares, que es lo que hacía antes del 2026-10-10.
   // ═══════════════════════════════════════════════════════════════════════
-  const base: CostCurrency[] = hasRates ? ["USD", "EUR", "USDT"] : [businessCurrency];
+  // USDT LEFT ON 2026-11-12 (CT-171). A product that still carried it was converted to
+  // dollars by migration 203, so no saved value falls outside this list through USDT.
+  const base: CostCurrency[] = hasRates ? ["USD", "EUR"] : [businessCurrency];
   // UNA FICHA QUE YA TENÍA «Otro» SIGUE ENSEÑÁNDOLO, aunque ya no se pueda
   // elegir. Sin esto, abrir uno de esos productos dejaría el selector en
   // blanco: Radix no pinta un valor que no está entre sus opciones, y el
@@ -1703,8 +1695,8 @@ function PriceRows({
     );
   }
 
-  // Lo que todavia se puede anadir. Las bloqueadas no estan (CT-79).
-  const inactivas = SELLABLE.filter((c) => !currencies.includes(c) && !isSaleCurrencyLocked(c));
+  // Lo que todavia se puede anadir.
+  const inactivas = SELLABLE.filter((c) => !currencies.includes(c));
   const enBolivares = (amount: number | null, currency: PriceCurrency) =>
     amount == null ? null : priceIn("VES", { amount, currency }, rates).amount;
 

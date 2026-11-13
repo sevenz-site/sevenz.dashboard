@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   // ninguna cifra de estos dos apartados se expresa en USDT, así que salir a
   // CriptoYa sería una llamada de red por un dato que nadie va a leer.
   const rates = ownerRate
-    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur, usdt: null }
+    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur }
     : null;
 
   const comun = {

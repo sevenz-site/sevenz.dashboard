@@ -288,23 +288,10 @@ export default async function ProductoPublicoPage({
 
   // Las mismas tasas que la lista, y por el mismo camino: la del tendero si la
   // fijó, la del BCV si no, y ninguna fuera de Venezuela.
-  // THE USDT RATE NOW REACHES THE PUBLIC CATALOGUE TOO. Owner's decision on
-  // 2026-10-15, which displaces the one of 2026-10-10 that kept third-party
-  // calls off public pages.
-  //
-  // What displaced it is a measurement, not a change of mind: the call sits
-  // behind a 60-second server cache and a 2-second timeout, so a thousand
-  // visitors in a minute cost ONE request to CriptoYa, not a thousand. The
-  // 2026-10-10 reasoning assumed one call per load.
-  //
-  // AND IT IS THE SAME CALL THE SHOPKEEPER'S OWN PRODUCT FORM MAKES, which
-  // closes a gap that had nothing to do with cost: until now the shopkeeper
-  // saw a USDT price on their product and their customer did not.
-  //
-  // It also writes the price down for `create_catalog_order` to read -- see
-  // migrations 112 and 113. That is what keeps what is OFFERED and what is
-  // ACCEPTED the same set; offering USDT without it would let the customer
-  // fill in the whole form and then be rejected with `sin_tasa`.
+  // NO USDT RATE HERE SINCE CT-171 (2026-11-12). From 2026-10-15 these public pages
+  // asked CriptoYa for it so the customer could pay in USDT; the owner then removed USDT
+  // from products entirely (migration 203), so `getBolivarRates` returns only the
+  // dollar and the euro and no public page calls a third party any more.
   const tasaBase =
     detalle.owner_country === "VE" &&
     detalle.current_bcv_usd != null &&

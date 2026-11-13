@@ -28,20 +28,21 @@ import { formatCurrency } from "@/lib/format";
 //
 // Se escribe aquí y no se descubre en pantalla porque la tentación de "poner
 // algo" en esos huecos es real, y cualquier cosa que se ponga sería inventada.
-export type PriceCurrency = "COP" | "USD" | "EUR" | "USDT" | "VES";
+// NO USDT SINCE 2026-11-12 (CT-171, migration 203). Owner's decision: «Quita USDT del
+// precio de costo y del precio de venta». The database refuses it in all three product
+// tables, so this type stopped allowing it too. The rate calculator keeps its own USDT tab
+// and its own type (`exchange-rate-strip.tsx`); old catalogue orders may still carry the
+// string, which is why `catalog_order_items` was left alone.
+export type PriceCurrency = "COP" | "USD" | "EUR" | "VES";
 
 export type PriceTier = "retail" | "wholesale";
 
-// Bolívares por una unidad de cada moneda. `usdt` sale del precio de COMPRA
-// (`ask` de Binance P2P) — decisión del dueño el 2026-10-09: es lo que al
-// cliente le cuesta conseguir ese USDT para pagar, y si se equivoca lo hace a
-// favor del tendero, que es de quien es el dinero.
+// Bolívares por una unidad de cada moneda. The `usdt` member left with CT-171: no
+// product can be priced in USDT, so nothing here needs the Binance P2P price, and the
+// public catalogue stopped calling CriptoYa on every load.
 export type BolivarRates = {
   usd: number;
   eur: number;
-  // null cuando CriptoYa no respondió o devolvió un precio fuera de banda. No
-  // es un error: la ficha enseña el resto y deja ese hueco dicho.
-  usdt: number | null;
 };
 
 export type PriceInCurrency = {
@@ -56,53 +57,15 @@ export type PriceInCurrency = {
 
 // Las monedas que una ficha venezolana enseña, en el orden en que se leen.
 // COP no está: un negocio colombiano no convive con ninguna de estas.
-// Orden del frame 1187:3728: Dólar, Euro, USDT. Bolívares va al final, que
-// es donde cae lo que solo se calcula.
-export const VE_PRICE_CURRENCIES: PriceCurrency[] = ["USD", "EUR", "USDT", "VES"];
+// Orden del frame 1187:3728: Dólar, Euro. Bolívares va al final, que
+// es donde cae lo que solo se calcula. (USDT sat between them until CT-171.)
+export const VE_PRICE_CURRENCIES: PriceCurrency[] = ["USD", "EUR", "VES"];
 
-// TEMPORARILY LOCKED SALE CURRENCIES -- CT-79, and this is the whole lock.
-//
-// WHY IT EXISTS. `catalog_order_items.currency` accepts USDT (migration 108)
-// while `movements.currency` is `check (currency in ('USD','EUR'))` (migration
-// 025). With a USDT sale price published, a client could order in a currency
-// the money ledger cannot store, and the shopkeeper would be left holding an
-// order he cannot register. The owner decided on 2026-10-16 to hide it rather
-// than remove it, so the catalogue can ship to production before the third
-// ledger exists.
-//
-// COST IN USDT IS NOT LOCKED, at the owner's request the same day: USDT stays
-// as a cost currency for margin, and the rate strip that already ships in
-// production keeps showing the USDT price. So the app shows a USDT rate and
-// takes a USDT cost while refusing a USDT sale price. That is inconsistent on
-// screen, deliberately, and it is written here so it does not read as a bug.
-//
-// TO UNDO: empty this array. Nothing else. It is read by the product dialog
-// (what can be added, and what an existing product can still edit) and by the
-// product server action, which refuses it -- because a lock that lives only in
-// a menu is not a lock: the server action took whatever the form sent. Undo it
-// only AFTER `movements` can hold USDT, never before and not at the same time.
-export const SALE_CURRENCIES_LOCKED: PriceCurrency[] = ["USDT"];
-
-export function isSaleCurrencyLocked(currency: PriceCurrency): boolean {
-  return SALE_CURRENCIES_LOCKED.includes(currency);
-}
-
-// THE FIRST ONE IS NEVER DROPPED, and that is the point of this helper rather
-// than a plain `filter`. Index 0 is that tier's base -- the currency its price
-// is actually stored in, by `currenciesOf`'s contract -- so removing it would
-// not hide a currency, it would REPRICE the product: the same number, read as
-// a different currency, with nothing on screen saying so. That is the worst
-// failure this area can produce, and it is why the lock is expressed as "drop
-// the extras" instead of "drop the locked ones".
-//
-// Measured in dev on 2026-10-16 before writing this: of 11 live products, 2
-// carry USDT (`Alicate`, `Casco`) and ZERO have it as a base, with zero prices
-// pinned in USDT. So the case this guard protects is unreachable today -- it
-// is here because "unreachable today" is exactly what the per-tier base work
-// of migration 114 turned into a real bug the week before.
-export function withoutLockedSaleCurrencies(list: PriceCurrency[]): PriceCurrency[] {
-  return list.filter((currency, i) => i === 0 || !isSaleCurrencyLocked(currency));
-}
+// THE USDT LOCK (CT-79) IS GONE, NOT LIFTED. From 2026-10-16 to 2026-11-12 a list here
+// hid USDT from the sale price while the schema still accepted it. It only guarded the
+// product form and its server action -- the public catalogue never read it, so a product
+// saved with USDT before the lock kept offering «Paga en USDT». Migration 203 removed USDT
+// from the schema instead, which is a lock nobody can forget to read.
 
 // Bolívares por una unidad de `currency`. 1 para el propio bolívar.
 function bolivaresPorUnidad(currency: PriceCurrency, rates: BolivarRates): number | null {
@@ -113,8 +76,6 @@ function bolivaresPorUnidad(currency: PriceCurrency, rates: BolivarRates): numbe
       return rates.usd > 0 ? rates.usd : null;
     case "EUR":
       return rates.eur > 0 ? rates.eur : null;
-    case "USDT":
-      return rates.usdt && rates.usdt > 0 ? rates.usdt : null;
     case "COP":
       // No existe Bs/COP, y no se inventa. Ver la cabecera.
       return null;
@@ -630,10 +591,10 @@ export function formatAmountWhileTyping(
 // renders the VES symbol differently across environments and the design doc
 // always shows a literal "Bs. "; `formatCurrency` is the Colombian peso.
 //
-// USDT gets its unit AFTER the number — "12,00 USDT" — and not a symbol. The
-// ₮ sign is unknown to almost everybody, and DESIGN-SYSTEM.md's rule is that
-// the unit travels on the amount so a bare number beside a percentage is not
-// read as a second percentage.
+// THE DEFAULT IS FOR OLD DATA, not for a currency the type allows. Until CT-171 a
+// catalogue order line could be in USDT, and `catalog_order_items` still accepts the
+// string (zero rows on 2026-11-12, in both databases). Such a line prints its code
+// after the number -- "12,00 USDT", the form USDT always had -- instead of "undefined".
 export function formatPriceAmount(amount: number, currency: PriceCurrency): string {
   switch (currency) {
     case "COP":
@@ -643,8 +604,8 @@ export function formatPriceAmount(amount: number, currency: PriceCurrency): stri
     case "USD":
     case "EUR":
       return formatDisplayCurrency(amount, currency);
-    case "USDT":
-      return `${formatBsAmount(amount)} USDT`;
+    default:
+      return `${formatBsAmount(amount)} ${String(currency)}`;
   }
 }
 
@@ -660,14 +621,9 @@ export function formatPriceAmount(amount: number, currency: PriceCurrency): stri
 // ternary in `lib/exchange-rate/monto-en-bolivares.ts` -- and two copies of
 // one table end up saying different things about the same currency. That one
 // stays as it is: it is in production and rewriting it buys nothing.
-//
-// USDT IS DELIBERATELY NOT TRANSLATED. It has no Spanish name, and the
-// shopkeeper reads it exactly like this in Binance; inventing one would be
-// worse than the ISO code.
 const CURRENCY_NAMES: Record<PriceCurrency, string> = {
   USD: "dólares",
   EUR: "euros",
-  USDT: "USDT",
   COP: "pesos",
   VES: "bolívares",
 };
@@ -710,7 +666,7 @@ export function formatPercent(value: number): string {
 // USDT», dice «esto equivale hoy a 9,60 USDT». Se descartó esconder la fila a
 // quien esté en BCV automático, porque sería esconder información cierta.
 export function priceRowLabel(currency: PriceCurrency, origin: PriceInCurrency["origin"]): string {
-  const name = currency === "VES" ? "bolívares" : currency === "USDT" ? "USDT" : currency;
+  const name = currency === "VES" ? "bolívares" : currency;
   if (origin === "base") return `Precio en ${name}`;
   if (origin === "manual") return `Precio fijado en ${name}`;
   return `Equivalencia en ${name}`;

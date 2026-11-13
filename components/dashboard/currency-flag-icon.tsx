@@ -20,7 +20,12 @@ import type { PriceCurrency } from "@/lib/products/price";
 // THE PROP IS NOW `PriceCurrency`, which is the real fix: with the five
 // currencies in the type, a missing flag becomes a compile error instead of a
 // cast at the call site.
-const FLAG_SRC: Record<PriceCurrency, string> = {
+// USDT STAYS HERE AFTER CT-171, and only here. Products lost it on 2026-11-12, but the
+// rate calculator kept its USDT tab -- the owner removed USDT from cost and sale price,
+// not from the calculator -- and it draws this icon. Hence the wider prop type.
+type FlagCurrency = PriceCurrency | "USDT";
+
+const FLAG_SRC: Record<FlagCurrency, string> = {
   USD: "/flag-usd.svg",
   EUR: "/flag-eur.svg",
   // Added for the rate calculator, which labels the bolívar side of a
@@ -33,7 +38,7 @@ const FLAG_SRC: Record<PriceCurrency, string> = {
   COP: "/flag-cop.svg",
 };
 
-const FLAG_ALT: Record<PriceCurrency, string> = {
+const FLAG_ALT: Record<FlagCurrency, string> = {
   USD: "Bandera de Estados Unidos",
   EUR: "Bandera de la Unión Europea",
   VES: "Bandera de Venezuela",
@@ -45,7 +50,7 @@ export function CurrencyFlagIcon({
   currency,
   className,
 }: {
-  currency: PriceCurrency;
+  currency: FlagCurrency;
   className?: string;
 }) {
   const src = FLAG_SRC[currency];

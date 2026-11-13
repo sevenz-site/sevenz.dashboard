@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
+import { parseAmount } from "@/lib/products/price";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
@@ -114,7 +114,13 @@ async function ownsProduct(productId: string) {
 // Las monedas en las que un producto puede llevar precio. VES no está: es la
 // moneda en la que el cliente paga, se enseña siempre calculada y no se
 // agrega ni se quita (migración 087).
-const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
+// USDT left on 2026-11-12 (CT-171, migration 203), owner's decision.
+const SELLABLE: PriceCurrency[] = ["USD", "EUR", "COP"];
+
+// The cost currencies the form offers, plus the ones old products may still carry
+// (VES, and «Otro», retired in CT-66 but still saved). USDT is not here since CT-171;
+// the database refuses it too, and this is what turns that refusal into a sentence.
+const COST_CURRENCIES: string[] = ["USD", "EUR", "COP", "VES", "OTHER"];
 
 export type FixedPrices = Partial<Record<PriceCurrency, string>>;
 
@@ -178,6 +184,28 @@ function validate(input: ProductInput): { error: string } | Checked {
   // moneda no tiene en qué escribir su precio, así que la frase habla del
   // escalón y no del producto: «deja al menos una moneda» a secas mandaría al
   // tendero a mirar el bloque equivocado.
+  // A CURRENCY OUTSIDE THE LIST IS REFUSED, NOT FILTERED. Filtering a list whose FIRST
+  // entry is foreign would move the base to the next currency and leave the stored number
+  // meaning something else -- the product silently repriced. The form never sends one;
+  // what does is a request built by hand, or a tab still holding the pre-CT-171 bundle
+  // with USDT in its menu. Kept from the CT-79 lock it replaces, which reasoned the same.
+  for (const [tier, list] of [
+    ["retail", input.activeCurrenciesRetail],
+    ["wholesale", input.activeCurrenciesWholesale],
+  ] as const) {
+    if (list.some((c) => !SELLABLE.includes(c))) {
+      return {
+        error:
+          tier === "retail"
+            ? "Esa moneda ya no se puede usar en el precio al detal. Quítala y guarda de nuevo."
+            : "Esa moneda ya no se puede usar en el precio al mayor. Quítala y guarda de nuevo.",
+      };
+    }
+  }
+  if (input.costCurrency && !COST_CURRENCIES.includes(input.costCurrency)) {
+    return { error: "Esa moneda ya no se puede usar en el costo. Elige otra y guarda de nuevo." };
+  }
+
   const currencies: Record<PriceTier, PriceCurrency[]> = {
     retail: input.activeCurrenciesRetail.filter((c) => SELLABLE.includes(c)),
     wholesale: input.activeCurrenciesWholesale.filter((c) => SELLABLE.includes(c)),
@@ -189,29 +217,6 @@ function validate(input: ProductInput): { error: string } | Checked {
     return { error: "Deja al menos una moneda en el precio al mayor." };
   }
 
-  // THE LOCK IS REFUSED HERE, NOT FILTERED (CT-79).
-  //
-  // `SELLABLE` above is what the schema allows; this is what is temporarily
-  // off. The dialog already drops a locked currency when it loads a product
-  // and hides it from the "add" menu, so a normal save never reaches this.
-  // What reaches it is a request built by hand -- and the one who would build
-  // it is the shopkeeper with his own session, which is exactly why a lock
-  // that lives only in a menu is not a lock.
-  //
-  // REFUSING AND NOT FILTERING is the decision worth keeping: filtering a
-  // list whose FIRST entry is locked would move the base to the next currency
-  // and leave the stored number meaning something else -- the product silently
-  // repriced. An error says what happened; a silent rebase does not.
-  for (const tier of ["retail", "wholesale"] as PriceTier[]) {
-    if (currencies[tier].some(isSaleCurrencyLocked)) {
-      return {
-        error:
-          tier === "retail"
-            ? "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al detal."
-            : "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al mayor.",
-      };
-    }
-  }
   const base: Record<PriceTier, PriceCurrency> = {
     retail: currencies.retail[0],
     wholesale: currencies.wholesale[0],
