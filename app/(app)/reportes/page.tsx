@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { MarcarPantallaVacia } from "@/components/dashboard/pantalla-vacia-marcador";
@@ -98,14 +99,24 @@ export default async function ReportesPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
-    supabase
-      .from("clients")
-      .select("id, name, document_id, document_type")
-      .eq("owner_id", user!.id)
-      .is("trashed_at", null)
-      .is("deleted_at", null)
-      .order("name"),
+  const [clients, { data: owner }, ownerRate] = await Promise.all([
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still means «no list», as when the error was dropped.
+    readAllPages<{ id: string; name: string; document_id: string | null; document_type: string | null }>(
+      (from, to) =>
+        supabase
+          .from("clients")
+          .select("id, name, document_id, document_type", { count: "exact" })
+          .eq("owner_id", user!.id)
+          .is("trashed_at", null)
+          .is("deleted_at", null)
+          .order("name")
+          .order("id")
+          .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[reportes] clients:", e instanceof Error ? e.message : e);
+      return [];
+    }),
     supabase.from("owners").select("country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
@@ -165,15 +176,24 @@ export default async function ReportesPage({
   // Se piden solo en su apartado, igual que los datos: traer el catálogo
   // entero para pintar Facturación sería pagar una consulta por una pantalla
   // que no la usa.
-  const { data: productosParaBuscar } =
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  // A failed read still means «no list», as when the error was dropped.
+  const productosParaBuscar =
     apartado === "inventario"
-      ? await supabase
-          .from("products")
-          .select("id, name")
-          .eq("owner_id", user!.id)
-          .is("trashed_at", null)
-          .order("name")
-      : { data: null };
+      ? await readAllPages<{ id: string; name: string }>((from, to) =>
+          supabase
+            .from("products")
+            .select("id, name", { count: "exact" })
+            .eq("owner_id", user!.id)
+            .is("trashed_at", null)
+            .order("name")
+            .order("id")
+            .range(from, to),
+        ).catch((e: unknown) => {
+          console.error("[reportes] products:", e instanceof Error ? e.message : e);
+          return null;
+        })
+      : null;
 
   const inventario =
     apartado === "inventario"

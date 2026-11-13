@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAllPages } from "@/lib/supabase/read-all";
 
 // ═══════════════════════════════════════════════════════════════════════
 // IS THIS ORDER FROM A CLIENT THE SHOPKEEPER ALREADY HAS?
@@ -162,23 +163,29 @@ export async function findOrderClient(
   // `.eq("owner_id")` EXPLICITLY even though RLS already filters: it is
   // `CLAUDE.md`'s rule for any query whose identifier comes from the browser.
   // Here it comes from the order, which comes from the URL.
-  const { data, error } = await supabase
-    .from("clients")
-    .select("id, name, document_id, document_type, whatsapp, address, is_flagged")
-    .eq("owner_id", ownerId)
-    .is("deleted_at", null)
-    .not("document_id", "is", null);
-
-  if (error) {
+  //
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+  let candidates: OrderClient[];
+  try {
+    candidates = await readAllPages<OrderClient>((from, to) =>
+      supabase
+        .from("clients")
+        .select("id, name, document_id, document_type, whatsapp, address, is_flagged", { count: "exact" })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .not("document_id", "is", null)
+        .order("id")
+        .range(from, to),
+    );
+  } catch (e) {
     // IT ANSWERS «NOT FOUND» RATHER THAN THROWING. This card is informative:
     // if the query fails the shopkeeper sees the amber notice and carries on.
     // Taking his order screen down because we could not tell him whether the
     // client exists trades a missing fact for a page that does not open.
-    console.error("[orders] findOrderClient:", error.message);
+    console.error("[orders] findOrderClient:", e instanceof Error ? e.message : e);
     return { kind: "ninguno" };
   }
 
-  const candidates = (data ?? []) as OrderClient[];
   const sameDigits = candidates.filter(
     (c) => digitsOf(c.document_id) === digits,
   );

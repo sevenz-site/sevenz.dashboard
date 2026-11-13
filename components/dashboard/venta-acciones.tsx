@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Share2, Trash2 } from "lucide-react";
+import { compartirTransaccion } from "@/components/dashboard/detalle-acciones";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,10 +48,18 @@ export function VentaAcciones({
   // Lo que desaparece, ya formateado por quien sabe de monedas. Una línea por
   // cosa: «Cobro de contado de $40.00», «Fiado de €30.00».
   loQueSeLleva,
+  compartir = null,
+  rutaPublica = null,
 }: {
   saleId: string;
   clientId: string;
   loQueSeLleva: string[];
+  // «COMPARTIR», FIRST IN THE MENU AS IN A FIADO'S — owner's request of
+  // 2026-11-09: the cash-sale detail «debe tener el botón "Compartir" igual que
+  // abono y fiado». Null for the Mostrador, which has nobody to send it to, and
+  // for the fiado screen that mounts this menu for a sale paid with saldo.
+  compartir?: DatosParaCompartir | null;
+  rutaPublica?: string | null;
 }) {
   const router = useRouter();
   const guardia = useGuardiaDeCuentaPausada();
@@ -87,6 +97,12 @@ export function VentaAcciones({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {compartir && rutaPublica ? (
+            <DropdownMenuItem onSelect={() => void compartirTransaccion(compartir, rutaPublica)}>
+              <Share2 className="size-4" />
+              Compartir
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             variant="destructive"
             onSelect={(e) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +29,37 @@ import { textoPermisoDeclarado } from "@/lib/whatsapp-opt-in";
 // dado permiso, y esperar a que el cliente abra su enlace y lo marque él mismo
 // deja fuera a 43 de 214 clientes. El tendero tiene al cliente delante justo
 // cuando le fía, y un permiso recogido en persona vale si queda registrado.
+
+// THE CONSENT ROW OF A SIGN-UP: the box and its sentence, nothing else.
+//
+// Written once on 2026-11-09. It was three hand-copied `<label>`s — «Nuevo
+// cliente» and the two in the sale wizard — all `bg-accent`, the grey that
+// hid the checkbox. White now, by the owner's request that day: «debe ser
+// blanco». `children` is `textoPermisoDeclarado(...)`, which the caller
+// passes because it is the exact string stored as evidence.
+export function ConsentCheckboxRow({
+  checked,
+  onCheckedChange,
+  disabled,
+  children,
+}: {
+  checked: boolean;
+  onCheckedChange: (v: boolean) => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2 rounded-lg border bg-background p-2.5">
+      <Checkbox
+        checked={checked}
+        onCheckedChange={(v) => onCheckedChange(v === true)}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <span className="text-xs leading-4">{children}</span>
+    </label>
+  );
+}
 
 export function WhatsappConsentField({
   clientName,
@@ -89,7 +120,9 @@ export function WhatsappConsentField({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
+    // White since 2026-11-09, like `ConsentCheckboxRow`: the grey made the box
+    // hard to find.
+    <div className="flex flex-col gap-2 rounded-lg border bg-background p-3">
       <div className="flex items-start gap-3">
         {/* APAGADA POR DEFECTO, SIEMPRE, y es lo contrario de casi todo lo
             demás de esta semana. Una casilla de consentimiento premarcada no

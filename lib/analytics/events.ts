@@ -379,7 +379,9 @@ export type EventProps = {
 
   "Share WhatsApp Dialog Answered": { choice: "save_and_share" | "other_way" | "dismissed" };
   "Transaction Detail Opened": { kind: "movement" | "cash_sale" };
-  "Transaction Shared": { method: "native" | "clipboard" };
+  // `kind` since 2026-11-09, when a cash sale got its own «Compartir»: the same
+  // values as «Transaction Detail Opened», so shares compare to opens.
+  "Transaction Shared": { method: "native" | "clipboard"; kind: "movement" | "cash_sale" };
 
   "Search Performed": { screen: string; query_type: "text" | "transaction_code"; query_length: number; results_count: number };
   "Search Result Selected": { screen: string; result_type: "client" | "transaction" };

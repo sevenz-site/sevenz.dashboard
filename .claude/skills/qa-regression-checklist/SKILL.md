@@ -1,7 +1,7 @@
 ---
 name: qa-regression-checklist
 model: claude-fable-5-1
-description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — merging dev into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
+description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — cutting a release/vX.Y.Z branch from dev (always triggers it), merging a release branch into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
 
 **Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04, y
@@ -85,7 +85,21 @@ estaban escritos.
 
 ## 1. Scope the change
 
-- `git diff origin/main origin/dev --name-only` (or equivalent) — what
+- **Desde el 2026-11-09 el checklist corre sobre la rama congelada
+  `release/vX.Y.Z`, no sobre `dev`** (CLAUDE.md, «Cada versión se congela en
+  `release/vX.Y.Z` y sale de noche»). Si todavía no existe, se corta de
+  `origin/dev` antes de la primera comprobación, y las suites se corren con
+  `npm run dev` desde esa rama. Un arreglo que salga de aquí se hace en la rama
+  y se mergea a `dev` en el acto. El lanzamiento va en la ventana de 22:00 a
+  23:00 de Venezuela, salvo un arreglo urgente.
+- **Parada dura, antes de escribir nada en una URL que no sea `localhost`**
+  (la vista previa de la rama release, `dev.sevenz.site`): se leen sus
+  peticiones de red y el host de Supabase tiene que ser
+  `vzqppwrwnmlbrxizskdh.supabase.co`. Si sale `rabmiyqodnvnrwiartuj` o no se
+  puede ver, no se escribe y se prueba en `localhost`. Va como fila propia en el
+  informe. Regla del dueño del 2026-11-09, entera en CLAUDE.md («UNA URL DE VISTA
+  PREVIA SE COMPRUEBA ANTES DE ESCRIBIR NADA EN ELLA»).
+- `git diff origin/main origin/release/vX.Y.Z --name-only` — what
   actually changed since the last production release. Read every touched
   file's diff, not just the commit messages.
 - Identify which of the flows below are actually affected. Don't run the
@@ -472,6 +486,20 @@ that lives outside this repo.
   so zero messages leave. It **does write** reservation rows in dev — on
   purpose, so the 067 gate is exercised too — and deletes exactly the rows it
   created, by id.
+- **`npm run qa:security-alerts`** — the same envelope check for the two
+  security alerts, `new_device_login_alert` and `account_change_alert`
+  (`PL-40`): it runs the real sign-in and account-change functions with the
+  switches on and `fetch` intercepted, and compares body parameters and the
+  «No fui yo» button with `qa/plantillas-esperadas.mjs`. Run it whenever the
+  diff touches `lib/security/`, `lib/whatsapp/` or either switch is about to
+  be turned on in production. Writes one throw-away business in dev and
+  removes it.
+- **`npm run qa:session-device`** — the proxy, over plain HTTP with a real
+  session cookie: an open session leaves the account's FIRST device in
+  silence, a second browser is not made known, and the app's background
+  requests ask nothing (`PL-40`). **Needs `npm run dev`**, like `qa:attack`.
+  Run it whenever the diff touches `lib/supabase/middleware.ts`, `proxy.ts`
+  or `lib/security/`: that file is in front of every screen of the app.
 
 **Both, not one.** On 2026-09-28 `qa:pausados` was green, 5 of 5, while a bug
 would have left every paused owner with no message at all: the template was
@@ -1073,7 +1101,7 @@ suena en cada lanzamiento deja de leerse.
 **1. Qué eventos se van.** Esto debe salir vacío:
 
 ```sh
-git diff origin/main origin/dev -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
+git diff origin/main origin/release/vX.Y.Z -- app components lib | grep -E '^-.*(\b(track|trackServer)\(|^-\s+"[A-Z][a-z]+ [A-Z])'
 ```
 
 Cada línea es un evento que desaparece o que se movió. Si se movió, ya está. Si se

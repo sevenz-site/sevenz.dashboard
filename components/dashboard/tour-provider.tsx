@@ -22,8 +22,11 @@ const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: st
   },
   1: {
     selector: '[data-tour="new-client-button"]',
-    title: "Agrega un cliente",
-    body: "Toca aquí para buscar un cliente o agregar uno nuevo.",
+    // Owner's decision of 2026-11-09. It said «Agrega un cliente — Toca aquí
+    // para buscar un cliente o agregar uno nuevo», from when this button opened
+    // the client search; «Registrar» now opens the three-option sheet.
+    title: "Registra lo que pasó",
+    body: "Toca aquí para anotar una venta, un fiado, un abono o un cliente nuevo.",
   },
   2: {
     selector: '[data-tour="demo-client-row"]',
@@ -32,9 +35,8 @@ const STEP_CONTENT: Record<TourStep, { selector: string; title: string; body: st
   },
 };
 
-// On mobile the first step points at the bottom bar's "Agregar", which is the
-// button that exists there — the page CTA is further down and may be off
-// screen. Resolved per render rather than baked into STEP_CONTENT because
+// On mobile step 1 points at the floating «Registrar» above the bottom bar,
+// which is the button that exists there — the page CTA is `hidden md:block`. Resolved per render rather than baked into STEP_CONTENT because
 // rotating an iPhone crosses the breakpoint mid-tour: landscape is 812px wide
 // and gets the desktop layout, so the target has to be able to change.
 // querySelector returns whichever element matches first in the DOM, so the two
@@ -46,7 +48,30 @@ function selectorForStep(step: TourStep, isMobile: boolean): string {
 
 type TooltipPos = { top: number; left: number };
 
-const HIGHLIGHT_CLASSES = ["ring-2", "ring-primary", "ring-offset-2", "rounded-md", "relative", "z-50"];
+// THE RING IS ALWAYS ADDED; EVERYTHING ELSE ONLY WHEN THE TARGET LACKS IT.
+//
+// Until 2026-11-09 this was one fixed list that included `relative` and
+// `rounded-md`. Step 1's phone target is the floating «Registrar», which is
+// `fixed`: `relative` won the cascade, the button dropped into the page flow
+// at full width with its `right-4` shifting it off the left edge, and the
+// owner read it as the old «Agregar movimiento» button coming back (reported
+// with a screenshot that day). `rounded-md` likewise squared off its pill.
+const RING_CLASSES = ["ring-2", "ring-primary", "ring-offset-2"];
+
+function highlightClassesFor(el: Element): string[] {
+  const style = getComputedStyle(el);
+  const classes = [...RING_CLASSES];
+  // A positioned element already stacks; only a static one needs `relative`
+  // for `z-50` to apply. A fixed one keeps its own position untouched.
+  if (style.position === "static") classes.push("relative", "z-50");
+  else classes.push("z-50");
+  if (parseFloat(style.borderTopLeftRadius) === 0) classes.push("rounded-md");
+  return classes;
+}
+
+// Room kept between the tooltip and the target, and the screen's edges.
+const GAP = 10;
+const EDGE = 8;
 
 export function TourProvider({ active, children }: { active: boolean; children: ReactNode }) {
   const pathname = usePathname();
@@ -61,6 +86,9 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   const [dismissed, setDismissed] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const highlightedEl = useRef<Element | null>(null);
+  // Exactly the classes this tour added, so clearing never strips one the
+  // element had of its own (a `z-50` or `rounded-md` it was born with).
+  const addedClasses = useRef<string[]>([]);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   // Landing back on the dashboard always brings the current step's tooltip
@@ -76,8 +104,9 @@ export function TourProvider({ active, children }: { active: boolean; children: 
   useEffect(() => {
     function clearHighlight() {
       if (highlightedEl.current) {
-        highlightedEl.current.classList.remove(...HIGHLIGHT_CLASSES);
+        highlightedEl.current.classList.remove(...addedClasses.current);
         highlightedEl.current = null;
+        addedClasses.current = [];
       }
     }
 
@@ -95,12 +124,27 @@ export function TourProvider({ active, children }: { active: boolean; children: 
         setPos(null);
         return;
       }
-      el.classList.add(...HIGHLIGHT_CLASSES);
+      // Measured BEFORE adding anything, so the classes describe the element
+      // as it is, not as a previous highlight left it.
+      const classes = highlightClassesFor(el).filter((c) => !el.classList.contains(c));
+      el.classList.add(...classes);
+      addedClasses.current = classes;
       highlightedEl.current = el;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       const box = el.getBoundingClientRect();
+      // BELOW THE TARGET WHEN IT FITS, ABOVE WHEN IT DOES NOT. The old rule
+      // clamped to `innerHeight - 220`, which for a target near the bottom —
+      // the floating «Registrar» on a phone — put the tooltip ON TOP of the
+      // very button it was pointing at. The height is the tooltip's own once
+      // it has rendered (the 150 ms retry re-measures with it), 200 before.
+      const height = tooltipRef.current?.offsetHeight ?? 200;
+      const below = box.bottom + GAP;
+      const top =
+        below + height <= window.innerHeight - EDGE
+          ? below
+          : Math.max(EDGE, box.top - GAP - height);
       setPos({
-        top: Math.min(box.top + box.height + 10, window.innerHeight - 220),
+        top,
         left: Math.min(Math.max(box.left, 12), window.innerWidth - 300),
       });
     }

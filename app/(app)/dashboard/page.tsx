@@ -32,6 +32,9 @@ import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-di
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { ledgerLabel, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
+import { readAllPages } from "@/lib/supabase/read-all";
+
+type ClientOption = { id: string; name: string; document_id: string | null; document_type: string | null };
 
 export default async function DashboardPage({
   searchParams,
@@ -62,27 +65,44 @@ export default async function DashboardPage({
   } = await supabase.auth.getUser();
 
   const [
-    { data: summaries },
-    { data: clients },
+    summaries,
+    clients,
     { data: owner },
     ownerRate,
     ordenesSinAtender,
     { data: trialEndsAt },
   ] = await Promise.all([
-    supabase
-      .from("client_summary")
-      .select("*")
-      .eq("owner_id", user!.id)
-      .order("days_since_payment", { ascending: false }),
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still draws an empty list, as when the error was dropped.
+    readAllPages<ClientSummary>((from, to) =>
+      supabase
+        .from("client_summary")
+        .select("*", { count: "exact" })
+        .eq("owner_id", user!.id)
+        .order("days_since_payment", { ascending: false })
+        .order("client_id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[inicio] client_summary:", e instanceof Error ? e.message : e);
+      return [] as ClientSummary[];
+    }),
     // Feeds the "add a movement" search — hidden clients excluded (O2), same
     // as Clientes and Malas pagas.
-    supabase
-      .from("clients")
-      .select("id, name, document_id, document_type")
-      .eq("owner_id", user!.id)
-      .is("trashed_at", null)
-      .is("deleted_at", null)
-      .order("name"),
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    readAllPages<ClientOption>((from, to) =>
+      supabase
+        .from("clients")
+        .select("id, name, document_id, document_type", { count: "exact" })
+        .eq("owner_id", user!.id)
+        .is("trashed_at", null)
+        .is("deleted_at", null)
+        .order("name")
+        .order("id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[inicio] clients:", e instanceof Error ? e.message : e);
+      return [] as ClientOption[];
+    }),
     supabase
       .from("owners")
       .select(

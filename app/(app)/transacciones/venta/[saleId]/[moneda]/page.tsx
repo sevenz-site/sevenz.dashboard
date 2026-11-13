@@ -12,6 +12,8 @@ import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
 import { ProductosDelMovimiento } from "@/components/dashboard/productos-del-movimiento";
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
+import { DetalleBotones } from "@/components/dashboard/detalle-acciones";
+import type { DatosParaCompartir } from "@/lib/share-balance";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
 import { alDiaDelPago, formatBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
@@ -223,6 +225,24 @@ export default async function VentaDeContadoPage({
     ),
   ];
 
+  // ── «COMPARTIR», LIKE A FIADO'S AND AN ABONO'S ──────────────────────
+  //
+  // Owner's request of 2026-11-09. The link goes to the client's own page for
+  // THIS part of the sale, `/s/<token>/v/<sale>/<book>`, which exists since
+  // `CT-104`; the message is the same `mensajeDeTransaccion` the other two use.
+  //
+  // NOT FOR THE MOSTRADOR: nobody is behind it, and minting a share link for
+  // it would publish every walk-in sale of the business to whoever got the
+  // link. Same rule as a return's detail.
+  const compartir: DatosParaCompartir | null = cliente.is_walk_in
+    ? null
+    : {
+        clientName: cliente.name,
+        transactionCode: (venta.transaction_code as string | null) ?? null,
+        enlace: { de: "dueño", clientId: cliente.id },
+      };
+  const rutaPublica = `v/${saleId}/${segmento}`;
+
   return (
     <div className="flex flex-1 flex-col gap-4">
       {/* LA BARRA DEL FRAME: flecha a la izquierda, «⋮» a la derecha. */}
@@ -232,7 +252,13 @@ export default async function VentaDeContadoPage({
             <IconoVolver className="text-primary" />
           </Link>
         </Button>
-        <VentaAcciones saleId={venta.id as string} clientId={cliente.id} loQueSeLleva={loQueSeLleva} />
+        <VentaAcciones
+          saleId={venta.id as string}
+          clientId={cliente.id}
+          loQueSeLleva={loQueSeLleva}
+          compartir={compartir}
+          rutaPublica={rutaPublica}
+        />
       </div>
 
       <ScreenTitle>Detalle de transacción</ScreenTitle>
@@ -327,6 +353,21 @@ export default async function VentaDeContadoPage({
         recibidoEl={pedidoDelCatalogo?.created_at ?? null}
         registradoEl={pedidoDelCatalogo?.registered_at ?? null}
       />
+
+      {/* THE BUTTON AT THE BOTTOM AS WELL AS IN THE MENU, as an abono has it
+          (frame `1465:18349`: only «Compartir»). `app-main.tsx` lists this
+          route in `conBarraDeBotones`, so `main` adds no air under the bar.
+          The Mostrador draws no bar, and gets the 16px back from the spacer. */}
+      {compartir ? (
+        <DetalleBotones
+          movementId={venta.id as string}
+          compartir={compartir}
+          puedePagar={false}
+          rutaPublica={rutaPublica}
+        />
+      ) : (
+        <div aria-hidden className="h-4 shrink-0" />
+      )}
     </div>
   );
 }

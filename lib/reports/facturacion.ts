@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { diasDelRango, type Rango } from "@/lib/reports/rango";
 import { countUnregisteredOrders, pendingOrdersMoney } from "@/lib/orders/catalog-orders";
@@ -358,17 +359,30 @@ export async function cargarFacturacion({
   // LAS VENTAS SE PIDEN PRIMERO porque sus líneas y sus pagos cuelgan de sus
   // ids. Es un viaje más, y la alternativa --cruzar por `owner_id` desde las
   // líneas-- no existe: `sale_lines` no lleva dueño, lo hereda de la venta.
-  let qVentas = supabase
-    .from("sales")
-    .select("id, created_at, catalog_order_id, client_id")
-    .eq("owner_id", ownerId)
-    .is("deleted_at", null)
-    .gte("created_at", desdeIso)
-    .lte("created_at", hastaIso);
-  if (clientId) qVentas = qVentas.eq("client_id", clientId);
+  //
+  // EVERY READ HERE GOES TO ITS END — PL-34, 2026-11-09. The Data API stops at 1,000 rows
+  // without saying so, and «Mj» has 1,228 movements in production: a year of Reportes
+  // summed whatever the first page held. `readAllPages` orders by a unique column, pages
+  // until the count, and throws instead of returning a part (lib/supabase/read-all.ts).
+  const leerVentas = () =>
+    readAllPages<Record<string, unknown>>((from, to) => {
+      let q = supabase
+        .from("sales")
+        .select("id, created_at, catalog_order_id, client_id", { count: "exact" })
+        .eq("owner_id", ownerId)
+        .is("deleted_at", null)
+        .gte("created_at", desdeIso)
+        .lte("created_at", hastaIso);
+      if (clientId) q = q.eq("client_id", clientId);
+      return q.order("id").range(from, to);
+    });
 
-  let qResumen = supabase.from("client_summary").select("*").eq("owner_id", ownerId);
-  if (clientId) qResumen = qResumen.eq("client_id", clientId);
+  const leerResumenes = () =>
+    readAllPages<Record<string, unknown>>((from, to) => {
+      let q = supabase.from("client_summary").select("*", { count: "exact" }).eq("owner_id", ownerId);
+      if (clientId) q = q.eq("client_id", clientId);
+      return q.order("client_id").range(from, to);
+    });
 
   // ── `movements` NO LLEVA `owner_id`. SE LLEGA POR EL CLIENTE ────────
   //
@@ -385,27 +399,35 @@ export async function cargarFacturacion({
   //
   // EL PATRÓN BUENO YA EXISTÍA en `lib/weekly-lending-read.ts`: se resuelven
   // los clientes del dueño y se filtra por ellos.
-  const { data: clientesDelDueno, error: errorClientes } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("owner_id", ownerId);
-  if (errorClientes) throw new Error(`reportes: clientes: ${errorClientes.message}`);
+  const clientesDelDueno = await readAllPages<{ id: string }>((from, to) =>
+    supabase.from("clients").select("id", { count: "exact" }).eq("owner_id", ownerId).order("id").range(from, to),
+  ).catch((e: Error) => {
+    throw new Error(`reportes: clientes: ${e.message}`);
+  });
 
-  const idsDeCliente = (clientesDelDueno ?? [])
+  const idsDeCliente = clientesDelDueno
     .map((c) => c.id as string)
     .filter((id) => !clientId || id === clientId);
 
   // Sin clientes no hay movimientos que pedir, y un `in()` vacío en PostgREST
   // devuelve TODO en vez de nada -- que aquí sería el libro de otro negocio.
-  const qMov = idsDeCliente.length
-    ? supabase
-        .from("movements")
-        .select("type, amount, currency, created_at, client_id, paid_with_credit")
-        .in("client_id", idsDeCliente)
-        .is("deleted_at", null)
-        .gte("created_at", desdeIso)
-        .lte("created_at", hastaIso)
-    : null;
+  //
+  // AND IN BATCHES OF 100 IDS: a business with hundreds of clients would otherwise send
+  // one `.in()` too long for the gateway's URL, and lose the whole read.
+  const leerMovimientos = () =>
+    idsDeCliente.length
+      ? readAllByIds<Record<string, unknown>>(idsDeCliente, (batch, from, to) =>
+          supabase
+            .from("movements")
+            .select("type, amount, currency, created_at, client_id, paid_with_credit", { count: "exact" })
+            .in("client_id", batch)
+            .is("deleted_at", null)
+            .gte("created_at", desdeIso)
+            .lte("created_at", hastaIso)
+            .order("id")
+            .range(from, to),
+        )
+      : Promise.resolve([] as Record<string, unknown>[]);
 
   // `countUnregisteredOrders` Y NO UNA CONSULTA PROPIA: es la MISMA función
   // que alimenta la campana y el enlace de Pedidos. Si Reportes contara por su
@@ -413,29 +435,22 @@ export async function cargarFacturacion({
   // de saber cuál miente. Además cuenta por `status`, no por fechas, que es el
   // estado actual -- lo correcto aquí: un pedido sin atender lo está hoy,
   // caiga o no dentro de la ventana del informe.
-  const [resVentas, resMov, resResumen, pedidos, dineroPorAtender] = await Promise.all([
-    qVentas,
-    qMov ?? Promise.resolve({ data: [], error: null }),
-    qResumen,
-    countUnregisteredOrders(supabase, ownerId),
-    pendingOrdersMoney(supabase, ownerId),
-  ]);
-
-  // SE MIRA EL `error` DE CADA UNA, y no solo el `data`. Descartarlo es lo que
+  // SE MIRA EL ERROR DE CADA UNA, y no solo el dato. Descartarlo es lo que
   // convirtió una columna inexistente en un cero creíble durante un día
   // entero. Un informe que no puede leer sus datos tiene que decirlo, no
   // dibujar ceros: `error.tsx` de la ruta enseña la pantalla de fallo.
-  for (const [que, r] of [
-    ["ventas", resVentas],
-    ["movimientos", resMov],
-    ["resúmenes", resResumen],
-  ] as const) {
-    if (r.error) throw new Error(`reportes: ${que}: ${r.error.message}`);
-  }
-
-  const ventas = resVentas.data;
-  const movimientos = resMov.data;
-  const resumenes = resResumen.data;
+  // `readAllPages` throws on any page's error; the label says which read it was.
+  const conNombre = <T,>(que: string, p: Promise<T>) =>
+    p.catch((e: Error) => {
+      throw new Error(`reportes: ${que}: ${e.message}`);
+    });
+  const [ventas, movimientos, resumenes, pedidos, dineroPorAtender] = await Promise.all([
+    conNombre("ventas", leerVentas()),
+    conNombre("movimientos", leerMovimientos()),
+    conNombre("resúmenes", leerResumenes()),
+    countUnregisteredOrders(supabase, ownerId),
+    pendingOrdersMoney(supabase, ownerId),
+  ]);
 
   const idsDeVenta = (ventas ?? []).map((v) => v.id as string);
   const deCatalogo = new Set(
@@ -447,10 +462,33 @@ export async function cargarFacturacion({
 
   // `in()` con una lista vacía devuelve todo en PostgREST, así que se corta
   // aquí: sin ventas no hay líneas ni pagos que pedir.
-  const [{ data: lineas }, { data: pagos }, { data: cargosDeVenta }] = idsDeVenta.length
+  //
+  // These three were also read whole and their errors dropped: a failed read drew a period
+  // with sales and no lines. Now each goes to its end, and a failure is the error screen.
+  const [lineas, pagos, cargosDeVenta] = idsDeVenta.length
     ? await Promise.all([
-        supabase.from("sale_lines").select("sale_id, quantity, unit_price, currency").in("sale_id", idsDeVenta),
-        supabase.from("sale_payments").select("sale_id, amount, currency, created_at").in("sale_id", idsDeVenta),
+        conNombre(
+          "líneas de venta",
+          readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
+            supabase
+              .from("sale_lines")
+              .select("sale_id, quantity, unit_price, currency", { count: "exact" })
+              .in("sale_id", batch)
+              .order("id")
+              .range(from, to),
+          ),
+        ),
+        conNombre(
+          "pagos de venta",
+          readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
+            supabase
+              .from("sale_payments")
+              .select("sale_id, amount, currency, created_at", { count: "exact" })
+              .in("sale_id", batch)
+              .order("id")
+              .range(from, to),
+          ),
+        ),
         // ── QUÉ LIBRO DE QUÉ VENTA QUEDÓ FIADO ─────────────────────────
         //
         // SE PREGUNTA POR `sale_id` Y NO POR FECHA, aunque `movimientos` de
@@ -458,13 +496,20 @@ export async function cargarFacturacion({
         // y el de cliente, y aquí hace falta la respuesta EXACTA para cada
         // venta descargada. Un cargo que cayera fuera de esa ventana por un
         // segundo convertiría un fiado en una venta de contado.
-        supabase
-          .from("movements")
-          .select("sale_id, currency, type, paid_with_credit")
-          .in("sale_id", idsDeVenta)
-          .is("deleted_at", null),
+        conNombre(
+          "fiados de venta",
+          readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
+            supabase
+              .from("movements")
+              .select("sale_id, currency, type, paid_with_credit", { count: "exact" })
+              .in("sale_id", batch)
+              .is("deleted_at", null)
+              .order("id")
+              .range(from, to),
+          ),
+        ),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+    : [[], [], []];
 
   // LA MISMA CLAVE QUE EL HISTORIAL DEL CLIENTE, importada y no reescrita:
   // `claveDeFila` es lo que decide allí si una venta sale como «De contado» o

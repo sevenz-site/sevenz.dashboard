@@ -379,6 +379,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     (r) => r.movements?.type === "payment" && r.movements.transaction_code && r.movements.deleted_at,
   );
   if (conCodigo.length > 0) {
+    // bounded: the sibling lines of the deleted payments on ONE page of notifications.
     const { data: hermanas, error: hermanasError } = await supabase
       .from("movements")
       .select("client_id, transaction_code, deleted_at, currency, amount, entry_currency, entry_amount")
@@ -487,6 +488,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     }
   >();
   if (clientIds.length > 0) {
+    // bounded: the clients named on ONE page of notifications.
     const { data: clients, error: clientsError } = await supabase
       .from("clients")
       .select("id, name, document_id, document_type, trashed_at, deleted_at")

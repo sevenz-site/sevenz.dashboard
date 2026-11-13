@@ -278,12 +278,13 @@ async function comprobarCliente(
   )
     ? documentTypeRaw
     : null;
-  const duplicado = await buscarDocumentoDuplicado(
-    supabase,
-    user.id,
-    documentId,
-    tipoDelDocumento,
-  );
+  // PL-34: the search now throws on a failed read instead of answering «no duplicate».
+  let duplicado: Awaited<ReturnType<typeof buscarDocumentoDuplicado>>;
+  try {
+    duplicado = await buscarDocumentoDuplicado(supabase, user.id, documentId, tipoDelDocumento);
+  } catch (e) {
+    return { ok: false, error: mensajeDeError("crear el cliente", e, "registrarCliente") };
+  }
   if (duplicado && !confirmado) {
     trackServer("New Client Rejected", user.id, { ...flujo, reason: "duplicate_document" }, user.email);
     return {

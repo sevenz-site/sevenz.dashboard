@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
@@ -12,21 +13,30 @@ export default async function PapeleraPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, ownerRate] = await Promise.all([
+  const [summaries, ownerRate] = await Promise.all([
     // One of the three places allowed to read the unfiltered view. Clients
     // hidden definitivamente are excluded here too — deleted_at is what takes
     // them out of the owner's UI entirely, including this screen.
-    supabase
-      .from("client_summary_all")
-      .select("*")
-      .eq("owner_id", user!.id)
-      .not("trashed_at", "is", null)
-      .is("deleted_at", null)
-      .order("trashed_at", { ascending: false }),
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still draws an empty list, as when the error was dropped.
+    readAllPages<ClientSummaryAll>((from, to) =>
+      supabase
+        .from("client_summary_all")
+        .select("*", { count: "exact" })
+        .eq("owner_id", user!.id)
+        .not("trashed_at", "is", null)
+        .is("deleted_at", null)
+        .order("trashed_at", { ascending: false })
+        .order("client_id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[papelera] client_summary_all:", e instanceof Error ? e.message : e);
+      return [] as ClientSummaryAll[];
+    }),
     getOwnerRateContext(supabase, user!.id),
   ]);
 
-  const rows = (summaries ?? []) as ClientSummaryAll[];
+  const rows = summaries;
 
   return (
     <div className="flex flex-1 flex-col gap-4">

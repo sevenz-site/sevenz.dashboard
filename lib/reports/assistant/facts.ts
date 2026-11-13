@@ -249,6 +249,7 @@ async function countDormantGoodPayers(
   now: Date,
 ): Promise<number> {
   if (!mejores.length) return 0;
+  // bounded: the handful of best payers the summary names.
   const { data, error } = await supabase
     .from("client_summary")
     .select("client_id, last_movement_at")

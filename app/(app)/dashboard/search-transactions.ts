@@ -131,6 +131,7 @@ export async function searchTransactionsByCode(
   const movesOfSales: Move[] = [...movements.filter((m) => m.sale_id && saleIds.includes(m.sale_id))];
   const unknown = saleIds.filter((id) => !movesOfSales.some((m) => m.sale_id === id));
   if (unknown.length > 0) {
+    // bounded: the sales that matched ONE transaction-code search.
     const { data, error } = await supabase
       .from("movements")
       .select("id, type, sale_id, created_at, transaction_code, clients!inner(name, owner_id)")
@@ -148,6 +149,7 @@ export async function searchTransactionsByCode(
   const cashOnly = salesRows.filter((s) => !movesOfSales.some((m) => m.sale_id === s.id));
   const currencyOfSale = new Map<string, string>();
   if (cashOnly.length > 0) {
+    // bounded: the cash sales that matched ONE transaction-code search.
     const { data, error } = await supabase
       .from("sale_payments")
       .select("sale_id, currency")

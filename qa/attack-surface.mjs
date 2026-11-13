@@ -193,6 +193,8 @@ export const MANIFEST = {
     // 192 (C2 of PL-22): devices, the «No fui yo» token and the reset mark. Only the
     // server writes or reads them; a session may ask one boolean through my_security_state.
     owner_devices: { via: "none" },
+    // 199: the places a device signed in from. Server only, same as the devices.
+    owner_device_places: { via: "none" },
     owner_security_state: { via: "none" },
     owner_security_tokens: { via: "none" },
     // 193 (C1 of PL-22): the second-factor codes and the access audit. Server only.

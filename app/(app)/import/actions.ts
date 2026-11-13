@@ -5,6 +5,7 @@ import type { ImportRejectionReason } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { normalizeDocumentId } from "@/lib/format";
 import { resolveMovementRateSnapshot, type MovementRateSnapshot } from "@/lib/exchange-rate/resolve-movement-rate";
 import { trackServer } from "@/lib/mixpanel-server";
@@ -194,6 +195,7 @@ export async function confirmImport(
   // of wrong — so the whole batch stops and names the client.
   const hiddenClientNames = new Map<string, string>();
   if (providedClientIds.length > 0) {
+    // bounded: the existing clients named in ONE uploaded libreta.
     const { data: ownedClients } = await supabase
       .from("clients")
       .select("id, name, document_id, trashed_at, deleted_at")
@@ -244,11 +246,28 @@ export async function confirmImport(
   // match them rather than quietly create a second record, which would split
   // one person's history across two clients with no way for the owner to merge
   // them back.
-  const { data: allOwnerClients } = await supabase
-    .from("clients")
-    .select("id, name, document_id, trashed_at, deleted_at")
-    .eq("owner_id", user.id)
-    .not("document_id", "is", null);
+  //
+  // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts). A cut list let a
+  // duplicate document through, so a failed read now stops the import (nothing written)
+  // instead of being dropped and checking against no clients at all.
+  let allOwnerClients: Record<string, unknown>[];
+  try {
+    allOwnerClients = await readAllPages<Record<string, unknown>>((from, to) =>
+      supabase
+        .from("clients")
+        .select("id, name, document_id, trashed_at, deleted_at", { count: "exact" })
+        .eq("owner_id", user.id)
+        .not("document_id", "is", null)
+        .order("id")
+        .range(from, to),
+    );
+  } catch (e) {
+    console.error("confirmImport: clientes:", e instanceof Error ? e.message : e);
+    return {
+      error: "No pudimos subir la libreta. No se guardó nada, puedes intentarlo otra vez.",
+      imported: 0,
+    };
+  }
   // A LISTA, NO A UNO (CT-29b). Guardaba un solo cliente por documento, asi
   // que con dos fichas de la misma cedula —el caso real de produccion que la
   // 034 permite— ganaba la ultima del bucle y la otra era invisible: el error

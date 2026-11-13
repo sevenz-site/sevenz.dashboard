@@ -17,6 +17,7 @@ import { DOCUMENT_SOURCE } from "@/lib/types";
 import { trackServer } from "@/lib/mixpanel-server";
 import { estaDescartado } from "@/lib/orders/catalog-orders";
 import { registrarVenta, type VentaEntrada } from "@/app/(app)/ventas/actions";
+import { readAllPages } from "@/lib/supabase/read-all";
 
 // THE ONE WRITE IN D's READING HALF, and it is here for a reason worth
 // stating: without it the counter can only ever go up.
@@ -576,14 +577,31 @@ async function registrarAnalitica(
 
     const [{ data: lineas }, { data: pagos }, { data: cargos }, { data: productos }] =
       await Promise.all([
+        // bounded: the lines of ONE order's sales.
         supabase.from("sale_lines").select("currency, quantity, unit_price").in("sale_id", ids),
+        // bounded: the payments of ONE order's sales.
         supabase.from("sale_payments").select("currency, amount").in("sale_id", ids),
+        // bounded: the charges of ONE order's sales.
         supabase.from("movements").select("id").in("sale_id", ids).eq("type", "charge"),
-        supabase
-          .from("products")
-          .select("base_currency, price_retail, published_retail")
-          .eq("owner_id", ownerId)
-          .is("deleted_at", null),
+        // PL-34: every product, not the first 1,000 (lib/supabase/read-all.ts). A failure
+        // reads as no products, as before: this whole block is analytics inside a `try`.
+        //
+        // `trashed_at`, NOT `deleted_at`, since 2026-11-09: `products` has no
+        // `deleted_at`, so this read always failed with 42703 and the catalogue figures
+        // on the owner's Mixpanel profile were always empty. Same trap as in
+        // `productos/ordenes/page.tsx`, found here while paging the read.
+        readAllPages<{ base_currency: string; price_retail: number | null; published_retail: boolean }>(
+          (from, to) =>
+            supabase
+              .from("products")
+              .select("base_currency, price_retail, published_retail", { count: "exact" })
+              .eq("owner_id", ownerId)
+              .is("trashed_at", null)
+              .order("id")
+              .range(from, to),
+        )
+          .then((data) => ({ data }))
+          .catch(() => ({ data: [] as { base_currency: string; price_retail: number | null; published_retail: boolean }[] })),
       ]);
 
     const porMoneda = (filas: { currency: string | null; valor: number }[]) => {

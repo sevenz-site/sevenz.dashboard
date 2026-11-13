@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { OrdersEmpty } from "@/components/dashboard/orders-empty";
 import { CatalogShareButton } from "@/components/dashboard/catalog-share";
@@ -48,7 +49,7 @@ export default async function OrdenesPage() {
     country,
     { data: owner },
     { data: catalogLink },
-    { data: publicables, error: errorPublicables },
+    publicables,
   ] = await Promise.all([
     supabase
       .from("catalog_orders")
@@ -94,23 +95,32 @@ export default async function OrdenesPage() {
     // lo que iOS Safari rechaza. Misma razón escrita en `productos/page.tsx`.
     supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
     supabase.from("catalog_share_links").select("token").eq("owner_id", user!.id).maybeSingle(),
-    supabase
-      .from("products")
-      .select("published_retail, published_wholesale")
-      .eq("owner_id", user!.id)
-      // `trashed_at` Y NO `deleted_at`: esa columna NO EXISTE en `products`.
-      //
-      // Con ella, PostgREST devolvía `42703: column products.deleted_at does
-      // not exist`, `publicables` llegaba `null`, y el contador caía a cero —
-      // así que «Compartir» contestaba «Todavía no has publicado ningún
-      // producto» a un negocio que sí tenía. Lo reportó el dueño el
-      // 2026-10-20 con la captura del aviso encima de su lista de pedidos.
-      //
-      // La pantalla de Catálogo filtra bien desde siempre; esta consulta nació
-      // aquí copiando la forma, no el nombre. La papelera de productos es
-      // `trashed_at` porque un producto se tira a la papelera y se recupera,
-      // que es otra cosa que borrarlo.
-      .is("trashed_at", null),
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    readAllPages<{ published_retail: boolean; published_wholesale: boolean }>((from, to) =>
+      supabase
+        .from("products")
+        .select("published_retail, published_wholesale", { count: "exact" })
+        .eq("owner_id", user!.id)
+        // `trashed_at` Y NO `deleted_at`: esa columna NO EXISTE en `products`.
+        //
+        // Con ella, PostgREST devolvía `42703: column products.deleted_at does
+        // not exist`, `publicables` llegaba `null`, y el contador caía a cero —
+        // así que «Compartir» contestaba «Todavía no has publicado ningún
+        // producto» a un negocio que sí tenía. Lo reportó el dueño el
+        // 2026-10-20 con la captura del aviso encima de su lista de pedidos.
+        //
+        // La pantalla de Catálogo filtra bien desde siempre; esta consulta nació
+        // aquí copiando la forma, no el nombre. La papelera de productos es
+        // `trashed_at` porque un producto se tira a la papelera y se recupera,
+        // que es otra cosa que borrarlo.
+        .is("trashed_at", null)
+        .order("id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      // Same as before: logged, and the counter stays at zero (see below).
+      console.error("[orders] publicables:", e instanceof Error ? e.message : e);
+      return [];
+    }),
   ]);
 
   // ── UNA LECTURA FALLIDA NO ES UNA TIENDA VACÍA ──────────────────────
@@ -123,14 +133,11 @@ export default async function OrdenesPage() {
   // Ahora se registra, y el contador se queda en cero igual --no hay nada
   // mejor que contar-- pero el log dice qué pasó en vez de dejar al dueño
   // buscando un producto que ya había publicado.
-  if (errorPublicables) console.error("[orders] publicables:", errorPublicables.message);
+  // (The log line now lives in the read's `.catch` above.)
 
   // Las tres cifras que el botón distingue: sin NINGUNA publicada avisa en vez
   // de compartir una página que diría «este negocio no tiene productos».
-  const filasPublicables = (publicables ?? []) as {
-    published_retail: boolean;
-    published_wholesale: boolean;
-  }[];
+  const filasPublicables = publicables;
   const publishedCount = {
     retail: filasPublicables.filter((p) => p.published_retail).length,
     wholesale: filasPublicables.filter((p) => p.published_wholesale).length,

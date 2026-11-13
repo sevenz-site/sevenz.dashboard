@@ -75,14 +75,16 @@ import {
 export function ProductDetail({
   product,
   rates,
-  businessName,
+  sharePriceLine,
   catalogToken,
   lowStockThreshold,
 }: {
   product: ProductRow;
   // null en un negocio colombiano: no hay equivalencias que calcular.
   rates: BolivarRates | null;
-  businessName: string;
+  // What «Compartir» sends beside the link: `previewPriceLine`, computed on
+  // the server. Replaced `businessName` on 2026-11-09.
+  sharePriceLine: string | null;
   catalogToken: string | null;
   /** `owners.low_stock_threshold`, so the chip knows what «running low» means here. */
   lowStockThreshold: number;
@@ -172,7 +174,7 @@ export function ProductDetail({
         <ProductShareButton
           productId={product.id}
           productName={product.name}
-          businessName={businessName}
+          priceLine={sharePriceLine}
           initialToken={catalogToken}
           variante="grande"
         />

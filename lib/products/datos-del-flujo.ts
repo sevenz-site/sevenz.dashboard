@@ -5,6 +5,7 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ProductRow } from "@/lib/products/catalog";
 import type { BolivarRates, CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import type { CategoriaConConteo } from "@/components/dashboard/category-manager";
+import { readAllPages } from "@/lib/supabase/read-all";
 
 // LO QUE EL FLUJO DE CREAR O EDITAR UN PRODUCTO NECESITA DEL SERVIDOR.
 //
@@ -33,11 +34,24 @@ export async function cargarDatosDelFlujo(
   ownerId: string,
 ): Promise<DatosDelFlujo> {
   const [{ data: products }, { data: ultimoProducto }, country, rateContext, { data: categorias }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("supplier, category_id")
-      .eq("owner_id", ownerId)
-      .is("trashed_at", null),
+    // PL-34: every product, not the first 1,000 (lib/supabase/read-all.ts). The supplier
+    // suggestions and category counts come from these; a failure reads as none, as when
+    // the error was dropped.
+    readAllPages<{ supplier: string | null; category_id: string | null }>((from, to) =>
+      supabase
+        .from("products")
+        .select("supplier, category_id", { count: "exact" })
+        .eq("owner_id", ownerId)
+        .is("trashed_at", null)
+        .order("id")
+        .range(from, to),
+    ).then(
+      (data) => ({ data }),
+      (e: Error) => {
+        console.error("[datos del flujo] productos:", e.message);
+        return { data: [] as { supplier: string | null; category_id: string | null }[] };
+      },
+    ),
     // La moneda del ÚLTIMO producto creado: con ella abre el siguiente.
     // Decisión del dueño el 2026-10-14, explicada entera en `productos/page.tsx`.
     supabase
@@ -94,8 +108,12 @@ export async function cargarProductoParaEditar(
       .eq("owner_id", ownerId)
       .is("trashed_at", null)
       .maybeSingle(),
-    supabase.from("product_price_overrides").select("product_id, tier, currency, amount"),
-    supabase.from("product_currencies").select("product_id, tier, currency"),
+    // ONE PRODUCT'S ROWS, since 2026-11-09 (PL-34). Both reads took every row the owner
+    // can see and kept this product's in JS: past ~200 products that is over 1,000 rows,
+    // the Data API cuts them silently, and the editor would open with this product's
+    // pinned prices or enabled currencies missing — and save them that way.
+    supabase.from("product_price_overrides").select("product_id, tier, currency, amount").eq("product_id", productId),
+    supabase.from("product_currencies").select("product_id, tier, currency").eq("product_id", productId),
   ]);
 
   if (!product) return null;

@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { deviceText, identityFromHeaders, placeText, templateSafe } from "../lib/security/device-text.ts";
+import { deviceText, identityFromHeaders, placeText, templateSafe, whenText } from "../lib/security/device-text.ts";
 import { browserOf, osOf } from "../lib/user-agent.ts";
 
 const filas = [];
@@ -36,6 +36,13 @@ const WINDOWS_CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/53
   check("1g. una ciudad mal codificada no revienta", typeof bad.city === "string", JSON.stringify(bad));
   check("1h. Chrome en iPhone no es Chrome de escritorio", browserOf("Mozilla/5.0 (iPhone) CriOS/125.0 Mobile Safari/604.1") === "Chrome iOS" && osOf("Mozilla/5.0 (iPhone)") === "iOS");
   check("1i. un parámetro de plantilla no lleva saltos de línea ni más de cuatro espacios", templateSafe("a\nb\tc") === "a b c" && templateSafe("x      y") === "x    y", JSON.stringify([templateSafe("a\nb\tc"), templateSafe("x      y")]));
+  // The sentence the owner approved on 2026-11-05, and the example Meta was given.
+  check("1j. la hora, como se aprobó: «5 de noviembre a las 2:10 p. m.», en Venezuela", whenText("2026-11-05T18:10:00Z", "VE") === "5 de noviembre a las 2:10 p. m.", whenText("2026-11-05T18:10:00Z", "VE"));
+  check("1k. el mismo instante en Colombia es una hora menos, y «a la 1»", whenText("2026-11-05T18:10:00Z", "CO") === "5 de noviembre a la 1:10 p. m.", whenText("2026-11-05T18:10:00Z", "CO"));
+  check("1l. medianoche es «12:00 a. m.» del día que empieza", whenText("2026-11-06T04:00:00Z", "VE") === "6 de noviembre a las 12:00 a. m.", whenText("2026-11-06T04:00:00Z", "VE"));
+  check("1m. de noche en Venezuela sigue siendo el día de Venezuela, no el de UTC", whenText("2026-11-06T03:30:00Z", "VE") === "5 de noviembre a las 11:30 p. m.", whenText("2026-11-06T03:30:00Z", "VE"));
+  check("1n. mediodía es «12:05 p. m.», y sin país manda la zona de Colombia", whenText("2026-11-05T17:05:00Z", null) === "5 de noviembre a las 12:05 p. m.", whenText("2026-11-05T17:05:00Z", null));
+  check("1o. solo espacios corrientes: nada que dependa de la versión de ICU", /^[\x20-\x7eáéíóúñ]+$/.test(whenText("2026-11-05T18:10:00Z", "VE")));
 }
 
 // ── Part 2: DEV ───────────────────────────────────────────────────────────────
@@ -63,6 +70,7 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes("vzqppwrwnmlbrxizskdh")) {
     const reg = (hash, browser, country, city) => admin.rpc("register_login_device", { p_owner_id: OWNER, p_device_hash: hash, p_browser: browser, p_country: country, p_city: city });
     try {
       await admin.from("owner_devices").delete().eq("owner_id", OWNER);
+      await admin.from("owner_device_places").delete().eq("owner_id", OWNER);
       await admin.from("owner_security_state").delete().eq("owner_id", OWNER);
       const h1 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h1);
       const { data: r1, error: e1 } = await reg(h1, "Safari", "VE", "Barquisimeto");
@@ -79,6 +87,29 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes("vzqppwrwnmlbrxizskdh")) {
       const h4 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h4);
       const { data: r5 } = await reg(h4, "Safari", null, null);
       check("2f. sin lugar (cabeceras ausentes) con la misma familia: solo cuenta como conocido si ya hubo uno sin lugar", r5?.known === false, JSON.stringify(r5));
+
+      // Migration 199: a device is known by every place it signed in from, not only the
+      // last. Before it, the device row's city was overwritten and 2i raised a false alert.
+      const h5 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h5);
+      const { data: r6 } = await reg(h5, "Firefox", "VE", "Mérida");
+      check("2g. Firefox en Mérida, que nadie había usado: NO conocido → avisaría", r6?.known === false && r6.first_ever === false, JSON.stringify(r6));
+      const { data: r7 } = await reg(h5, "Firefox", "VE", "Valencia");
+      check("2h. ese mismo aparato entra un día desde Valencia: conocido por aparato", r7?.known === true && r7.by === "device", JSON.stringify(r7));
+      const h6 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h6);
+      const { data: r8 } = await reg(h6, "Firefox", "VE", "Mérida");
+      check("2i. pierde la cookie y vuelve a Mérida, su ciudad de siempre: conocido por lugar, sin aviso falso (199)", r8?.known === true && r8.by === "place", JSON.stringify(r8));
+      const h7 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h7);
+      const { data: r9 } = await reg(h7, "Firefox", "VE", "Valencia");
+      check("2j. y desde Valencia también: las dos ciudades cuentan", r9?.known === true && r9.by === "place", JSON.stringify(r9));
+      const { error: eOld } = await admin.from("owner_device_places").update({ last_seen: new Date(Date.now() - 91 * 86_400_000).toISOString() }).eq("owner_id", OWNER).eq("browser", "Firefox").eq("city", "Mérida");
+      const h8 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h8);
+      const { data: r10 } = await reg(h8, "Firefox", "VE", "Mérida");
+      check("2k. una ciudad que no se ve hace 91 días ya no cuenta: avisaría", !eOld && r10?.known === false, eOld?.message ?? JSON.stringify(r10));
+      const { data: viejos } = await admin.from("owner_device_places").select("city, last_seen").eq("owner_id", OWNER).lt("last_seen", new Date(Date.now() - 90 * 86_400_000).toISOString());
+      check("2l. y los lugares de más de 90 días no se quedan guardados", (viejos ?? []).length === 0, JSON.stringify(viejos));
+      const h9 = sha(randomBytes(24).toString("base64url")); creados.hashes.push(h9);
+      const { data: r11 } = await reg(h9, "Chrome", "VE", "Mérida");
+      check("2m. otro navegador en una ciudad conocida sigue siendo desconocido", r11?.known === false, JSON.stringify(r11));
 
       // The token, end to end, against a live session of the QA owner.
       const { data: link } = await admin.auth.admin.generateLink({ type: "magiclink", email: dueno.email });
@@ -122,12 +153,17 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL?.includes("vzqppwrwnmlbrxizskdh")) {
       const { error: eTab } = await anon().from("owner_devices").select("id").limit(1);
       const { error: eTab2 } = await asOwner.from("owner_security_tokens").select("id").limit(1);
       check("4. ni anon ni una sesión leen las tablas", eTab != null && eTab2 != null, `${eTab?.code} ${eTab2?.code}`);
+      const { error: eTab3 } = await anon().from("owner_device_places").select("city").limit(1);
+      const { error: eTab4 } = await asOwner.from("owner_device_places").select("city").limit(1);
+      check("4b. ni anon ni una sesión leen los lugares (199)", eTab3 != null && eTab4 != null, `${eTab3?.code} ${eTab4?.code}`);
     } finally {
       await admin.from("owner_devices").delete().eq("owner_id", OWNER);
+      await admin.from("owner_device_places").delete().eq("owner_id", OWNER);
       for (const t of creados.tokens) await admin.from("owner_security_tokens").delete().eq("token_hash", t);
       await admin.from("owner_security_state").delete().eq("owner_id", OWNER);
       const { count } = await admin.from("owner_devices").select("id", { count: "exact", head: true }).eq("owner_id", OWNER);
-      check("5. limpieza: no queda nada de la prueba en dev", count === 0, String(count));
+      const { count: lugares } = await admin.from("owner_device_places").select("city", { count: "exact", head: true }).eq("owner_id", OWNER);
+      check("5. limpieza: no queda nada de la prueba en dev", count === 0 && lugares === 0, `${count} aparatos · ${lugares} lugares`);
     }
   }
 }

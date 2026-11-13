@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
@@ -16,13 +17,22 @@ export default async function MalasPagasPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: owner }, ownerRate] = await Promise.all([
-    supabase
-      .from("client_summary")
-      .select("*")
-      .eq("owner_id", user!.id)
-      .eq("is_flagged", true)
-      .order("days_since_payment", { ascending: false }),
+  const [summaries, { data: owner }, ownerRate] = await Promise.all([
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still draws an empty list, as when the error was dropped.
+    readAllPages<ClientSummary>((from, to) =>
+      supabase
+        .from("client_summary")
+        .select("*", { count: "exact" })
+        .eq("owner_id", user!.id)
+        .eq("is_flagged", true)
+        .order("days_since_payment", { ascending: false })
+        .order("client_id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[malas pagas] client_summary:", e instanceof Error ? e.message : e);
+      return [] as ClientSummary[];
+    }),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
@@ -44,7 +54,7 @@ export default async function MalasPagasPage() {
   // sustituirlo por `RegisterButton` —que no necesita nada— se van con él: dos
   // consultas menos por carga de página.
 
-  const rows = (summaries ?? []) as ClientSummary[];
+  const rows = summaries;
   const scores = await computeCreditScoresForClients(supabase, rows, ownerRate?.effectiveRate ?? null);
 
   return (

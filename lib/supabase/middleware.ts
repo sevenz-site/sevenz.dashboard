@@ -1,4 +1,11 @@
 import { RETURN_COOKIE, RETURN_MAX_AGE, safeReturnPath } from "@/lib/auth/return-after-login";
+import {
+  DEVICE_COOKIE,
+  DEVICE_COOKIE_PATTERN,
+  deviceCookieOptions,
+  isPageVisit,
+  rememberSessionDevice,
+} from "@/lib/security/session-device";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -118,6 +125,17 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
+  }
+
+  // A session that was already open when the device list shipped never went through the
+  // sign-in that records its device (PL-40, owner's decision of 2026-11-09). The reasons, and
+  // what this deliberately does not do, are in lib/security/session-device.ts. It costs one
+  // or two database calls ONCE per browser: the cookie it leaves is what skips this branch.
+  if (user && isPageVisit(request) && !DEVICE_COOKIE_PATTERN.test(request.cookies.get(DEVICE_COOKIE)?.value ?? "")) {
+    const device = await rememberSessionDevice(user.id, request.headers);
+    if (device) {
+      supabaseResponse.cookies.set(DEVICE_COOKIE, device, deviceCookieOptions(request.nextUrl.protocol === "https:"));
+    }
   }
 
   return supabaseResponse;

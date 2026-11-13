@@ -134,6 +134,14 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "url_suffix",
   },
 
+  // Approved as Utility and compared on 2026-11-09: body, bullets, footer and «No fui yo» match,
+  // and the Kapso editor shows the address ending in {{1}}, so the button is dynamic. Behind
+  // NEW_DEVICE_ALERTS (PL-40): the code calls it and nothing goes out until that switch is on.
+  new_device_login_alert: {
+    cuerpo: ["when", "device", "place"],
+    boton: "url_suffix",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

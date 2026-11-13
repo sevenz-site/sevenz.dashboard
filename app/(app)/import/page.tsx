@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import { ImportFlow } from "@/components/import/import-flow";
@@ -17,7 +18,7 @@ export default async function ImportPage() {
   // total is per currency, so it needs the right starting point for each one.
   // A VE owner's `balance` is not the sum of the other two and must not be
   // used as a stand-in.
-  const [{ data: clients }, { data: owner }, ownerRate] = await Promise.all([
+  const [clients, { data: owner }, ownerRate] = await Promise.all([
     // `client_summary_all` Y NO `client_summary`, desde CT-33.
     //
     // La vista filtrada esconde a los de la papelera y a los ocultos
@@ -32,12 +33,23 @@ export default async function ImportPage() {
     // falta que el dueño lo elija a mano. Sin esa separacion, subir una libreta
     // con un nombre repetido habria empezado a emparejar en silencio con gente
     // que el dueño quito de su cartera a proposito.
-    supabase
-      .from("client_summary_all")
-      .select(
-        "client_id, name, balance, balance_usd, balance_eur, document_id, document_type, whatsapp, trashed_at, deleted_at",
-      )
-      .eq("owner_id", user!.id),
+    //
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still means an empty candidate list, as when the error was dropped.
+    readAllPages<Record<string, unknown>>((from, to) =>
+      supabase
+        .from("client_summary_all")
+        .select(
+          "client_id, name, balance, balance_usd, balance_eur, document_id, document_type, whatsapp, trashed_at, deleted_at",
+          { count: "exact" },
+        )
+        .eq("owner_id", user!.id)
+        .order("client_id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[importar] client_summary_all:", e instanceof Error ? e.message : e);
+      return [] as Record<string, unknown>[];
+    }),
     supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
     // Para la línea de bolívares del resumen de confirmación, nada más.
     getOwnerRateContext(supabase, user!.id),
@@ -62,7 +74,7 @@ export default async function ImportPage() {
   const ownerCountry =
     (owner?.country as string | undefined) ?? (await readOwnerCountry(supabase, user!.id));
 
-  const existingClients = (clients ?? []).map((c) => ({
+  const existingClients = clients.map((c) => ({
     id: c.client_id as string,
     name: c.name as string,
     balance: (c.balance as number | null) ?? 0,

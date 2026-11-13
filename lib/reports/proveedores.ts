@@ -1,5 +1,6 @@
 import { cargarDevoluciones, lineasDevueltas } from "@/lib/reports/devoluciones";
 import type { createClient } from "@/lib/supabase/server";
+import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 import type { Rango } from "@/lib/reports/rango";
 import type { BolivarRates } from "@/lib/products/price";
 import {
@@ -147,35 +148,49 @@ export async function cargarProveedores({
    */
   proveedorClave?: string | null;
 }): Promise<ProveedorEnReporte[]> {
-  const [resProductos, resVentas] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id, name, supplier, cost, cost_currency, photo_path, stock_opening")
-      .eq("owner_id", ownerId)
-      .is("trashed_at", null)
-      .order("name"),
-    supabase
-      .from("sales")
-      .select("id")
-      .eq("owner_id", ownerId)
-      .is("deleted_at", null)
-      .gte("created_at", rango.desde.toISOString())
-      .lte("created_at", rango.hasta.toISOString()),
-  ]);
-
   // SE MIRA EL ERROR DE LAS DOS, por la misma lección del 2026-10-27 que
   // `inventario.ts` recoge: un error descartado dibuja ceros creíbles.
-  for (const [que, r] of [
-    ["productos", resProductos],
-    ["ventas", resVentas],
-  ] as const) {
-    if (r.error) throw new Error(`proveedores: ${que}: ${r.error.message}`);
-  }
+  // The paged reads throw on any page's error; same message as before.
+  const conNombre = <T,>(que: string, p: Promise<T>) =>
+    p.catch((e: Error) => {
+      throw new Error(`proveedores: ${que}: ${e.message}`);
+    });
 
-  const productos = resProductos.data ?? [];
+  const [productos, ventas] = await Promise.all([
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    conNombre(
+      "productos",
+      readAllPages<Record<string, unknown>>((from, to) =>
+        supabase
+          .from("products")
+          .select("id, name, supplier, cost, cost_currency, photo_path, stock_opening", { count: "exact" })
+          .eq("owner_id", ownerId)
+          .is("trashed_at", null)
+          .order("name")
+          .order("id")
+          .range(from, to),
+      ),
+    ),
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    conNombre(
+      "ventas",
+      readAllPages<Record<string, unknown>>((from, to) =>
+        supabase
+          .from("sales")
+          .select("id", { count: "exact" })
+          .eq("owner_id", ownerId)
+          .is("deleted_at", null)
+          .gte("created_at", rango.desde.toISOString())
+          .lte("created_at", rango.hasta.toISOString())
+          .order("id")
+          .range(from, to),
+      ),
+    ),
+  ]);
+
   if (!productos.length) return [];
 
-  const idsDeVenta = (resVentas.data ?? []).map((v) => v.id as string);
+  const idsDeVenta = ventas.map((v) => v.id as string);
   // What came back counts as a sold line with a negative quantity: see
   // `lib/reports/devoluciones.ts`.
   const vendidas: (LineaVendida & { supplier: string | null })[] = lineasDevueltas(
@@ -186,11 +201,18 @@ export async function cargarProveedores({
     }),
   );
   if (idsDeVenta.length) {
-    const { data: lineas, error } = await supabase
-      .from("sale_lines")
-      .select("product_id, quantity, currency, unit_price, unit_cost, supplier")
-      .in("sale_id", idsDeVenta);
-    if (error) throw new Error(`proveedores: líneas: ${error.message}`);
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    const lineas = await conNombre(
+      "líneas",
+      readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
+        supabase
+          .from("sale_lines")
+          .select("product_id, quantity, currency, unit_price, unit_cost, supplier", { count: "exact" })
+          .in("sale_id", batch)
+          .order("id")
+          .range(from, to),
+      ),
+    );
     for (const l of lineas ?? []) {
       if (!l.product_id) continue;
       vendidas.push({

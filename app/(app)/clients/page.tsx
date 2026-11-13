@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/lib/supabase/read-all";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { ClientFilterProvider, ClientFilterChipsRow } from "@/components/dashboard/client-filter-context";
@@ -17,12 +18,21 @@ export default async function ClientsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: summaries }, { data: owner }, ownerRate] = await Promise.all([
-    supabase
-      .from("client_summary")
-      .select("*")
-      .eq("owner_id", user!.id)
-      .order("days_since_payment", { ascending: false }),
+  const [summaries, { data: owner }, ownerRate] = await Promise.all([
+    // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
+    // A failed read still draws an empty list, as when the error was dropped.
+    readAllPages<ClientSummary>((from, to) =>
+      supabase
+        .from("client_summary")
+        .select("*", { count: "exact" })
+        .eq("owner_id", user!.id)
+        .order("days_since_payment", { ascending: false })
+        .order("client_id")
+        .range(from, to),
+    ).catch((e: unknown) => {
+      console.error("[clientes] client_summary:", e instanceof Error ? e.message : e);
+      return [] as ClientSummary[];
+    }),
     supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
     getOwnerRateContext(supabase, user!.id),
   ]);
@@ -47,7 +57,7 @@ export default async function ClientsPage() {
   // Same rows Cartera shows: a flagged client already has its own screen
   // (Malas pagas), so it stays out of this list too rather than appearing
   // in both.
-  const rows = ((summaries ?? []) as ClientSummary[]).filter((r) => !r.is_flagged);
+  const rows = summaries.filter((r) => !r.is_flagged);
   const scores = await computeCreditScoresForClients(supabase, rows, ownerRate?.effectiveRate ?? null);
 
   return (
