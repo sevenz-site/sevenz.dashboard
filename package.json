@@ -86,6 +86,7 @@
     "qa:new-device": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/new-device.mjs",
     "qa:account-ready": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/account-ready.mjs",
     "qa:trial-ending": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/trial-ending.mjs",
+    "qa:negocio-semanal": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/negocio-semanal.mjs",
     "qa:aviso-resumen": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/aviso-resumen.mjs",
     "qa:security-alerts": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/security-alerts.mjs",
     "qa:session-device": "node qa/session-device.mjs",

@@ -159,6 +159,30 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "sin_parametros",
   },
 
+  // THE BUSINESS FAMILY, sent from 2026-11-13 (v0.6.0, `lib/whatsapp/business-weekly.ts`).
+  // All three carry a FIXED URL button to a section of Reportes (`lib/whatsapp/destinos.ts`).
+  //
+  // `atencion_negocio` IS COMPARED: on 2026-11-09 Kapso's curl showed these six named
+  // parameters in this order and no button component, and the owner gave the button's address
+  // from the editor. Approved by Meta on 2026-11-12.
+  //
+  // `negocio_resumen` AND `atencion_cobros` ARE NOT: approved on 2026-11-07 and compared that
+  // day against Kapso's preview (body, footer, button text), which does not show variable
+  // names or the button's URL type. The names below are the spec's. Reading them off the
+  // approved templates is a hard stop before production.
+  negocio_resumen: {
+    cuerpo: ["owner_name", "amount_due", "overdue_summary", "sales_summary"],
+    boton: "sin_parametros",
+  },
+  atencion_cobros: {
+    cuerpo: ["owner_name", "overdue_summary", "due_summary"],
+    boton: "sin_parametros",
+  },
+  atencion_negocio: {
+    cuerpo: ["owner_name", "overdue_summary", "due_summary", "out_of_stock", "low_stock", "open_orders"],
+    boton: "sin_parametros",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

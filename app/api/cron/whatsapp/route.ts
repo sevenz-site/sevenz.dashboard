@@ -99,6 +99,9 @@ export async function GET(request: Request) {
     // intenta para que no salga el lunes junto al resumen — las dos llevan
     // "clientes con plazo vencido" y el dueño leería la misma cifra dos veces
     // el mismo día.
+    //
+    // SINCE v0.6.0 (2026-11-13) both names lead to `lib/whatsapp/business-weekly.ts`: the
+    // business family, one template per slot, two slots a week per phone (migration 205).
     const atencion = dia >= 4 ? await enviarAtencionSemanal() : null;
 
     // LOS RECORDATORIOS DE PLAZO, todos los dias (MS-3). A diferencia de las

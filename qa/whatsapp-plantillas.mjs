@@ -123,6 +123,12 @@ function skip(nombre, motivo) {
 // ── el estado de antes, para poder devolverlo ───────────────────────────
 const { data: antesFilas } = await db.from("whatsapp_sends").select("id");
 const idsDeAntes = new Set((antesFilas ?? []).map((f) => f.id));
+// Since 205 a Thursday send that "went out" (Kapso is intercepted and answers OK) also writes
+// who was overdue into `whatsapp_attention_memory`. Those rows are this run's too, and go.
+const { claveSemanal } = await import("../lib/whatsapp/send.ts");
+const periodoDeLaTanda = claveSemanal();
+const { data: memoriaAntes } = await db.from("whatsapp_attention_memory").select("owner_id, client_id").eq("period_key", periodoDeLaTanda);
+const memoriaDeAntes = new Set((memoriaAntes ?? []).map((m) => `${m.owner_id}|${m.client_id}`));
 
 const { data: lista, error: errorLista } = await db.rpc("whatsapp_destinatarios_resumen");
 if (errorLista || !lista?.length) {
@@ -153,6 +159,23 @@ try {
     await db.from("subscriptions").insert({ owner_id: victima, estado: "bloqueada" });
   }
 
+  // THURSDAY ALONE FIRST. In dev two owners share one phone, so after Monday's two messages
+  // the cap (205) rightly stops their Thursday, and without this pass the Thursday templates
+  // would never reach the checks below. Its reservations are removed before the real order.
+  await enviarAtencionSemanal();
+  const { data: trasJueves } = await db.from("whatsapp_sends").select("id");
+  const delJueves = (trasJueves ?? []).map((f) => f.id).filter((id) => !idsDeAntes.has(id));
+  if (delJueves.length) await db.from("whatsapp_sends").delete().in("id", delJueves);
+  const corteReservas = reservas.length;
+  const corteKapso = interceptados.length;
+  const juevesSolo = interceptados.map((m) => m.template.name);
+  check(
+    "un jueves solo manda atencion_cobros o atencion_negocio",
+    juevesSolo.length > 0 && juevesSolo.every((t) => t === "atencion_cobros" || t === "atencion_negocio"),
+    `[${juevesSolo.join(", ")}]`,
+  );
+
+  // Then the real order: Monday, then Thursday.
   await enviarResumenSemanal();
   await enviarAtencionSemanal();
 
@@ -243,9 +266,32 @@ try {
   } else {
     skip("los dueños al día siguen recibiendo cartera_summary", "no hay ninguno al día en dev");
   }
-  if (!porPlantilla["cartera_attention"]) {
-    skip("cartera_attention: sus cuatro parámetros", "ningún dueño tiene nada que atender en dev");
-  }
+
+  // From v0.6.0 (2026-11-13) the Thursday template is `atencion_cobros` or `atencion_negocio`.
+  check(
+    "cartera_attention ya no se manda a nadie",
+    !reservas.some((r) => r.p_template === "cartera_attention"),
+    `${reservas.filter((r) => r.p_template === "cartera_attention").length} reservas`,
+  );
+  const porDueno = {};
+  for (const r of reservas.slice(corteReservas)) (porDueno[r.p_owner_id] ??= []).push(r.p_template);
+  check(
+    "ningún dueño recibe más de una plantilla del lunes ni más de una del jueves",
+    Object.values(porDueno).every((ts) => {
+      const lunes = ts.filter((t) => ["negocio_resumen", "cartera_summary_v2", "cartera_pausada"].includes(t)).length;
+      const jueves = ts.filter((t) => ["atencion_cobros", "atencion_negocio"].includes(t)).length;
+      return lunes <= 1 && jueves <= 1;
+    }),
+    JSON.stringify(Object.values(porDueno).filter((ts) => ts.length > 1).slice(0, 3)),
+  );
+
+  const porTelefono = {};
+  for (const m of interceptados.slice(corteKapso)) porTelefono[m.to] = (porTelefono[m.to] ?? 0) + 1;
+  check(
+    "en el orden normal, ningún teléfono recibe más de 2 en la semana",
+    Object.values(porTelefono).every((n) => n <= 2),
+    JSON.stringify(Object.values(porTelefono)),
+  );
 
   check("ningún mensaje salió de verdad a Kapso", true, `${interceptados.length} interceptados, 0 enviados`);
 
@@ -264,6 +310,12 @@ try {
     await db.from("subscriptions").update({ estado: subPrevia.estado }).eq("owner_id", victima);
   } else {
     await db.from("subscriptions").delete().eq("owner_id", victima);
+  }
+
+  const { data: memoriaDespues } = await db.from("whatsapp_attention_memory").select("owner_id, client_id").eq("period_key", periodoDeLaTanda);
+  for (const m of memoriaDespues ?? []) {
+    if (memoriaDeAntes.has(`${m.owner_id}|${m.client_id}`)) continue;
+    await db.from("whatsapp_attention_memory").delete().eq("period_key", periodoDeLaTanda).eq("owner_id", m.owner_id).eq("client_id", m.client_id);
   }
 
   const { data: despuesFilas } = await db.from("whatsapp_sends").select("id");

@@ -233,6 +233,8 @@ export const MANIFEST = {
     transaction_codes: { via: "none" },
     usdt_p2p_rate: { via: "none" },
     whatsapp_cron_runs: { via: "none" },
+    // 205: who was overdue in the last Thursday message. Server only, no policy.
+    whatsapp_attention_memory: { via: "none" },
     whatsapp_sends: { via: "owner" },
     client_summary: { via: "owner" },
     client_summary_all: { via: "owner" },
@@ -262,6 +264,10 @@ export const MANIFEST = {
     account_ready_pending: "service",
     // 201: whose trial ends in exactly 7 days. Only the cron calls it.
     trial_ending_targets: "service",
+    // 205: the Monday and Thursday figures, the book judge and the Thursday memory. Cron only.
+    whatsapp_business_weekly_targets: "service",
+    whatsapp_ledger_states: "service",
+    whatsapp_attention_remember: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",
