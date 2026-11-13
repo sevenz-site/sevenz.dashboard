@@ -30,6 +30,7 @@ import { combinedBalanceUsd } from "@/lib/exchange-rate/convert";
 import { formatBalanceSummary, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { withReturns } from "@/lib/returns/read";
+import { claveDeLibro } from "@/lib/sale-lines";
 import {
   CLIENT_STATUS_BADGE_CLASS,
   clientStatusLabel,
@@ -672,9 +673,12 @@ async function MovementHistory({
       // bounded: the lines of ONE client's sales (PL-34 accepts the per-client bound).
       supabase.from("sale_lines").select("sale_id, name, quantity, unit_price, currency").in("sale_id", idsDeVenta),
     ]);
+    // KEYED BY SALE AND BOOK since 2026-11-13: a fiado is one book of its sale, so a
+    // mixed sale's euro fiado must not list what was paid cash in dollars. See
+    // `lib/sale-lines.ts`, `claveDeLibro`.
     for (const l of lineasDeVenta ?? []) {
-      const id = l.sale_id as string;
-      (productosPorVenta[id] ??= []).push(l.name as string);
+      const clave = claveDeLibro(l.sale_id as string, l.currency as string | null);
+      (productosPorVenta[clave] ??= []).push(l.name as string);
     }
     ventasDeContado = filasDeContado(
       (ventasCrudas ?? []).map((v) => ({ id: v.id as string, created_at: v.created_at as string })),

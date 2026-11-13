@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import { formatCantidad } from "@/lib/products/cantidad";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { lineaDelLibro } from "@/lib/sale-lines";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -198,7 +199,11 @@ export default async function ConfirmarFiadoPage({
             uno registrado a mano antes de que existieran las ventas, no tiene
             productos — y una tarjeta vacía dice la verdad mejor que una fila
             con un guion. */}
-        {(lineas ?? []).map((l, i) => (
+        {/* ONLY THIS BOOK'S LINES (2026-11-13): the heading says «en <moneda>», and a
+            mixed sale's other currency was listed under it. */}
+        {(lineas ?? [])
+          .filter((l: { currency: string | null }) => lineaDelLibro(l.currency, mov.currency as string | null))
+          .map((l, i) => (
           <Fila
             key={`${l.name}-${i}`}
             etiqueta={l.name as string}

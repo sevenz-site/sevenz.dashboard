@@ -8,6 +8,7 @@ import { AbonoReparto } from "@/components/dashboard/abono-reparto";
 import type { FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import type { LedgerCurrency } from "@/lib/types";
+import { claveDeLibro } from "@/lib/sale-lines";
 
 export const metadata = { title: "Registrar abono — Sevenz" };
 
@@ -93,12 +94,14 @@ export default async function NuevoAbonoPage({
     // bounded: the product names of ONE client's open fiados.
     const { data: lineas } = await supabase
       .from("sale_lines")
-      .select("sale_id, name")
+      .select("sale_id, name, currency")
       .in("sale_id", saleIds);
+    // By sale AND book (2026-11-13): a mixed sale's euro fiado lists only its euro lines.
     for (const l of lineas ?? []) {
-      const lista = nombresPorVenta.get(l.sale_id as string) ?? [];
+      const clave = claveDeLibro(l.sale_id as string, l.currency as string | null);
+      const lista = nombresPorVenta.get(clave) ?? [];
       lista.push(l.name as string);
-      nombresPorVenta.set(l.sale_id as string, lista);
+      nombresPorVenta.set(clave, lista);
     }
   }
 
@@ -129,7 +132,7 @@ export default async function NuevoAbonoPage({
     // venta, lo que el tendero escribió al registrarlo, y si no hay ninguno de
     // los dos la tarjeta se queda solo con «Fiado» — que sigue siendo cierto.
     // Los fiados de la libreta importada caen casi siempre en el segundo caso.
-    productos: f.sale_id ? (nombresPorVenta.get(f.sale_id) ?? []) : [],
+    productos: f.sale_id ? (nombresPorVenta.get(claveDeLibro(f.sale_id, f.currency)) ?? []) : [],
     descripcion: f.description,
   }));
 
