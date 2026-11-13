@@ -83,7 +83,10 @@ export function ProductPhotosInput({
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
+      {/* 4px AND NOT 6px BETWEEN THUMBNAILS: five 64px photos plus four 6px gaps are 344px,
+          one more than the 343px a 375px phone leaves, so the fifth wrapped to a second row.
+          Measured 2026-11-12 on the capture; the frame draws one row. */}
+      <div className="flex flex-wrap gap-1">
         {value.map((path, i) => (
           <div key={path} className="relative size-16 shrink-0">
             {/* `unoptimized`: a Supabase public URL of a photo already resized on the
