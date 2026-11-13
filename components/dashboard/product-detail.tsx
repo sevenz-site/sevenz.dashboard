@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ImageOff } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
@@ -26,8 +25,9 @@ import {
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import { StockBadge } from "@/components/stock-badge";
 import { DescriptionText } from "@/components/description-text";
+import { ProductGallery } from "@/components/product-gallery";
+import { photosInOrder } from "@/lib/products/photos";
 import { trashProduct } from "@/app/(app)/productos/actions";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import type { ProductRow } from "@/lib/products/catalog";
 // `formatPriceAmount` Y NO UN FORMATEADOR PROPIO: es la misma regla que la
 // cabecera de `product-detail-rows.tsx` deja escrita. Dos fichas del mismo
@@ -79,8 +79,11 @@ export function ProductDetail({
   sharePriceLine,
   catalogToken,
   lowStockThreshold,
+  extraPhotos = [],
 }: {
   product: ProductRow;
+  // Photos 2 to 5 (CT-171). The cover is `product.photo_path`.
+  extraPhotos?: string[];
   // null en un negocio colombiano: no hay equivalencias que calcular.
   rates: BolivarRates | null;
   // What «Compartir» sends beside the link: `previewPriceLine`, computed on
@@ -94,7 +97,6 @@ export function ProductDetail({
   const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [borrando, startTransition] = useTransition();
 
-  const fotoUrl = product.photo_path ? getPublicProductPhotoUrl(product.photo_path) : null;
 
   const baseDetal =
     product.price_retail != null && product.base_currency_retail
@@ -138,25 +140,15 @@ export function ProductDetail({
 
           POR ESO ESTA RUTA ESTÁ EN LAS CUATRO LISTAS de `lib/products/
           routes.ts`. La cabecera de la app taparía exactamente esta banda. */}
-      <div className="relative h-50 w-full shrink-0 bg-muted">
-        {fotoUrl ? (
-          <Image
-            src={fotoUrl}
-            alt={product.name}
-            fill
-            unoptimized
-            sizes="(max-width: 640px) 100vw, 640px"
-            className="object-cover"
-          />
-        ) : (
-          // El hueco dibujado en vez de nada, igual que en la hoja de una
-          // línea de pedido: dice que aquí cabe una foto y este producto no
-          // la tiene. Un rectángulo gris liso se lee como que no cargó.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
-            <ImageOff className="size-6" aria-hidden />
-            <span className="text-xs">Sin foto</span>
-          </div>
-        )}
+      {/* SINCE CT-171 THE PHOTO IS A GALLERY (frame `2119:21783`): the cover first, swiped
+          to the others, the same component the customer's page uses. The empty state
+          («Sin foto») moved into it unchanged. */}
+      <ProductGallery
+        paths={photosInOrder(product.photo_path, extraPhotos)}
+        alt={product.name}
+        sizes="(max-width: 640px) 100vw, 640px"
+        className="h-50 w-full shrink-0"
+      >
 
         {/* LA FLECHA VUELVE AL CATÁLOGO, Y NO ES `router.back()`.
             Hoy la única puerta es la tarjeta del catálogo, así que las dos
@@ -179,7 +171,7 @@ export function ProductDetail({
           initialToken={catalogToken}
           variante="grande"
         />
-      </div>
+      </ProductGallery>
 
       <div className="flex flex-1 flex-col gap-4 px-4 py-4">
         <div className="flex flex-col gap-1.5">

@@ -217,6 +217,8 @@ export const MANIFEST = {
     // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
     stock_alerts: { via: "owner" },
     product_price_overrides: { via: "product" },
+    // 204 (CT-171): photos 2 to 5; the owner reads and writes through the product
+    product_photos: { via: "product" },
     products: { via: "owner" },
     rate_limit_counters: { via: "none" },
     rate_limiters: { via: "none" },
@@ -393,6 +395,8 @@ export const MANIFEST = {
     get_shared_product: "public",
     // public catalogue, by token
     get_shared_products: "public",
+    // 204: extra photos of a product the public page would show, by token
+    get_shared_product_photos: "public",
     // token → client; nothing without a valid token
     resolve_shared_client: "public",
     // the client leaves their ID number, by token

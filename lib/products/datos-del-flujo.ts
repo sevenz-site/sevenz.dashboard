@@ -97,8 +97,10 @@ export async function cargarProductoParaEditar(
   product: ProductRow;
   overrides: Record<PriceTier, Partial<Record<PriceCurrency, number>>>;
   initialCurrencies: Record<PriceTier, PriceCurrency[]>;
+  // Photos 2 to 5 in order (CT-171, migration 204). The cover is `product.photo_path`.
+  extraPhotos: string[];
 } | null> {
-  const [{ data: product }, { data: overrides }, { data: currencies }] = await Promise.all([
+  const [{ data: product }, { data: overrides }, { data: currencies }, { data: fotos }] = await Promise.all([
     supabase
       .from("products")
       .select(PRODUCT_COLUMNS)
@@ -114,6 +116,8 @@ export async function cargarProductoParaEditar(
     // pinned prices or enabled currencies missing — and save them that way.
     supabase.from("product_price_overrides").select("product_id, tier, currency, amount").eq("product_id", productId),
     supabase.from("product_currencies").select("product_id, tier, currency").eq("product_id", productId),
+    // The owner's own session, so RLS and the grant of 204 are what let this through.
+    supabase.from("product_photos").select("path, position").eq("product_id", productId).order("position"),
   ]);
 
   if (!product) return null;
@@ -121,6 +125,7 @@ export async function cargarProductoParaEditar(
 
   return {
     product: fila,
+    extraPhotos: ((fotos ?? []) as { path: string }[]).map((f) => f.path),
     overrides: overridesByTier(overrides ?? [], fila.id),
     // UNA LISTA POR ESCALÓN, cada una con SU base primera. Una sola para los
     // dos es lo que hacía que quitar una moneda al mayor la quitara también

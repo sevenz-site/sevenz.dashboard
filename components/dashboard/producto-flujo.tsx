@@ -38,7 +38,8 @@ import {
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
-import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
+import { ProductPhotosInput } from "@/components/dashboard/product-photos-input";
+import { photosInOrder } from "@/lib/products/photos";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TarjetaDePublicacion } from "@/components/dashboard/product-detail-rows";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -127,8 +128,11 @@ export function ProductoFlujo({
   categorias: categoriasIniciales = [],
   lastCostCurrency,
   ownerId,
+  extraPhotos = [],
 }: {
   product: ProductRow | null;
+  // Photos 2 to 5 of the product being edited (CT-171). Empty when creating.
+  extraPhotos?: string[];
   // null para un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
@@ -399,7 +403,10 @@ export function ProductoFlujo({
   const [pubWholesale, setPubWholesale] = useState(product?.published_wholesale ?? true);
   const publishOn = pubRetail || pubWholesale;
 
-  const [photoPath, setPhotoPath] = useState<string | null>(product?.photo_path ?? null);
+  // THE PHOTOS, COVER FIRST (CT-171). One list on screen; on save, the first one is the
+  // cover (`photoPath`) and the rest are `extraPhotoPaths`.
+  const [photos, setPhotos] = useState<string[]>(() => photosInOrder(product?.photo_path, extraPhotos));
+  const photoPath = photos[0] ?? null;
   const [description, setDescription] = useState(product?.description ?? "");
 
   // `parseTypedAmount` Y NO `parseAmount` en todo lo que lee un campo de
@@ -612,6 +619,7 @@ export function ProductoFlujo({
     publishedRetail: ventaRetail && pubRetail,
     publishedWholesale: ventaWholesale && pubWholesale,
     photoPath,
+    extraPhotoPaths: photos.slice(1),
     description: description || null,
   };
 
@@ -1009,11 +1017,10 @@ export function ProductoFlujo({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label>Foto</Label>
-              <ProductPhotoInput
+              <ProductPhotosInput
                 ownerId={ownerId}
-                value={photoPath}
-                onChange={setPhotoPath}
+                value={photos}
+                onChange={setPhotos}
                 disabled={saving}
               />
             </div>
@@ -1039,7 +1046,7 @@ export function ProductoFlujo({
           supplier={supplier}
           categoria={categorias.find((c) => c.id === categoryId)?.name ?? null}
           description={description}
-          photoPath={photoPath}
+          photos={photos}
           pubRetail={pubRetail}
           pubWholesale={pubWholesale}
           ventaRetail={ventaRetail}
@@ -2157,7 +2164,7 @@ function Verifica({
   supplier,
   categoria,
   description,
-  photoPath,
+  photos,
   pubRetail,
   pubWholesale,
   ventaRetail,
@@ -2178,7 +2185,7 @@ function Verifica({
   supplier: string;
   categoria: string | null;
   description: string;
-  photoPath: string | null;
+  photos: string[];
   pubRetail: boolean;
   pubWholesale: boolean;
   ventaRetail: boolean;
@@ -2229,20 +2236,43 @@ function Verifica({
             row. This screen is for looking at what is about to be published,
             and the photo is the one field whose mistake — the wrong shot, a
             blurry one — is invisible at thumbnail size. */}
-        {photoPath ? (
-          <div className="flex flex-col pb-4">
-            <FilaDeRepaso nombre="Foto" valor="" />
-            {/* `unoptimized` for the same reason as in `ProductPhotoInput`:
-                the source is a Supabase public URL and the photo was already
-                resized on the device. */}
-            <Image
-              src={getPublicProductPhotoUrl(photoPath)}
-              alt="Foto del producto"
-              width={640}
-              height={480}
-              unoptimized
-              className="h-[120px] w-full rounded-[10px] border object-cover"
-            />
+        {/* FOTOS since CT-171 (frame `2119:21680`): the cover across the full width
+            with its «Portada» mark, the other photos as thumbnails underneath. */}
+        {photos.length ? (
+          <div className="flex flex-col gap-2 pb-4">
+            <FilaDeRepaso nombre={photos.length > 1 ? "Fotos" : "Foto"} valor="" />
+            <div className="relative">
+              {/* `unoptimized`: a Supabase public URL of a photo already resized on
+                  the device. */}
+              <Image
+                src={getPublicProductPhotoUrl(photos[0])}
+                alt="Portada del producto"
+                width={640}
+                height={480}
+                unoptimized
+                className="h-[120px] w-full rounded-[10px] border object-cover"
+              />
+              {photos.length > 1 ? (
+                <span className="absolute bottom-2 left-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                  Portada
+                </span>
+              ) : null}
+            </div>
+            {photos.length > 1 ? (
+              <div className="flex gap-1.5">
+                {photos.slice(1).map((path, i) => (
+                  <Image
+                    key={path}
+                    src={getPublicProductPhotoUrl(path)}
+                    alt={`Foto ${i + 2} del producto`}
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className="size-16 rounded-lg border object-cover"
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : (
           <FilaDeRepaso nombre="Foto" valor={SIN_DATO} />

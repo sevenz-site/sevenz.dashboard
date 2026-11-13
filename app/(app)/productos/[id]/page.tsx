@@ -72,6 +72,7 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
   return (
     <ProductDetail
       product={cargado.product}
+      extraPhotos={cargado.extraPhotos}
       rates={rates}
       // The price its «Compartir» message carries (owner's request of
       // 2026-11-09), from the same rows the screen already loaded.

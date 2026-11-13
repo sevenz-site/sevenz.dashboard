@@ -1,14 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import {
-  getProductPreviewImageUrl,
-  getPublicProductPhotoUrl,
-} from "@/lib/supabase/storage";
+import { getProductPreviewImageUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
@@ -17,6 +13,8 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
 import { DescriptionText } from "@/components/description-text";
 import { plainDescription } from "@/lib/products/description";
+import { ProductGallery } from "@/components/product-gallery";
+import { photosInOrder } from "@/lib/products/photos";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -290,6 +288,28 @@ export default async function ProductoPublicoPage({
 
   if (!detalle) return <NoDisponible token={token} />;
 
+  // PHOTOS 2 TO 5 (CT-171, migration 204), through their own door, which only answers
+  // for a product `get_shared_product` would show. A failure -- including the function
+  // not existing yet, if this code ever ran before its migration -- leaves the cover
+  // alone, exactly what the page showed before: errors masked, CLAUDE.md's rule for
+  // anything callable without a session.
+  const fotosExtra = await (async (): Promise<string[]> => {
+    try {
+      const { data, error } = await supabase.rpc("get_shared_product_photos", {
+        p_token: token,
+        p_product_id: productId,
+      });
+      if (error) {
+        console.error("[productoPublico] fotos:", error.message);
+        return [];
+      }
+      return Array.isArray(data) ? (data as string[]) : [];
+    } catch (error) {
+      console.error("[productoPublico] fotos threw:", error instanceof Error ? error.message : error);
+      return [];
+    }
+  })();
+
   // Las mismas tasas que la lista, y por el mismo camino: la del tendero si la
   // fijó, la del BCV si no, y ninguna fuera de Venezuela.
   // NO USDT RATE HERE SINCE CT-171 (2026-11-12). From 2026-10-15 these public pages
@@ -312,22 +332,16 @@ export default async function ProductoPublicoPage({
           a la lista con un Link y no con `history.back()`: si alguien abrió
           este enlace directo —que es para lo que existe la ruta— no hay
           historial al que volver, y el botón no haría nada. */}
-      <div className="relative aspect-square w-full bg-muted">
-        {detalle.photo_path ? (
-          <Image
-            src={getPublicProductPhotoUrl(detalle.photo_path)}
-            alt=""
-            fill
-            unoptimized
-            sizes="(min-width: 640px) 640px, 100vw"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-            <ImageOff className="size-8" aria-hidden="true" />
-            <span className="text-xs">Sin foto</span>
-          </div>
-        )}
+      {/* SINCE CT-171 A GALLERY (frames `2119:21828` and `2119:21879`): swiped on a
+          phone, with arrows from 768 px, the owner's choice for web. Same component as
+          the shopkeeper's product page. */}
+      <ProductGallery
+        paths={photosInOrder(detalle.photo_path, fotosExtra)}
+        alt={detalle.name}
+        sizes="(min-width: 640px) 640px, 100vw"
+        emptyIconClassName="size-8"
+        className="aspect-square w-full"
+      >
         <Link
           href={volverAlCatalogo}
           aria-label="Volver al catálogo"
@@ -335,7 +349,7 @@ export default async function ProductoPublicoPage({
         >
           <IconoVolver className="text-primary" />
         </Link>
-      </div>
+      </ProductGallery>
 
       {/* `pb-0`: la fila de abajo de `ProductDetail` trae sus propios 40px
           desde el 2026-10-25. Los 20 de `py-5` encima dejarían el botón a 60

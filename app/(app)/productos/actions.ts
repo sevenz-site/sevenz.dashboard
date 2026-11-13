@@ -9,6 +9,7 @@ import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { parseAmount } from "@/lib/products/price";
 import { MAX_DESCRIPTION_LENGTH } from "@/lib/products/description";
+import { MAX_PRODUCT_PHOTOS } from "@/lib/products/photos";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
@@ -87,6 +88,24 @@ function ownPhotoPath(photoPath: string | null | undefined, userId: string): str
   return path;
 }
 
+// THE EXTRA PHOTOS, CLEANED THE SAME WAY AS THE COVER. Each path goes through
+// `ownPhotoPath` (a path is an id from the browser, CLAUDE.md's ownership rule); empty,
+// repeated or cover-equal paths are dropped, and at most four are kept -- the cover is the
+// fifth. `undefined` stays `undefined`: see `ProductInput.extraPhotoPaths`.
+function cleanExtraPhotos(
+  extras: string[] | undefined,
+  cover: string | null,
+  userId: string,
+): string[] | undefined {
+  if (extras === undefined) return undefined;
+  const out: string[] = [];
+  for (const raw of extras) {
+    const path = ownPhotoPath(raw, userId);
+    if (path && path !== cover && !out.includes(path)) out.push(path);
+  }
+  return out.slice(0, MAX_PRODUCT_PHOTOS - 1);
+}
+
 // What a save answers when the photo it points at no longer exists: a draft
 // older than the nightly cleanup's 7 days (`DM-12`, migration 182). See
 // `lib/storage-file-exists.ts` for why the check runs only on a new path.
@@ -159,6 +178,10 @@ export type ProductInput = {
   publishedRetail: boolean;
   publishedWholesale: boolean;
   photoPath: string | null;
+  // PHOTOS 2 TO 5, in order (CT-171, migration 204). `undefined` means "this caller does
+  // not manage extra photos -- leave them as they are": the quick product sheet inside a
+  // sale only has one photo field, and it must not wipe a product's gallery by saving.
+  extraPhotoPaths?: string[];
   description: string | null;
   // Migration 184. OPTIONAL ON PURPOSE: the quick-create sheet inside a sale
   // (`quick-product-sheet.tsx`) does not ask for it. Absent means «leave the
@@ -362,6 +385,7 @@ async function writeSatellites(
   productId: string,
   checked: Checked,
   input: ProductInput,
+  extras?: string[],
 ): Promise<string | null> {
   const { error: eDelCur } = await supabase
     .from("product_currencies")
@@ -431,6 +455,27 @@ async function writeSatellites(
     }
   }
 
+  // PHOTOS 2 TO 5 (CT-171), rewritten whole like the two tables above, and only when the
+  // caller manages them. If the insert fails after the delete, the extra photos are gone
+  // from the product but their files stay in Storage for a week (the nightly cleanup's
+  // `min_age`), so saving again restores them; the message says exactly that much.
+  if (extras !== undefined) {
+    const { error: eDelPh } = await supabase.from("product_photos").delete().eq("product_id", productId);
+    if (eDelPh) {
+      console.error("[writeSatellites] delete photos:", eDelPh.message);
+      return "Guardamos el producto, pero no pudimos actualizar sus fotos.";
+    }
+    if (extras.length > 0) {
+      const { error } = await supabase
+        .from("product_photos")
+        .insert(extras.map((path, i) => ({ product_id: productId, position: i + 1, path })));
+      if (error) {
+        console.error("[writeSatellites] insert photos:", error.message);
+        return "Guardamos el producto, pero no pudimos guardar todas sus fotos. Vuelve a guardar.";
+      }
+    }
+  }
+
   return null;
 }
 
@@ -480,6 +525,10 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
 
   const photo = ownPhotoPath(input.photoPath, user.id);
   if (photo && !(await storageFileExists("product-photos", photo))) return rechazar("photo_gone", PHOTO_GONE);
+  const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
+  for (const path of extras ?? []) {
+    if (!(await storageFileExists("product-photos", path))) return rechazar("photo_gone", PHOTO_GONE);
+  }
 
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
   if (!categoria.ok) return rechazar("foreign_category", CATEGORIA_AJENA);
@@ -495,7 +544,7 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
     return rechazar("db_error", "No pudimos guardar el producto. Intenta de nuevo.");
   }
 
-  const aviso = await writeSatellites(supabase, data.id, checked, input);
+  const aviso = await writeSatellites(supabase, data.id, checked, input, extras);
   revalidatePath("/productos");
 
   // HOW MANY PRODUCTS EACH BUSINESS CREATES, AND HOW COMPLETE. Owner's request of
@@ -540,6 +589,17 @@ export async function updateProduct(
   if (photo && photo !== savedPhoto && !(await storageFileExists("product-photos", photo))) {
     return { error: PHOTO_GONE };
   }
+  const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
+  if (extras?.length) {
+    const { data: guardadas } = await supabase
+      .from("product_photos")
+      .select("path")
+      .eq("product_id", productId);
+    const ya = new Set([savedPhoto, ...(guardadas ?? []).map((r) => r.path as string)]);
+    for (const path of extras) {
+      if (!ya.has(path) && !(await storageFileExists("product-photos", path))) return { error: PHOTO_GONE };
+    }
+  }
 
   // WHAT WAS THERE BEFORE, only to name which columns changed.
   const { data: antes } = await supabase.from("products").select("*").eq("id", productId).maybeSingle();
@@ -563,7 +623,7 @@ export async function updateProduct(
     return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
   }
 
-  const aviso = await writeSatellites(supabase, productId, checked, input);
+  const aviso = await writeSatellites(supabase, productId, checked, input, extras);
   revalidatePath("/productos");
 
   // WHAT GETS EDITED MOST. If it is the price, a shortcut would save the whole

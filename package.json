@@ -26,6 +26,7 @@
     "qa:consent": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-consent.mjs",
     "qa:precio": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/product-price.mjs",
     "qa:productos": "node qa/products.mjs",
+    "qa:fotos": "node qa/fotos.mjs",
     "qa:catalogo": "node qa/catalogo.mjs",
     "qa:catalogo-bordes": "node qa/catalogo-bordes.mjs",
     "qa:plantillas": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/whatsapp-plantillas.mjs",
