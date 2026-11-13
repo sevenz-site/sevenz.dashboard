@@ -15,6 +15,8 @@ import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing"
 import { previewPriceLine } from "@/lib/products/preview-price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
+import { DescriptionText } from "@/components/description-text";
+import { plainDescription } from "@/lib/products/description";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -143,7 +145,9 @@ export async function generateMetadata({
     // las cuentas claras de tu negocio sin tanta vaina!»* debajo de su
     // nombre -- la frase de la marca presentada como si describiera el
     // bafle. `null` dice «esta página no tiene descripción» y no hereda nada.
-    const descripcionPropia = d.description?.trim() || null;
+    // WITHOUT ITS MARKERS since CT-171: a chat preview cannot draw bold or bullets, and
+    // «**Casco**» with its asterisks reads as a typo. Frame `2119:21935`.
+    const descripcionPropia = plainDescription(d.description);
     // Precio en su propia línea y la descripción debajo. Si el chat colapsa el
     // salto, se lee igual: el precio es lo primero en los dos casos.
     const descripcion =
@@ -349,7 +353,7 @@ export default async function ProductoPublicoPage({
         {detalle.description ? (
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Descripción del producto</p>
-            <p className="text-sm leading-relaxed">{detalle.description}</p>
+            <DescriptionText text={detalle.description} />
           </div>
         ) : null}
 

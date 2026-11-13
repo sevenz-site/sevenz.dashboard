@@ -25,6 +25,7 @@ import {
 } from "@/components/dashboard/product-detail-rows";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import { StockBadge } from "@/components/stock-badge";
+import { DescriptionText } from "@/components/description-text";
 import { trashProduct } from "@/app/(app)/productos/actions";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import type { ProductRow } from "@/lib/products/catalog";
@@ -234,9 +235,7 @@ export function ProductDetail({
         {product.description?.trim() ? (
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground">Descripción del producto</span>
-            <p className="text-sm leading-5 break-words whitespace-pre-line">
-              {product.description}
-            </p>
+            <DescriptionText text={product.description} />
           </div>
         ) : null}
 

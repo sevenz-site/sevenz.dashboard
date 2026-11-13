@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { SupplierField } from "@/components/dashboard/supplier-field";
 import { CategoryField, type CategoriaConConteo } from "@/components/dashboard/category-field";
 import {
@@ -51,6 +50,8 @@ import {
 } from "@/app/(app)/productos/actions";
 import type { ProductRow } from "@/lib/products/catalog";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { DescriptionField } from "@/components/dashboard/description-field";
+import { DescriptionText } from "@/components/description-text";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 
@@ -670,7 +671,25 @@ export function ProductoFlujo({
       />
 
       <div className="flex flex-col gap-2">
-        <ScreenTitle>{editing ? "Editar producto" : "Crear producto"}</ScreenTitle>
+        {/* «EDITAR» LIVES IN THE HEADER ON 4/4 since 2026-11-12, owner's request with the
+            frame `2119:21680`: «En "Crear producto" Cambiar editar a la parte superior
+            derecha, en el header». It used to sit under «Crear producto» at the bottom.
+            Creating only: when EDITING, this step shows «Guardar» alone (owner's decision
+            of 2026-11-03), and that is untouched. Same action as before -- back to 1/4. */}
+        <div className="flex items-center justify-between gap-3">
+          <ScreenTitle>{editing ? "Editar producto" : "Crear producto"}</ScreenTitle>
+          {paso === 4 && !editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 shrink-0 px-3 text-sm font-semibold"
+              disabled={saving}
+              onClick={() => setPaso(1)}
+            >
+              Editar
+            </Button>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground">
           {paso}/4 {ETIQUETA_DEL_PASO[paso - 1]}
         </p>
@@ -1001,12 +1020,11 @@ export function ProductoFlujo({
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="producto_descripcion">Descripción (opcional)</Label>
-              <Textarea
+              <DescriptionField
                 id="producto_descripcion"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Escribe descripción del producto"
-                rows={3}
+                onChange={setDescription}
+                disabled={saving}
               />
             </div>
         </div>
@@ -1050,10 +1068,9 @@ export function ProductoFlujo({
           el teclado — que en un formulario de cuatro pantallas es lo único
           que importa.
 
-          EN EL 4/4 SON DOS, del frame `1465:19879`: «Crear producto» relleno
-          y «Editar» con borde. El segundo vuelve al paso 1, que es lo que una
-          pantalla de revisión tiene que ofrecer: corregir lo que acabas de
-          leer.
+          EN EL 4/4 ERAN DOS, del frame `1465:19879`: «Crear producto» relleno
+          y «Editar» con borde. Since 2026-11-12 «Editar» is in the header (see
+          the title above), so this bar holds «Crear producto» alone.
 
           EDITING SHOWS «Guardar» ALONE, owner's request of 2026-11-03, with a
           screenshot circling the other two: *«los botones editar y eliminar no
@@ -1084,17 +1101,6 @@ export function ProductoFlujo({
                 "Crear producto"
               )}
             </Button>
-            {editing ? null : (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full text-base font-semibold"
-                disabled={saving}
-                onClick={() => setPaso(1)}
-              >
-                Editar
-              </Button>
-            )}
           </>
         )}
       </StickyActions>
@@ -2211,7 +2217,11 @@ function Verifica({
         <FilaDeRepaso nombre="Proveedor" valor={supplier.trim() || SIN_DATO} />
         <FilaDeRepaso nombre="Categoría" valor={categoria ?? SIN_DATO} />
         <FilaAncha nombre="Descripción">
-          <p className="min-w-0 flex-1 break-words">{description.trim() || SIN_DATO}</p>
+          {description.trim() ? (
+            <DescriptionText text={description} className="min-w-0 flex-1" />
+          ) : (
+            <p className="min-w-0 flex-1 break-words">{SIN_DATO}</p>
+          )}
         </FilaAncha>
 
         {/* FOTO: the frame draws the label and then the image across the full

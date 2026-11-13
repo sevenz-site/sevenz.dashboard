@@ -24,6 +24,7 @@ import {
 } from "@/lib/products/price";
 import type { OrderProductRow } from "@/lib/orders/catalog-orders";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { DescriptionText } from "@/components/description-text";
 
 // WHAT THEY ASKED FOR, IN DETAIL — frame 1371:7229, the owner's request of
 // 2026-10-17. A line of an order opens and shows the product.
@@ -241,9 +242,7 @@ export function OrderProductSheet({
               {producto.description?.trim() ? (
                 <div className="flex flex-col gap-1 py-2">
                   <span className="text-xs text-muted-foreground">Descripción</span>
-                  <p className="text-sm leading-5 break-words whitespace-pre-line">
-                    {producto.description}
-                  </p>
+                  <DescriptionText text={producto.description} />
                 </div>
               ) : null}
             </div>

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { parseAmount } from "@/lib/products/price";
+import { MAX_DESCRIPTION_LENGTH } from "@/lib/products/description";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
@@ -39,7 +40,6 @@ export type ProductResult = { error: string | null; id?: string };
 // folder before it is written — see `ownPhotoPath`.
 
 const MAX_NAME_LENGTH = 120;
-const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_CURRENCY_LABEL = 24;
 // Un proveedor es un nombre de comercio, no una direccion. 120 es el mismo
 // techo que el nombre del producto, y recortar en el servidor es lo que impide
@@ -179,6 +179,16 @@ type Checked = {
 function validate(input: ProductInput): { error: string } | Checked {
   const name = cleanName(input.name);
   if (!name) return { error: "Escribe el nombre del producto." };
+
+  // A DESCRIPTION OVER THE LIMIT IS REFUSED, NOT CUT (CT-171). Until 2026-11-12 the
+  // server sliced it to 500 in silence, so a shopkeeper who typed 600 lost the end and
+  // never knew. The field now stops at 500; what still reaches this is a tab holding
+  // the old bundle, and it gets a sentence instead of a truncated description.
+  if ((input.description ?? "").trim().length > MAX_DESCRIPTION_LENGTH) {
+    return {
+      error: `La descripción pasa de ${MAX_DESCRIPTION_LENGTH} caracteres. Acórtala y guarda de nuevo.`,
+    };
+  }
 
   // CADA LISTA SE LIMPIA Y SE VALIDA POR SEPARADO. Un escalón sin ninguna
   // moneda no tiene en qué escribir su precio, así que la frase habla del
