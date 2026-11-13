@@ -166,10 +166,11 @@ export const PLANTILLAS_ESPERADAS = {
   // parameters in this order and no button component, and the owner gave the button's address
   // from the editor. Approved by Meta on 2026-11-12.
   //
-  // `negocio_resumen` AND `atencion_cobros` ARE NOT: approved on 2026-11-07 and compared that
-  // day against Kapso's preview (body, footer, button text), which does not show variable
-  // names or the button's URL type. The names below are the spec's. Reading them off the
-  // approved templates is a hard stop before production.
+  // `negocio_resumen` AND `atencion_cobros` ARE COMPARED TOO, on 2026-11-13: the owner pasted
+  // Kapso's curl for both approved templates. Same named parameters in this order, language
+  // `es`, sent from the owners' number (1373508439159674), and no button component -- a fixed
+  // button. Before that day only the preview had been compared (2026-11-07), which shows
+  // neither variable names nor the button's URL type.
   negocio_resumen: {
     cuerpo: ["owner_name", "amount_due", "overdue_summary", "sales_summary"],
     boton: "sin_parametros",
