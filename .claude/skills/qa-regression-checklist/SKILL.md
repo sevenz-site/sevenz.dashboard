@@ -1,11 +1,13 @@
 ---
 name: qa-regression-checklist
-model: claude-fable-5-1
+model: claude-fable-5-2
 description: Run a manual QA regression checklist across Sevenz's core money-path flows before launching anything to production — cutting a release/vX.Y.Z branch from dev (always triggers it), merging a release branch into main, or making any change (SQL, env vars, config) against the production Supabase project. Use whenever a production launch is being considered or requested, even if the user doesn't name this skill explicitly.
 ---
 
-**Se corre siempre con el modelo Fable 5.1**, decisión del dueño del 2026-11-04, y
-**no se empieza hasta que él confirme que ya lo cambió.** Ampliado por el dueño el
+**Se corre siempre con el modelo Fable 5.2**, decisión del dueño del 2026-11-14 (*«Cambiar a
+Fable 5.2»*), después de correr con él el checklist de la v0.6.0. Hasta ese día era Fable 5.1,
+decisión suya del 2026-11-04, y por eso las citas de abajo nombran la 5.1: la regla es la
+misma con el modelo nuevo. **No se empieza hasta que él confirme que ya lo cambió.** Ampliado por el dueño el
 2026-11-05: *«Antes de empezar a ejecutar el checklist me pedirás que cambie el modelo
 a Fable 5.1 y detendrás el inicio del QA checklist hasta que te confirme que ya
 cambié el modelo a Fable 5.1 y ese será el que usarás para las pruebas»*.
@@ -13,8 +15,8 @@ cambié el modelo a Fable 5.1 y ese será el que usarás para las pruebas»*.
 El orden, sin excepción:
 
 1. Antes de la primera comprobación, se le pide en una línea que ponga el modelo en
-   Fable 5.1 (`/model claude-fable-5-1`). **Se pide aunque la sesión ya parezca estar
-   en Fable 5.1**: el modelo puede cambiar a mitad de sesión sin que nadie lo pida, y
+   Fable 5.2 (`/model claude-fable-5-2`). **Se pide aunque la sesión ya parezca estar
+   en Fable 5.2**: el modelo puede cambiar a mitad de sesión sin que nadie lo pida, y
    pasó ese mismo día, a mitad de un checklist.
 2. **Se detiene ahí.** No se corre ninguna suite, no se lee ningún diff, no se abre
    ningún navegador hasta que el dueño conteste que ya está.

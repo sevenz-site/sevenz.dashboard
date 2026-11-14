@@ -148,7 +148,7 @@ release en vez de a `dev`.
    origin/dev` y su push. Desde ese momento `dev` ya es la versión siguiente.
 2. **Cortar la rama release dispara el `qa-regression-checklist`, siempre.**
    Pedido por el dueño el 2026-11-09: *«Se debe ejecutar QA checklist al lanzar a
-   la rama release/»*. Corre de día sobre la rama recién cortada, con Fable 5.1 y
+   la rama release/»*. Corre de día sobre la rama recién cortada, con Fable 5.2 y
    con la misma parada para confirmar el modelo; con `npm run dev` desde esa rama
    y contra la base dev. Su alcance es `git diff origin/main
    origin/release/vX.Y.Z`. Una rama release sin checklist corrido no se mergea a
@@ -2192,9 +2192,10 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 - When a `release/vX.Y.Z` branch is cut (owner's request of 2026-11-09), before
   merging it into `main`, or before making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, always with
-  the Fable 5.1 model (owner's decision of 2026-11-04). **Before the first check,
-  ask the owner to switch the session to Fable 5.1 and stop there until he
-  confirms it is done** — even if the session already looks like Fable 5.1, since
+  the Fable 5.2 model (owner's decision of 2026-11-14, «Cambiar a Fable 5.2»; it was
+  Fable 5.1 from 2026-11-04 until then). **Before the first check,
+  ask the owner to switch the session to Fable 5.2 and stop there until he
+  confirms it is done** — even if the session already looks like Fable 5.2, since
   the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
   Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
   confirme que ya cambié el modelo a Fable 5.1»*. Then
