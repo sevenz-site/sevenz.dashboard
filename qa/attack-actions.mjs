@@ -258,6 +258,11 @@ try {
     ["/admin", SA], ["/admin/cuentas", SA], [`/admin/cuentas/${A.id}`, SA],
     [`/s/${ctx.tokB}`, null], [`/s/${ctx.tokB}/perfil`, null], [`/c/${ctx.linkB}`, null], [`/c/${ctx.linkB}/carrito`, null],
     ["/login", null], ["/signup", null], ["/forgot-password", null], ["/reset-password", null],
+    // The code screen was missing here until 2026-11-13. Without a ticket it redirects to
+    // /login, but the visit is what compiles it, and with it `verifyLoginCode`. On a server
+    // just started the row came out «SIN PROBAR» twice in the v0.6.0 checklist; it had only
+    // ever passed because someone had opened that screen earlier in the same server run.
+    ["/login/codigo", null],
   ];
   for (const [ruta, cookie] of rutas) await fetch(BASE + ruta, { headers: cookie ? { cookie } : {} }).catch(() => null);
   await dormir(1500);
