@@ -36,13 +36,19 @@ await shot(S, 10, "Agregar");
 await shot(S, 11, "js:[...document.querySelectorAll('label')].find(l=>l.textContent.trim()==='Venta al mayor').parentElement");
 await click(LASTBTN("Continuar"), { wait: 2500 });
 await shot(S, 12, "js:[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Publicar producto en catálogo')).parentElement");
-await shot(S, 13, "Adjuntar foto");
+// v0.6.0 (CT-171): up to 5 photos and a description with format. The photo tile is shown
+// empty on purpose: a help picture needs no upload, and an upload would leave a file in dev's
+// storage for a product nobody saves.
+await shot(S, 13, "js:[...document.querySelectorAll('span')].find(e=>e.textContent.trim()==='Agregar')?.closest('label,button')");
+const DESC = "js:document.querySelector('textarea')";
+await type(DESC, ["**Queso blanco** llanero, fresco.", "- Se vende por kilo", "- Hecho esta semana"].join(String.fromCharCode(10)), { wait: 1200 });
+await shot(S, 14, `${DESC}.parentElement`);
 await click(LASTBTN("Continuar"), { wait: 2500 });
-await shot(S, 14, LASTBTN("Crear producto"), { crop: 0 });
+await shot(S, 15, LASTBTN("Crear producto"), { crop: 0 });
 if (process.argv.includes("--finalizar")) {
   await click(LASTBTN("Crear producto"), { wait: 1000 });
   await waitFor("!location.pathname.endsWith('/nuevo')"); await sleep(4000);
 } else {
   await go(`/productos`, 5000);
 }
-await shot(S, 15, "Abrir Queso blanco 1 kg", { crop: 0 });
+await shot(S, 16, "Abrir Queso blanco 1 kg", { crop: 0 });
