@@ -487,12 +487,29 @@ export async function registrarAvisoDelResumen(): Promise<void> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("owners")
     .update({ whatsapp_scope_notice_at: new Date().toISOString() })
     .eq("id", user.id)
-    .is("whatsapp_scope_notice_at", null);
-  if (error) console.error("registrarAvisoDelResumen:", error);
+    .is("whatsapp_scope_notice_at", null)
+    .select("id");
+  if (error) {
+    console.error("registrarAvisoDelResumen:", error);
+    return;
+  }
+  // HOW MANY OWNERS SAW THE NOTICE THAT THEIR WEEKLY MESSAGE CHANGED? Owner's request of
+  // 2026-11-14, asked whether to count it: «Sí». What it decides: the notice is how Sevenz
+  // tells owners who accepted «resumen de cartera» that they now get sales, products and
+  // orders too, instead of asking them again (his decision of 2026-11-06). Seen by most of
+  // those who accepted the old text → that promise was kept; seen by few → they are not
+  // opening Inicio, and the change reached their WhatsApp without them reading why. Crossed
+  // with `Owner Notices Changed` (enabled: false) in the days after, it says whether the
+  // broader message drives people to switch it off.
+  //
+  // Filed under the owner. ONCE PER OWNER, by construction: only when this update actually
+  // marked the row (the `is null` above), so a second tab or a reload counts nothing. Sent
+  // from the server, so it is an exact count of notices marked, not a floor.
+  if ((data ?? []).length > 0) trackServer("Owner Notices Scope Notice Shown", user.id, {}, user.email);
 }
 
 export async function registrarPreguntaAvisos(): Promise<void> {

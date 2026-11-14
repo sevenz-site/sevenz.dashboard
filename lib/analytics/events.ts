@@ -299,8 +299,9 @@ export type EventProps = {
     has_supplier: boolean;
     published: boolean;
     satellites_failed: boolean;
+    photo_count: number;
   };
-  "Product Updated": FlowContext & { product_id: string; fields_changed: string[] };
+  "Product Updated": FlowContext & { product_id: string; fields_changed: string[]; photo_count: number };
   "Product Publication Changed": { product_id: string; published_retail: boolean; published_wholesale: boolean };
   "Product Deleted": { product_id: string };
   "Product Restored": { product_id: string };
@@ -373,6 +374,7 @@ export type EventProps = {
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };
   "Owner Notices Prompt Shown": { ask_number: number };
+  "Owner Notices Scope Notice Shown": Record<string, never>;
   "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "code" | "other" };
   "Report Export Failed": { que: string; reason: string };
   "Stock Threshold Changed": { threshold: number };

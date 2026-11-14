@@ -546,6 +546,7 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
 
   const aviso = await writeSatellites(supabase, data.id, checked, input, extras);
   revalidatePath("/productos");
+  const photoCount = await savedPhotoCount(supabase, data.id, photo);
 
   // HOW MANY PRODUCTS EACH BUSINESS CREATES, AND HOW COMPLETE. Owner's request of
   // 2026-11-04: *«productos creados y sus eventos para funnel de creación de un
@@ -567,10 +568,36 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
       has_supplier: Boolean(input.supplier?.trim()),
       published: input.publishedRetail || input.publishedWholesale,
       satellites_failed: aviso != null,
+      photo_count: photoCount,
     },
     user.email,
   );
   return { error: aviso, id: data.id };
+}
+
+// HOW MANY PHOTOS THE PRODUCT ENDED UP WITH, read back after saving: the cover plus the rows
+// of `product_photos` (migration 204). Owner's request of 2026-11-14, asked whether the
+// product events should say how many photos each product carries: «Sí». What it decides:
+// whether the 5-photo gallery of v0.6.0 (CT-171) gets used or most products stay at one,
+// which says if the next effort on the catalogue goes to photos or elsewhere.
+//
+// Read from the database and not from the request, so a save whose extra photos failed
+// (`satellites_failed`) is not counted as having them. Never throws: an event must not cost
+// a save, so a failed read counts the cover alone.
+async function savedPhotoCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productId: string,
+  cover: string | null | undefined,
+): Promise<number> {
+  try {
+    const { count } = await supabase
+      .from("product_photos")
+      .select("product_id", { count: "exact", head: true })
+      .eq("product_id", productId);
+    return (cover ? 1 : 0) + (count ?? 0);
+  } catch {
+    return cover ? 1 : 0;
+  }
 }
 
 export async function updateProduct(
@@ -625,6 +652,7 @@ export async function updateProduct(
 
   const aviso = await writeSatellites(supabase, productId, checked, input, extras);
   revalidatePath("/productos");
+  const photoCount = await savedPhotoCount(supabase, productId, fila.photo_path);
 
   // WHAT GETS EDITED MOST. If it is the price, a shortcut would save the whole
   // wizard. Column names only, never their values. Filed under the owner.
@@ -639,6 +667,7 @@ export async function updateProduct(
       fields_changed: Object.entries(fila)
         .filter(([columna, valor]) => !igual((antes as Record<string, unknown> | null)?.[columna], valor))
         .map(([columna]) => columna),
+      photo_count: photoCount,
     },
     user.email,
   );
