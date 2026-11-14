@@ -7,7 +7,9 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { isSaleCurrencyLocked, parseAmount } from "@/lib/products/price";
+import { parseAmount } from "@/lib/products/price";
+import { MAX_DESCRIPTION_LENGTH } from "@/lib/products/description";
+import { MAX_PRODUCT_PHOTOS } from "@/lib/products/photos";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
@@ -39,7 +41,6 @@ export type ProductResult = { error: string | null; id?: string };
 // folder before it is written — see `ownPhotoPath`.
 
 const MAX_NAME_LENGTH = 120;
-const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_CURRENCY_LABEL = 24;
 // Un proveedor es un nombre de comercio, no una direccion. 120 es el mismo
 // techo que el nombre del producto, y recortar en el servidor es lo que impide
@@ -87,6 +88,24 @@ function ownPhotoPath(photoPath: string | null | undefined, userId: string): str
   return path;
 }
 
+// THE EXTRA PHOTOS, CLEANED THE SAME WAY AS THE COVER. Each path goes through
+// `ownPhotoPath` (a path is an id from the browser, CLAUDE.md's ownership rule); empty,
+// repeated or cover-equal paths are dropped, and at most four are kept -- the cover is the
+// fifth. `undefined` stays `undefined`: see `ProductInput.extraPhotoPaths`.
+function cleanExtraPhotos(
+  extras: string[] | undefined,
+  cover: string | null,
+  userId: string,
+): string[] | undefined {
+  if (extras === undefined) return undefined;
+  const out: string[] = [];
+  for (const raw of extras) {
+    const path = ownPhotoPath(raw, userId);
+    if (path && path !== cover && !out.includes(path)) out.push(path);
+  }
+  return out.slice(0, MAX_PRODUCT_PHOTOS - 1);
+}
+
 // What a save answers when the photo it points at no longer exists: a draft
 // older than the nightly cleanup's 7 days (`DM-12`, migration 182). See
 // `lib/storage-file-exists.ts` for why the check runs only on a new path.
@@ -114,7 +133,13 @@ async function ownsProduct(productId: string) {
 // Las monedas en las que un producto puede llevar precio. VES no está: es la
 // moneda en la que el cliente paga, se enseña siempre calculada y no se
 // agrega ni se quita (migración 087).
-const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT", "COP"];
+// USDT left on 2026-11-12 (CT-171, migration 203), owner's decision.
+const SELLABLE: PriceCurrency[] = ["USD", "EUR", "COP"];
+
+// The cost currencies the form offers, plus the ones old products may still carry
+// (VES, and «Otro», retired in CT-66 but still saved). USDT is not here since CT-171;
+// the database refuses it too, and this is what turns that refusal into a sentence.
+const COST_CURRENCIES: string[] = ["USD", "EUR", "COP", "VES", "OTHER"];
 
 export type FixedPrices = Partial<Record<PriceCurrency, string>>;
 
@@ -153,6 +178,10 @@ export type ProductInput = {
   publishedRetail: boolean;
   publishedWholesale: boolean;
   photoPath: string | null;
+  // PHOTOS 2 TO 5, in order (CT-171, migration 204). `undefined` means "this caller does
+  // not manage extra photos -- leave them as they are": the quick product sheet inside a
+  // sale only has one photo field, and it must not wipe a product's gallery by saving.
+  extraPhotoPaths?: string[];
   description: string | null;
   // Migration 184. OPTIONAL ON PURPOSE: the quick-create sheet inside a sale
   // (`quick-product-sheet.tsx`) does not ask for it. Absent means «leave the
@@ -174,10 +203,42 @@ function validate(input: ProductInput): { error: string } | Checked {
   const name = cleanName(input.name);
   if (!name) return { error: "Escribe el nombre del producto." };
 
+  // A DESCRIPTION OVER THE LIMIT IS REFUSED, NOT CUT (CT-171). Until 2026-11-12 the
+  // server sliced it to 500 in silence, so a shopkeeper who typed 600 lost the end and
+  // never knew. The field now stops at 500; what still reaches this is a tab holding
+  // the old bundle, and it gets a sentence instead of a truncated description.
+  if ((input.description ?? "").trim().length > MAX_DESCRIPTION_LENGTH) {
+    return {
+      error: `La descripción pasa de ${MAX_DESCRIPTION_LENGTH} caracteres. Acórtala y guarda de nuevo.`,
+    };
+  }
+
   // CADA LISTA SE LIMPIA Y SE VALIDA POR SEPARADO. Un escalón sin ninguna
   // moneda no tiene en qué escribir su precio, así que la frase habla del
   // escalón y no del producto: «deja al menos una moneda» a secas mandaría al
   // tendero a mirar el bloque equivocado.
+  // A CURRENCY OUTSIDE THE LIST IS REFUSED, NOT FILTERED. Filtering a list whose FIRST
+  // entry is foreign would move the base to the next currency and leave the stored number
+  // meaning something else -- the product silently repriced. The form never sends one;
+  // what does is a request built by hand, or a tab still holding the pre-CT-171 bundle
+  // with USDT in its menu. Kept from the CT-79 lock it replaces, which reasoned the same.
+  for (const [tier, list] of [
+    ["retail", input.activeCurrenciesRetail],
+    ["wholesale", input.activeCurrenciesWholesale],
+  ] as const) {
+    if (list.some((c) => !SELLABLE.includes(c))) {
+      return {
+        error:
+          tier === "retail"
+            ? "Esa moneda ya no se puede usar en el precio al detal. Quítala y guarda de nuevo."
+            : "Esa moneda ya no se puede usar en el precio al mayor. Quítala y guarda de nuevo.",
+      };
+    }
+  }
+  if (input.costCurrency && !COST_CURRENCIES.includes(input.costCurrency)) {
+    return { error: "Esa moneda ya no se puede usar en el costo. Elige otra y guarda de nuevo." };
+  }
+
   const currencies: Record<PriceTier, PriceCurrency[]> = {
     retail: input.activeCurrenciesRetail.filter((c) => SELLABLE.includes(c)),
     wholesale: input.activeCurrenciesWholesale.filter((c) => SELLABLE.includes(c)),
@@ -189,29 +250,6 @@ function validate(input: ProductInput): { error: string } | Checked {
     return { error: "Deja al menos una moneda en el precio al mayor." };
   }
 
-  // THE LOCK IS REFUSED HERE, NOT FILTERED (CT-79).
-  //
-  // `SELLABLE` above is what the schema allows; this is what is temporarily
-  // off. The dialog already drops a locked currency when it loads a product
-  // and hides it from the "add" menu, so a normal save never reaches this.
-  // What reaches it is a request built by hand -- and the one who would build
-  // it is the shopkeeper with his own session, which is exactly why a lock
-  // that lives only in a menu is not a lock.
-  //
-  // REFUSING AND NOT FILTERING is the decision worth keeping: filtering a
-  // list whose FIRST entry is locked would move the base to the next currency
-  // and leave the stored number meaning something else -- the product silently
-  // repriced. An error says what happened; a silent rebase does not.
-  for (const tier of ["retail", "wholesale"] as PriceTier[]) {
-    if (currencies[tier].some(isSaleCurrencyLocked)) {
-      return {
-        error:
-          tier === "retail"
-            ? "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al detal."
-            : "Por ahora no se puede poner precio en USDT. Quita esa moneda del precio al mayor.",
-      };
-    }
-  }
   const base: Record<PriceTier, PriceCurrency> = {
     retail: currencies.retail[0],
     wholesale: currencies.wholesale[0],
@@ -347,6 +385,7 @@ async function writeSatellites(
   productId: string,
   checked: Checked,
   input: ProductInput,
+  extras?: string[],
 ): Promise<string | null> {
   const { error: eDelCur } = await supabase
     .from("product_currencies")
@@ -416,6 +455,27 @@ async function writeSatellites(
     }
   }
 
+  // PHOTOS 2 TO 5 (CT-171), rewritten whole like the two tables above, and only when the
+  // caller manages them. If the insert fails after the delete, the extra photos are gone
+  // from the product but their files stay in Storage for a week (the nightly cleanup's
+  // `min_age`), so saving again restores them; the message says exactly that much.
+  if (extras !== undefined) {
+    const { error: eDelPh } = await supabase.from("product_photos").delete().eq("product_id", productId);
+    if (eDelPh) {
+      console.error("[writeSatellites] delete photos:", eDelPh.message);
+      return "Guardamos el producto, pero no pudimos actualizar sus fotos.";
+    }
+    if (extras.length > 0) {
+      const { error } = await supabase
+        .from("product_photos")
+        .insert(extras.map((path, i) => ({ product_id: productId, position: i + 1, path })));
+      if (error) {
+        console.error("[writeSatellites] insert photos:", error.message);
+        return "Guardamos el producto, pero no pudimos guardar todas sus fotos. Vuelve a guardar.";
+      }
+    }
+  }
+
   return null;
 }
 
@@ -465,6 +525,10 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
 
   const photo = ownPhotoPath(input.photoPath, user.id);
   if (photo && !(await storageFileExists("product-photos", photo))) return rechazar("photo_gone", PHOTO_GONE);
+  const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
+  for (const path of extras ?? []) {
+    if (!(await storageFileExists("product-photos", path))) return rechazar("photo_gone", PHOTO_GONE);
+  }
 
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
   if (!categoria.ok) return rechazar("foreign_category", CATEGORIA_AJENA);
@@ -480,8 +544,9 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
     return rechazar("db_error", "No pudimos guardar el producto. Intenta de nuevo.");
   }
 
-  const aviso = await writeSatellites(supabase, data.id, checked, input);
+  const aviso = await writeSatellites(supabase, data.id, checked, input, extras);
   revalidatePath("/productos");
+  const photoCount = await savedPhotoCount(supabase, data.id, photo);
 
   // HOW MANY PRODUCTS EACH BUSINESS CREATES, AND HOW COMPLETE. Owner's request of
   // 2026-11-04: *«productos creados y sus eventos para funnel de creación de un
@@ -503,10 +568,36 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
       has_supplier: Boolean(input.supplier?.trim()),
       published: input.publishedRetail || input.publishedWholesale,
       satellites_failed: aviso != null,
+      photo_count: photoCount,
     },
     user.email,
   );
   return { error: aviso, id: data.id };
+}
+
+// HOW MANY PHOTOS THE PRODUCT ENDED UP WITH, read back after saving: the cover plus the rows
+// of `product_photos` (migration 204). Owner's request of 2026-11-14, asked whether the
+// product events should say how many photos each product carries: «Sí». What it decides:
+// whether the 5-photo gallery of v0.6.0 (CT-171) gets used or most products stay at one,
+// which says if the next effort on the catalogue goes to photos or elsewhere.
+//
+// Read from the database and not from the request, so a save whose extra photos failed
+// (`satellites_failed`) is not counted as having them. Never throws: an event must not cost
+// a save, so a failed read counts the cover alone.
+async function savedPhotoCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productId: string,
+  cover: string | null | undefined,
+): Promise<number> {
+  try {
+    const { count } = await supabase
+      .from("product_photos")
+      .select("product_id", { count: "exact", head: true })
+      .eq("product_id", productId);
+    return (cover ? 1 : 0) + (count ?? 0);
+  } catch {
+    return cover ? 1 : 0;
+  }
 }
 
 export async function updateProduct(
@@ -524,6 +615,17 @@ export async function updateProduct(
   const photo = ownPhotoPath(input.photoPath, user.id);
   if (photo && photo !== savedPhoto && !(await storageFileExists("product-photos", photo))) {
     return { error: PHOTO_GONE };
+  }
+  const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
+  if (extras?.length) {
+    const { data: guardadas } = await supabase
+      .from("product_photos")
+      .select("path")
+      .eq("product_id", productId);
+    const ya = new Set([savedPhoto, ...(guardadas ?? []).map((r) => r.path as string)]);
+    for (const path of extras) {
+      if (!ya.has(path) && !(await storageFileExists("product-photos", path))) return { error: PHOTO_GONE };
+    }
   }
 
   // WHAT WAS THERE BEFORE, only to name which columns changed.
@@ -548,8 +650,9 @@ export async function updateProduct(
     return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
   }
 
-  const aviso = await writeSatellites(supabase, productId, checked, input);
+  const aviso = await writeSatellites(supabase, productId, checked, input, extras);
   revalidatePath("/productos");
+  const photoCount = await savedPhotoCount(supabase, productId, fila.photo_path);
 
   // WHAT GETS EDITED MOST. If it is the price, a shortcut would save the whole
   // wizard. Column names only, never their values. Filed under the owner.
@@ -564,6 +667,7 @@ export async function updateProduct(
       fields_changed: Object.entries(fila)
         .filter(([columna, valor]) => !igual((antes as Record<string, unknown> | null)?.[columna], valor))
         .map(([columna]) => columna),
+      photo_count: photoCount,
     },
     user.email,
   );

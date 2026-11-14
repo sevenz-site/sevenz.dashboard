@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { foldForSearch } from "@/lib/search/fold";
 import { dayInZone } from "@/lib/format";
 import { useZonaDelNegocio } from "@/components/fecha";
+import { claveDeLibro } from "@/lib/sale-lines";
 
 const PAGE_SIZE = 10;
 
@@ -381,7 +382,7 @@ export function MovementHistoryList({
     const m = f.m;
     const fiado = m.type === "charge" ? m : (porId.get(m.applies_to_movement_id ?? "") ?? null);
     const nombre =
-      (fiado?.sale_id ? (productosPorVenta[fiado.sale_id] ?? []) : []).join(" ") ||
+      (fiado?.sale_id ? (productosPorVenta[claveDeLibro(fiado.sale_id, fiado.currency)] ?? []) : []).join(" ") ||
       fiado?.description ||
       m.description ||
       "";
@@ -601,8 +602,8 @@ export function MovementHistoryList({
           // llevan el nombre copiado en `description`, y es el único que tienen.
           const productos =
             m.type === "charge"
-              ? m.sale_id && (productosPorVenta[m.sale_id] ?? []).length > 0
-                ? productosPorVenta[m.sale_id]
+              ? m.sale_id && (productosPorVenta[claveDeLibro(m.sale_id, m.currency)] ?? []).length > 0
+                ? productosPorVenta[claveDeLibro(m.sale_id, m.currency)]
                 : m.description
                   ? [m.description]
                   : []

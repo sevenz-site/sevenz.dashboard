@@ -765,13 +765,25 @@ try {
             .select("amount, applies_to_movement_id, entry_amount")
             .eq("payment_group_id", r.groupId);
           const por = new Map((ls ?? []).map((l) => [l.applies_to_movement_id, l]));
+          // THE NOTE RULES, NOT EACH LINE ON ITS OWN (owner, 2026-10-30; `absorbPinnedCents`):
+          // the two lines must add up to the WHOLE note converted once, and the last line
+          // absorbs the rounding cent. This check used to expect each line converted by
+          // itself (€4,03 and €6,04 at the rate of the day it was written), which only holds
+          // on days when both ways round alike. On 2026-11-13, at 1.009,34, they did not:
+          // €3,96 + €5,95 = €9,91, the note, against €5,94 for the second line alone. The
+          // suite went red in the v0.6.0 checklist with the code doing exactly what row 11c
+          // of this same file demands.
+          const a = Number(por.get(fA)?.amount);
+          const b = Number(por.get(fB)?.amount);
+          const cerca = (x, y) => Math.abs(x - y) <= 0.011;
           check(
-            "10b. con €4,03 y €6,04, y los Bs tecleados en cada línea",
-            Number(por.get(fA)?.amount) === enLibro(4000) &&
-              Number(por.get(fB)?.amount) === enLibro(6000) &&
+            "10b. las dos líneas suman el billete convertido, y cada una guarda sus Bs tecleados",
+            Math.round((a + b) * 100) === Math.round(enLibro(10000) * 100) &&
+              cerca(a, enLibro(4000)) &&
+              cerca(b, enLibro(6000)) &&
               Number(por.get(fA)?.entry_amount) === 4000 &&
               Number(por.get(fB)?.entry_amount) === 6000,
-            `A €${por.get(fA)?.amount}/Bs ${por.get(fA)?.entry_amount} · B €${por.get(fB)?.amount}/Bs ${por.get(fB)?.entry_amount}`,
+            `A €${por.get(fA)?.amount}/Bs ${por.get(fA)?.entry_amount} · B €${por.get(fB)?.amount}/Bs ${por.get(fB)?.entry_amount} · billete €${enLibro(10000)}`,
           );
         }
       }

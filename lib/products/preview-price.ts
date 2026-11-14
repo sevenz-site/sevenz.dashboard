@@ -157,7 +157,7 @@ export function previewPriceLine(p: PreviewPriceInput): string | null {
   const block = product[tier];
   if (block == null || !(block.price > 0)) return null;
 
-  const rates = p.rates ? { usd: p.rates.usd, eur: p.rates.eur, usdt: null } : null;
+  const rates = p.rates ? { usd: p.rates.usd, eur: p.rates.eur } : null;
   const offered = monedasDelBloque(block, rates);
 
   let currencies = SHOWN.filter((c) => offered.includes(c));

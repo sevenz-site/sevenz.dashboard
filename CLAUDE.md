@@ -148,7 +148,7 @@ release en vez de a `dev`.
    origin/dev` y su push. Desde ese momento `dev` ya es la versión siguiente.
 2. **Cortar la rama release dispara el `qa-regression-checklist`, siempre.**
    Pedido por el dueño el 2026-11-09: *«Se debe ejecutar QA checklist al lanzar a
-   la rama release/»*. Corre de día sobre la rama recién cortada, con Fable 5.1 y
+   la rama release/»*. Corre de día sobre la rama recién cortada, con Fable 5.2 y
    con la misma parada para confirmar el modelo; con `npm run dev` desde esa rama
    y contra la base dev. Su alcance es `git diff origin/main
    origin/release/vX.Y.Z`. Una rama release sin checklist corrido no se mergea a
@@ -1416,6 +1416,33 @@ movement — each of those is a paragraph somewhere, or should be.
 Two surfaces, two deploys: a dashboard merge does not publish the website. A
 release that changes both has to merge both, and the checklist says which.
 
+### Una página legal que cambia lleva la fecha del día en que se PUBLICA
+
+**Regla del dueño del 2026-11-09, pedida dos veces ese mismo día**: primero para la
+Política de privacidad (*«Sí, actualízala»*) y después para los Términos (*«Sí,
+también»*). A la segunda: *«sí escríbelo»*.
+
+**La regla**: si una liberación cambia cualquier frase de
+`Web/app/politica-de-privacidad/page.tsx` o de `Web/app/terminos-y-condiciones/page.tsx`,
+su `updated="…"` («Última actualización») pasa en la misma liberación a la fecha
+del día en que esa liberación **sale a producción**, no a la del día en que se
+escribió la frase. Se cambia sin preguntar: ya está decidido.
+
+- **Si la liberación se retrasa**, la fecha se corrige en la rama release de
+  `Web/` antes de publicar. Una fecha anterior a la publicación diría que el texto
+  rigió desde un día en que todavía no estaba publicado.
+- **Si la liberación no toca una frase de la página**, su fecha no se mueve.
+- **Vale igual para un arreglo urgente** que toque una de las dos.
+- **El checklist lo comprueba**, sección 4b: cada página legal que el diff de
+  `Web/` cambia lleva la fecha del lanzamiento.
+
+**Por qué merece regla propia.** La Política decía «2 noviembre 2026» con el texto
+cambiado el 4, el 5 y el 7, y los Términos «3 noviembre» con `CT-103` cambiándolos
+el 9. Nadie lo había notado: la fecha está arriba, en pequeño, y no la lee quien
+edita un párrafo de más abajo. En un texto legal es la única cifra que dice desde
+cuándo rige lo que el usuario está leyendo, y quedarse atrás la convierte en falsa
+sin que nada avise.
+
 ### `Web/` ships a BUILD, not a branch — build it, then verify the live page
 
 `npx wrangler deploy` uploads whatever is sitting in `Web/out/`. It does not
@@ -2165,9 +2192,10 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
 - When a `release/vX.Y.Z` branch is cut (owner's request of 2026-11-09), before
   merging it into `main`, or before making any change to the production
   Supabase project: run the `qa-regression-checklist` skill first, always with
-  the Fable 5.1 model (owner's decision of 2026-11-04). **Before the first check,
-  ask the owner to switch the session to Fable 5.1 and stop there until he
-  confirms it is done** — even if the session already looks like Fable 5.1, since
+  the Fable 5.2 model (owner's decision of 2026-11-14, «Cambiar a Fable 5.2»; it was
+  Fable 5.1 from 2026-11-04 until then). **Before the first check,
+  ask the owner to switch the session to Fable 5.2 and stop there until he
+  confirms it is done** — even if the session already looks like Fable 5.2, since
   the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
   Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
   confirme que ya cambié el modelo a Fable 5.1»*. Then

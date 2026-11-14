@@ -187,7 +187,11 @@ try {
   );
 
   const mensajes = interceptados.filter((m) => m.template?.name === "payment_due_date_v2");
-  const msg = mensajes.at(-1);
+  // THE SUITE'S OWN MESSAGE, not just the last one of the batch. The batch also reaches real
+  // dev clients whose fiado falls due on the right day, and on 2026-11-13 the last message
+  // was one of theirs («Perla», $20,00): check 4b read her amount and went red with the
+  // sender doing nothing wrong. Every test client's phone starts with 58412991200.
+  const msg = mensajes.filter((m) => String(m.to ?? "").startsWith("58412991200")).at(-1) ?? mensajes.at(-1);
   const nombresParams = (msg?.template?.components ?? [])
     .filter((c) => c.type === "body")
     .flatMap((c) => c.parameters.map((p) => p.parameter_name ?? p.name));

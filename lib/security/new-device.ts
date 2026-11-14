@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { createServiceClient } from "@/lib/supabase/service";
 import { trackServer } from "@/lib/mixpanel-server";
 import { enviarAvisoAlDueno } from "@/lib/whatsapp/send";
+import { scheduleAccountReady } from "@/lib/whatsapp/account-ready";
 import {
   DEVICE_COOKIE,
   DEVICE_COOKIE_DAYS,
@@ -104,6 +105,9 @@ export async function recordLoginDevice(user: { id: string; email: string | null
       owner_country?: string | null;
     } | null;
     if (!r?.ok) return SILENT;
+    // The account's first sign-in is also the moment it is told it went live (`account_ready`,
+    // 2026-11-12). Old accounts that only now record a device are filtered out inside it.
+    if (r.first_ever) await scheduleAccountReady(user.id);
     if (r.known || r.first_ever) return { isNew: !r.known, alerted: false };
 
     if (!alertsEnabled() || !r.whatsapp) return { isNew: true, alerted: false };

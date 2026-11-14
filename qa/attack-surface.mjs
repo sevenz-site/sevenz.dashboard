@@ -217,6 +217,8 @@ export const MANIFEST = {
     // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
     stock_alerts: { via: "owner" },
     product_price_overrides: { via: "product" },
+    // 204 (CT-171): photos 2 to 5; the owner reads and writes through the product
+    product_photos: { via: "product" },
     products: { via: "owner" },
     rate_limit_counters: { via: "none" },
     rate_limiters: { via: "none" },
@@ -231,6 +233,10 @@ export const MANIFEST = {
     transaction_codes: { via: "none" },
     usdt_p2p_rate: { via: "none" },
     whatsapp_cron_runs: { via: "none" },
+    // 205: who was overdue in the last Thursday message. Server only, no policy.
+    whatsapp_attention_memory: { via: "none" },
+    // 206: which products and orders were on the last Thursday message. Server only.
+    whatsapp_attention_item_memory: { via: "none" },
     whatsapp_sends: { via: "owner" },
     client_summary: { via: "owner" },
     client_summary_all: { via: "owner" },
@@ -255,6 +261,17 @@ export const MANIFEST = {
     admin_credit_watch: "service",
     // 192 (C2 of PL-22): sign-in devices and «No fui yo». Server only, except the boolean.
     register_login_device: "service",
+    // 200: who gets `account_ready`. Only the sign-in and the cron call them.
+    account_ready_target: "service",
+    account_ready_pending: "service",
+    // 201: whose trial ends in exactly 7 days. Only the cron calls it.
+    trial_ending_targets: "service",
+    // 205: the Monday and Thursday figures, the book judge and the Thursday memory. Cron only.
+    whatsapp_business_weekly_targets: "service",
+    whatsapp_ledger_states: "service",
+    whatsapp_attention_remember: "service",
+    // 206: today's products and orders that need attention, read by the two above.
+    whatsapp_attention_items: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",
@@ -388,6 +405,8 @@ export const MANIFEST = {
     get_shared_product: "public",
     // public catalogue, by token
     get_shared_products: "public",
+    // 204: extra photos of a product the public page would show, by token
+    get_shared_product_photos: "public",
     // token → client; nothing without a valid token
     resolve_shared_client: "public",
     // the client leaves their ID number, by token
@@ -480,6 +499,8 @@ export const MANIFEST = {
     "app/(app)/profile/actions.ts#updatePaymentMethod": "atacada",
     "app/(app)/profile/actions.ts#guardarAvisosWhatsapp": "atacada",
     "app/(app)/profile/actions.ts#registrarPreguntaAvisos": "atacada",
+    // v0.6.0 (202): marks the «tu resumen cambia» notice as seen. Writes only the caller's own row.
+    "app/(app)/profile/actions.ts#registrarAvisoDelResumen": "atacada",
     "app/(app)/profile/actions.ts#updateBusinessSettings": "atacada",
     "app/(app)/reportes/actions.ts#calificarAsistente": "atacada",
     "app/(app)/reportes/actions.ts#guardarUmbralDeStock": "atacada",

@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { SupplierField } from "@/components/dashboard/supplier-field";
 import { CategoryField, type CategoriaConConteo } from "@/components/dashboard/category-field";
 import {
@@ -27,7 +26,6 @@ import {
   formatAmountForInput,
   formatPercent,
   formatPriceAmount,
-  isSaleCurrencyLocked,
   marginFromPrice,
   parseAmount,
   parseTypedAmount,
@@ -37,11 +35,11 @@ import {
   type CostCurrency,
   type PriceCurrency,
   type PriceTier,
-  withoutLockedSaleCurrencies,
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
-import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
+import { ProductPhotosInput } from "@/components/dashboard/product-photos-input";
+import { photosInOrder } from "@/lib/products/photos";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TarjetaDePublicacion } from "@/components/dashboard/product-detail-rows";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -53,6 +51,8 @@ import {
 } from "@/app/(app)/productos/actions";
 import type { ProductRow } from "@/lib/products/catalog";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
+import { DescriptionField } from "@/components/dashboard/description-field";
+import { DescriptionText } from "@/components/description-text";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 
@@ -61,7 +61,9 @@ const DEFAULT_MARGIN: Record<PriceTier, string> = { retail: "30", wholesale: "15
 // Las monedas en las que un producto puede llevar precio. VES no está: es la
 // moneda en la que el cliente PAGA, y desde el frame 1192:4185 se enseña como
 // una línea «Hoy: Bs. …» DEBAJO de cada una, no como una fila propia.
-const SELLABLE: PriceCurrency[] = ["USD", "EUR", "USDT"];
+// USDT left on 2026-11-12 (CT-171), owner's decision: «Quita USDT del precio de costo y
+// del precio de venta».
+const SELLABLE: PriceCurrency[] = ["USD", "EUR"];
 
 // LOS CUATRO PASOS, con los rótulos del frame `1465:18582` tal cual: «1/4
 // Información del producto», «2/4 Precio», «3/4 Detalles», «4/4 Verifica».
@@ -75,7 +77,6 @@ const ETIQUETA_DEL_PASO = [
 const CURRENCY_LABEL: Record<string, string> = {
   USD: "Dólar",
   EUR: "Euro",
-  USDT: "USDT",
   COP: "Peso",
   VES: "Bolívar",
 };
@@ -85,7 +86,6 @@ const CURRENCY_LABEL: Record<string, string> = {
 const COST_LABEL: Record<string, string> = {
   USD: "Dólares",
   EUR: "Euros",
-  USDT: "USDT",
   COP: "Pesos",
   OTHER: "Otro",
 };
@@ -128,8 +128,11 @@ export function ProductoFlujo({
   categorias: categoriasIniciales = [],
   lastCostCurrency,
   ownerId,
+  extraPhotos = [],
 }: {
   product: ProductRow | null;
+  // Photos 2 to 5 of the product being edited (CT-171). Empty when creating.
+  extraPhotos?: string[];
   // null para un negocio colombiano: no hay equivalencias que enseñar.
   rates: BolivarRates | null;
   defaultCurrency: PriceCurrency;
@@ -325,17 +328,9 @@ export function ProductoFlujo({
   // 35 escrito encima.
   const [monedaSinTasa, setMonedaSinTasa] = useState(false);
 
-  // LAS MONEDAS BLOQUEADAS SE CAEN AL CARGAR, no solo al anadir (CT-79). Un
-  // producto que ya tenga USDT -- en dev hay dos -- se abre sin ella, y al
-  // guardar deja de tenerla. Es lo que "bloqueada" tiene que significar: si
-  // siguiera editable, el tendero podria mantener vivo un precio que el
-  // catalogo publicaria y que ninguna orden podria registrarse.
-  //
-  // Su base nunca se cae, por `withoutLockedSaleCurrencies`: eso repreciaria
-  // el producto en silencio en vez de ocultarle una moneda.
   const [currencies, setCurrencies] = useState<Record<PriceTier, PriceCurrency[]>>({
-    retail: withoutLockedSaleCurrencies(initialCurrencies.retail),
-    wholesale: withoutLockedSaleCurrencies(initialCurrencies.wholesale),
+    retail: initialCurrencies.retail,
+    wholesale: initialCurrencies.wholesale,
   });
 
   // LA BASE DE CADA ESCALÓN ES LA PRIMERA DE SU LISTA, y ese contrato lo
@@ -408,7 +403,10 @@ export function ProductoFlujo({
   const [pubWholesale, setPubWholesale] = useState(product?.published_wholesale ?? true);
   const publishOn = pubRetail || pubWholesale;
 
-  const [photoPath, setPhotoPath] = useState<string | null>(product?.photo_path ?? null);
+  // THE PHOTOS, COVER FIRST (CT-171). One list on screen; on save, the first one is the
+  // cover (`photoPath`) and the rest are `extraPhotoPaths`.
+  const [photos, setPhotos] = useState<string[]>(() => photosInOrder(product?.photo_path, extraPhotos));
+  const photoPath = photos[0] ?? null;
   const [description, setDescription] = useState(product?.description ?? "");
 
   // `parseTypedAmount` Y NO `parseAmount` en todo lo que lee un campo de
@@ -621,6 +619,7 @@ export function ProductoFlujo({
     publishedRetail: ventaRetail && pubRetail,
     publishedWholesale: ventaWholesale && pubWholesale,
     photoPath,
+    extraPhotoPaths: photos.slice(1),
     description: description || null,
   };
 
@@ -680,7 +679,25 @@ export function ProductoFlujo({
       />
 
       <div className="flex flex-col gap-2">
-        <ScreenTitle>{editing ? "Editar producto" : "Crear producto"}</ScreenTitle>
+        {/* «EDITAR» LIVES IN THE HEADER ON 4/4 since 2026-11-12, owner's request with the
+            frame `2119:21680`: «En "Crear producto" Cambiar editar a la parte superior
+            derecha, en el header». It used to sit under «Crear producto» at the bottom.
+            Creating only: when EDITING, this step shows «Guardar» alone (owner's decision
+            of 2026-11-03), and that is untouched. Same action as before -- back to 1/4. */}
+        <div className="flex items-center justify-between gap-3">
+          <ScreenTitle>{editing ? "Editar producto" : "Crear producto"}</ScreenTitle>
+          {paso === 4 && !editing ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 shrink-0 px-3 text-sm font-semibold"
+              disabled={saving}
+              onClick={() => setPaso(1)}
+            >
+              Editar
+            </Button>
+          ) : null}
+        </div>
         <p className="text-sm text-muted-foreground">
           {paso}/4 {ETIQUETA_DEL_PASO[paso - 1]}
         </p>
@@ -873,7 +890,7 @@ export function ProductoFlujo({
                    2026-10-14 porque el desplegable aceptaba la elección y luego
                    no cambiaba nada. */
                 <p className="text-xs leading-relaxed text-destructive">
-                  Para calcular el margen, elige Dólares, Euros o USDT: de «Otro» no tenemos la
+                  Para calcular el margen, elige Dólares o Euros: de «Otro» no tenemos la
                   tasa. Puedes dejarla en «Otro» y escribir tú los precios abajo — el producto se
                   guarda igual.
                 </p>
@@ -1000,23 +1017,21 @@ export function ProductoFlujo({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label>Foto</Label>
-              <ProductPhotoInput
+              <ProductPhotosInput
                 ownerId={ownerId}
-                value={photoPath}
-                onChange={setPhotoPath}
+                value={photos}
+                onChange={setPhotos}
                 disabled={saving}
               />
             </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="producto_descripcion">Descripción (opcional)</Label>
-              <Textarea
+              <DescriptionField
                 id="producto_descripcion"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Escribe descripción del producto"
-                rows={3}
+                onChange={setDescription}
+                disabled={saving}
               />
             </div>
         </div>
@@ -1031,7 +1046,7 @@ export function ProductoFlujo({
           supplier={supplier}
           categoria={categorias.find((c) => c.id === categoryId)?.name ?? null}
           description={description}
-          photoPath={photoPath}
+          photos={photos}
           pubRetail={pubRetail}
           pubWholesale={pubWholesale}
           ventaRetail={ventaRetail}
@@ -1060,10 +1075,9 @@ export function ProductoFlujo({
           el teclado — que en un formulario de cuatro pantallas es lo único
           que importa.
 
-          EN EL 4/4 SON DOS, del frame `1465:19879`: «Crear producto» relleno
-          y «Editar» con borde. El segundo vuelve al paso 1, que es lo que una
-          pantalla de revisión tiene que ofrecer: corregir lo que acabas de
-          leer.
+          EN EL 4/4 ERAN DOS, del frame `1465:19879`: «Crear producto» relleno
+          y «Editar» con borde. Since 2026-11-12 «Editar» is in the header (see
+          the title above), so this bar holds «Crear producto» alone.
 
           EDITING SHOWS «Guardar» ALONE, owner's request of 2026-11-03, with a
           screenshot circling the other two: *«los botones editar y eliminar no
@@ -1094,17 +1108,6 @@ export function ProductoFlujo({
                 "Crear producto"
               )}
             </Button>
-            {editing ? null : (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full text-base font-semibold"
-                disabled={saving}
-                onClick={() => setPaso(1)}
-              >
-                Editar
-              </Button>
-            )}
           </>
         )}
       </StickyActions>
@@ -1176,7 +1179,9 @@ function CostCurrencySelect({
   // Mientras tanto, un tendero que compra en otra moneda apunta el costo en
   // dólares, que es lo que hacía antes del 2026-10-10.
   // ═══════════════════════════════════════════════════════════════════════
-  const base: CostCurrency[] = hasRates ? ["USD", "EUR", "USDT"] : [businessCurrency];
+  // USDT LEFT ON 2026-11-12 (CT-171). A product that still carried it was converted to
+  // dollars by migration 203, so no saved value falls outside this list through USDT.
+  const base: CostCurrency[] = hasRates ? ["USD", "EUR"] : [businessCurrency];
   // UNA FICHA QUE YA TENÍA «Otro» SIGUE ENSEÑÁNDOLO, aunque ya no se pueda
   // elegir. Sin esto, abrir uno de esos productos dejaría el selector en
   // blanco: Radix no pinta un valor que no está entre sus opciones, y el
@@ -1703,8 +1708,8 @@ function PriceRows({
     );
   }
 
-  // Lo que todavia se puede anadir. Las bloqueadas no estan (CT-79).
-  const inactivas = SELLABLE.filter((c) => !currencies.includes(c) && !isSaleCurrencyLocked(c));
+  // Lo que todavia se puede anadir.
+  const inactivas = SELLABLE.filter((c) => !currencies.includes(c));
   const enBolivares = (amount: number | null, currency: PriceCurrency) =>
     amount == null ? null : priceIn("VES", { amount, currency }, rates).amount;
 
@@ -2159,7 +2164,7 @@ function Verifica({
   supplier,
   categoria,
   description,
-  photoPath,
+  photos,
   pubRetail,
   pubWholesale,
   ventaRetail,
@@ -2180,7 +2185,7 @@ function Verifica({
   supplier: string;
   categoria: string | null;
   description: string;
-  photoPath: string | null;
+  photos: string[];
   pubRetail: boolean;
   pubWholesale: boolean;
   ventaRetail: boolean;
@@ -2219,7 +2224,11 @@ function Verifica({
         <FilaDeRepaso nombre="Proveedor" valor={supplier.trim() || SIN_DATO} />
         <FilaDeRepaso nombre="Categoría" valor={categoria ?? SIN_DATO} />
         <FilaAncha nombre="Descripción">
-          <p className="min-w-0 flex-1 break-words">{description.trim() || SIN_DATO}</p>
+          {description.trim() ? (
+            <DescriptionText text={description} className="min-w-0 flex-1" />
+          ) : (
+            <p className="min-w-0 flex-1 break-words">{SIN_DATO}</p>
+          )}
         </FilaAncha>
 
         {/* FOTO: the frame draws the label and then the image across the full
@@ -2227,20 +2236,43 @@ function Verifica({
             row. This screen is for looking at what is about to be published,
             and the photo is the one field whose mistake — the wrong shot, a
             blurry one — is invisible at thumbnail size. */}
-        {photoPath ? (
-          <div className="flex flex-col pb-4">
-            <FilaDeRepaso nombre="Foto" valor="" />
-            {/* `unoptimized` for the same reason as in `ProductPhotoInput`:
-                the source is a Supabase public URL and the photo was already
-                resized on the device. */}
-            <Image
-              src={getPublicProductPhotoUrl(photoPath)}
-              alt="Foto del producto"
-              width={640}
-              height={480}
-              unoptimized
-              className="h-[120px] w-full rounded-[10px] border object-cover"
-            />
+        {/* FOTOS since CT-171 (frame `2119:21680`): the cover across the full width
+            with its «Portada» mark, the other photos as thumbnails underneath. */}
+        {photos.length ? (
+          <div className="flex flex-col gap-2 pb-4">
+            <FilaDeRepaso nombre={photos.length > 1 ? "Fotos" : "Foto"} valor="" />
+            <div className="relative">
+              {/* `unoptimized`: a Supabase public URL of a photo already resized on
+                  the device. */}
+              <Image
+                src={getPublicProductPhotoUrl(photos[0])}
+                alt="Portada del producto"
+                width={640}
+                height={480}
+                unoptimized
+                className="h-[120px] w-full rounded-[10px] border object-cover"
+              />
+              {photos.length > 1 ? (
+                <span className="absolute bottom-2 left-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                  Portada
+                </span>
+              ) : null}
+            </div>
+            {photos.length > 1 ? (
+              <div className="flex gap-1.5">
+                {photos.slice(1).map((path, i) => (
+                  <Image
+                    key={path}
+                    src={getPublicProductPhotoUrl(path)}
+                    alt={`Foto ${i + 2} del producto`}
+                    width={64}
+                    height={64}
+                    unoptimized
+                    className="size-16 rounded-lg border object-cover"
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : (
           <FilaDeRepaso nombre="Foto" valor={SIN_DATO} />

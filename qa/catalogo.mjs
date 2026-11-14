@@ -402,8 +402,8 @@ try {
 
   // ── 6. Un precio fijado a mano llega a la página pública ───────────────
   //
-  // En USDT y no en bolívares: desde la 085 los bolívares no se pueden fijar
-  // (ver 7e). Pero el candado sí tiene que llegar hasta aquí, porque es lo
+  // In dollars since CT-171 (2026-11-12): it was USDT until the owner removed USDT from
+  // products, and bolívares cannot be pinned since 085 (see 7e). Pero el candado sí tiene que llegar hasta aquí, porque es lo
   // único que hace que signifique algo — el tendero lo cerró precisamente
   // para que su cliente viera ESE número, no la conversión del día.
   // Se fija en el escalón QUE LA TARJETA ENSEÑA, que desde la migración 106 es
@@ -416,7 +416,7 @@ try {
   // Al correr la 106 esta comprobación falló con `{"EUR":99}` — exactamente el
   // candado del otro escalón, que es el que ahora manda.
   await admin.from("product_price_overrides").upsert(
-    { product_id: visible.id, tier: "retail", currency: "USDT", amount: 9 },
+    { product_id: visible.id, tier: "retail", currency: "USD", amount: 9 },
     { onConflict: "product_id,tier,currency" },
   );
   // Y uno en el escalón que NO se enseña en la tarjeta. No debe aparecer: el
@@ -429,8 +429,8 @@ try {
   const { data: catPin } = await anon.rpc("get_shared_catalog", { p_token: detal.token });
   const conPin = (catPin?.products ?? []).find((p) => p.id === visible.id);
   check(
-    "6a. el precio fijado en USDT llega al catálogo público",
-    conPin != null && Number(conPin.pinned?.USDT) === 9,
+    "6a. el precio fijado a mano llega al catálogo público",
+    conPin != null && Number(conPin.pinned?.USD) === 9,
     conPin ? JSON.stringify(conPin.pinned) : "sin producto",
   );
   check(

@@ -91,7 +91,6 @@ import {
 export const ETIQUETA_MONEDA: Record<string, string> = {
   USD: "Paga en USD",
   EUR: "Paga en EURO",
-  USDT: "Paga en USDT",
   COP: "Paga en pesos",
   VES: "Paga en bolívares",
 };

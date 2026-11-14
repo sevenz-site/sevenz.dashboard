@@ -153,6 +153,9 @@ export type Owner = {
   // y el contador volvería a cero solo.
   whatsapp_prompt_last_at: string | null;
   whatsapp_prompt_count: number;
+  // When the one-time notice «tu resumen semanal ahora incluye ventas y productos» was shown
+  // (migration 202, v0.6.0). Null until then.
+  whatsapp_scope_notice_at: string | null;
   created_at: string;
 };
 

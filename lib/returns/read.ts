@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { SaleLineRow } from "@/lib/sale-lines";
+import { lineaDelLibro, type SaleLineRow } from "@/lib/sale-lines";
 import type { LedgerCurrency } from "@/lib/types";
 import type { OtherFiado } from "@/lib/returns/options";
 
@@ -159,10 +159,9 @@ export async function lineasDe(
     .eq("sale_id", saleId);
   // NORMALISED: `sale_lines` spells the Colombian book 'COP' and `movements`
   // spells it NULL, so comparing the raw columns found no line at all for a
-  // Colombian fiado, which the «⋮» depends on.
-  const lineas = (data ?? []).filter(
-    (l) => ((l.currency as string | null) === "COP" ? null : (l.currency ?? null)) === moneda,
-  );
+  // Colombian fiado, which the «⋮» depends on. The rule lives in
+  // `lib/sale-lines.ts` since 2026-11-13, shared with every screen that names a fiado.
+  const lineas = (data ?? []).filter((l) => lineaDelLibro(l.currency as string | null, moneda));
   const devueltas = await returnedByLine(
     supabase,
     lineas.map((l) => l.id as string),

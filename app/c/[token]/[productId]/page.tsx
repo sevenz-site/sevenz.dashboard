@@ -1,20 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import {
-  getProductPreviewImageUrl,
-  getPublicProductPhotoUrl,
-} from "@/lib/supabase/storage";
+import { getProductPreviewImageUrl } from "@/lib/supabase/storage";
 import { ProductDetail } from "@/components/public/product-detail";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
 import { previewPriceLine } from "@/lib/products/preview-price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
+import { DescriptionText } from "@/components/description-text";
+import { plainDescription } from "@/lib/products/description";
+import { ProductGallery } from "@/components/product-gallery";
+import { photosInOrder } from "@/lib/products/photos";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -143,7 +143,9 @@ export async function generateMetadata({
     // las cuentas claras de tu negocio sin tanta vaina!»* debajo de su
     // nombre -- la frase de la marca presentada como si describiera el
     // bafle. `null` dice «esta página no tiene descripción» y no hereda nada.
-    const descripcionPropia = d.description?.trim() || null;
+    // WITHOUT ITS MARKERS since CT-171: a chat preview cannot draw bold or bullets, and
+    // «**Casco**» with its asterisks reads as a typo. Frame `2119:21935`.
+    const descripcionPropia = plainDescription(d.description);
     // Precio en su propia línea y la descripción debajo. Si el chat colapsa el
     // salto, se lee igual: el precio es lo primero en los dos casos.
     const descripcion =
@@ -286,25 +288,34 @@ export default async function ProductoPublicoPage({
 
   if (!detalle) return <NoDisponible token={token} />;
 
+  // PHOTOS 2 TO 5 (CT-171, migration 204), through their own door, which only answers
+  // for a product `get_shared_product` would show. A failure -- including the function
+  // not existing yet, if this code ever ran before its migration -- leaves the cover
+  // alone, exactly what the page showed before: errors masked, CLAUDE.md's rule for
+  // anything callable without a session.
+  const fotosExtra = await (async (): Promise<string[]> => {
+    try {
+      const { data, error } = await supabase.rpc("get_shared_product_photos", {
+        p_token: token,
+        p_product_id: productId,
+      });
+      if (error) {
+        console.error("[productoPublico] fotos:", error.message);
+        return [];
+      }
+      return Array.isArray(data) ? (data as string[]) : [];
+    } catch (error) {
+      console.error("[productoPublico] fotos threw:", error instanceof Error ? error.message : error);
+      return [];
+    }
+  })();
+
   // Las mismas tasas que la lista, y por el mismo camino: la del tendero si la
   // fijó, la del BCV si no, y ninguna fuera de Venezuela.
-  // THE USDT RATE NOW REACHES THE PUBLIC CATALOGUE TOO. Owner's decision on
-  // 2026-10-15, which displaces the one of 2026-10-10 that kept third-party
-  // calls off public pages.
-  //
-  // What displaced it is a measurement, not a change of mind: the call sits
-  // behind a 60-second server cache and a 2-second timeout, so a thousand
-  // visitors in a minute cost ONE request to CriptoYa, not a thousand. The
-  // 2026-10-10 reasoning assumed one call per load.
-  //
-  // AND IT IS THE SAME CALL THE SHOPKEEPER'S OWN PRODUCT FORM MAKES, which
-  // closes a gap that had nothing to do with cost: until now the shopkeeper
-  // saw a USDT price on their product and their customer did not.
-  //
-  // It also writes the price down for `create_catalog_order` to read -- see
-  // migrations 112 and 113. That is what keeps what is OFFERED and what is
-  // ACCEPTED the same set; offering USDT without it would let the customer
-  // fill in the whole form and then be rejected with `sin_tasa`.
+  // NO USDT RATE HERE SINCE CT-171 (2026-11-12). From 2026-10-15 these public pages
+  // asked CriptoYa for it so the customer could pay in USDT; the owner then removed USDT
+  // from products entirely (migration 203), so `getBolivarRates` returns only the
+  // dollar and the euro and no public page calls a third party any more.
   const tasaBase =
     detalle.owner_country === "VE" &&
     detalle.current_bcv_usd != null &&
@@ -321,22 +332,16 @@ export default async function ProductoPublicoPage({
           a la lista con un Link y no con `history.back()`: si alguien abrió
           este enlace directo —que es para lo que existe la ruta— no hay
           historial al que volver, y el botón no haría nada. */}
-      <div className="relative aspect-square w-full bg-muted">
-        {detalle.photo_path ? (
-          <Image
-            src={getPublicProductPhotoUrl(detalle.photo_path)}
-            alt=""
-            fill
-            unoptimized
-            sizes="(min-width: 640px) 640px, 100vw"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-            <ImageOff className="size-8" aria-hidden="true" />
-            <span className="text-xs">Sin foto</span>
-          </div>
-        )}
+      {/* SINCE CT-171 A GALLERY (frames `2119:21828` and `2119:21879`): swiped on a
+          phone, with arrows from 768 px, the owner's choice for web. Same component as
+          the shopkeeper's product page. */}
+      <ProductGallery
+        paths={photosInOrder(detalle.photo_path, fotosExtra)}
+        alt={detalle.name}
+        sizes="(min-width: 640px) 640px, 100vw"
+        emptyIconClassName="size-8"
+        className="aspect-square w-full"
+      >
         <Link
           href={volverAlCatalogo}
           aria-label="Volver al catálogo"
@@ -344,7 +349,7 @@ export default async function ProductoPublicoPage({
         >
           <IconoVolver className="text-primary" />
         </Link>
-      </div>
+      </ProductGallery>
 
       {/* `pb-0`: la fila de abajo de `ProductDetail` trae sus propios 40px
           desde el 2026-10-25. Los 20 de `py-5` encima dejarían el botón a 60
@@ -362,7 +367,7 @@ export default async function ProductoPublicoPage({
         {detalle.description ? (
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Descripción del producto</p>
-            <p className="text-sm leading-relaxed">{detalle.description}</p>
+            <DescriptionText text={detalle.description} />
           </div>
         ) : null}
 

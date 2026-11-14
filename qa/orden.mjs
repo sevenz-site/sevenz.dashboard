@@ -571,8 +571,8 @@ try {
   const { data: bcv } = await admin.rpc("get_current_bcv_rate").single();
   const rates =
     ajustes?.rate_mode === "CUSTOM" && ajustes.custom_rate_usd > 0 && ajustes.custom_rate_eur > 0
-      ? { usd: Number(ajustes.custom_rate_usd), eur: Number(ajustes.custom_rate_eur), usdt: null }
-      : { usd: Number(bcv.usd), eur: Number(bcv.eur), usdt: null };
+      ? { usd: Number(ajustes.custom_rate_usd), eur: Number(ajustes.custom_rate_eur) }
+      : { usd: Number(bcv.usd), eur: Number(bcv.eur) };
 
   const fichaTs = {
     retail: { price: 10, pinned: {}, base: "USD", currencies: ["USD", "EUR"] },
@@ -607,93 +607,33 @@ try {
     );
   }
 
-  // ── THE USDT, AND THE OWNER'S DECISION OF 2026-10-15 IN THREE PARTS ───
+  // ── USDT IS GONE (CT-171, 2026-11-12) ───────────────────────────────
   //
-  // «Encender CriptoYa en el catálogo, con el precio fijado a mano de
-  // reserva». That sentence has three distinct behaviours inside it, and only
-  // testing all three says whether it was built:
+  // Until that day these were 14c-14e: USDT offered with a stored Binance rate, refused
+  // with `sin_tasa` without one, and sold at a pinned price as the owner's fallback. The
+  // owner then removed USDT from products entirely («Quita USDT del precio de costo y del
+  // precio de venta»), and migration 203 took it out of the schema. What is left to guard
+  // is that it cannot come back by either door:
   //
-  //   14c  no stored rate, no pinned price  -> rejected with `sin_tasa`
-  //   14d  stored rate                      -> converts, matching TypeScript
-  //   14e  no stored rate, pinned price     -> sells at the pinned price
-  //
-  // 14e IS THE ONE THAT MATTERS MOST and the easiest to leave untested,
-  // because it only happens when CriptoYa has been down for 24 hours -- which
-  // is precisely when nobody is watching. It is the whole reason the owner
-  // asked for a manual fallback rather than just switching the rate on.
-  //
-  // The row is written straight to the table rather than through
-  // `set_usdt_p2p_rate`, on purpose: that function ignores a write landing
-  // within 60 seconds of the stored one, which is right for a page render and
-  // useless for a test that has to control the value exactly. `qa/` is
-  // excluded from `qa:service-role` for this kind of fixture work.
-  await admin
+  //   14c  the database refuses USDT as one of a product's currencies
+  //   14d  an order in USDT is refused as `moneda_invalida`, even with a fresh rate
+  //        stored -- the product does not offer it, so the rate is irrelevant
+  const { error: e14c } = await admin
     .from("product_currencies")
-    .upsert(
-      { product_id: convertible.id, tier: "retail", currency: "USDT" },
-      { onConflict: "product_id,tier,currency" },
-    );
-
-  await admin.from("usdt_p2p_rate").delete().eq("id", true);
-  const r14c = await pedir(token, [
-    { product_id: convertible.id, quantity: 1, currency: "USDT" },
-  ]);
+    .insert({ product_id: convertible.id, tier: "retail", currency: "USDT" });
   check(
-    "14c. USDT activo, sin tasa guardada y sin precio fijado: `sin_tasa`, no `moneda_invalida`",
-    !r14c.ok && r14c.reason === "sin_tasa",
-    `${r14c.reason} — son dos arreglos distintos y el log es donde se distinguen`,
+    "14c. la base ya no deja activar USDT en un producto",
+    e14c?.code === "23514",
+    e14c ? `${e14c.code} ${e14c.message}` : "ENTRÓ",
   );
 
-  const TASA_USDT = 200;
-  await admin
-    .from("usdt_p2p_rate")
-    .upsert({ id: true, bs_per_usdt: TASA_USDT, source: "qa", updated_at: new Date().toISOString() });
-  const esperadoUsdt = precioEnMoneda({ ...fichaTs.retail, currencies: ["USD", "USDT"] }, "USDT", {
-    ...rates,
-    usdt: TASA_USDT,
-  });
   const r14d = await pedir(token, [
     { product_id: convertible.id, quantity: 1, currency: "USDT" },
   ]);
-  const { data: lineaUsdt } = r14d.ok
-    ? await admin
-        .from("catalog_order_items")
-        .select("unit_price, currency")
-        .eq("order_id", r14d.order_id)
-        .single()
-    : { data: null };
   check(
-    "14d. con la tasa guardada, el USDT se convierte y coincide con TypeScript",
-    lineaUsdt != null &&
-      lineaUsdt.currency === "USDT" &&
-      Number(lineaUsdt.unit_price) === esperadoUsdt,
-    lineaUsdt == null
-      ? `la orden ni entró: ${r14d.reason}`
-      : `TypeScript ${esperadoUsdt} · base ${lineaUsdt.unit_price}`,
-  );
-
-  // Y LA RESERVA: sin tasa, pero con el precio escrito a mano, se vende igual.
-  await admin.from("usdt_p2p_rate").delete().eq("id", true);
-  await admin.from("product_price_overrides").upsert(
-    { product_id: convertible.id, tier: "retail", currency: "USDT", amount: 11.5 },
-    { onConflict: "product_id,tier,currency" },
-  );
-  const r14e = await pedir(token, [
-    { product_id: convertible.id, quantity: 1, currency: "USDT" },
-  ]);
-  const { data: lineaFijada } = r14e.ok
-    ? await admin
-        .from("catalog_order_items")
-        .select("unit_price, currency")
-        .eq("order_id", r14e.order_id)
-        .single()
-    : { data: null };
-  check(
-    "14e. sin tasa pero con precio fijado a mano, el USDT SÍ se vende — es la reserva que pidió el dueño",
-    lineaFijada != null &&
-      lineaFijada.currency === "USDT" &&
-      Number(lineaFijada.unit_price) === 11.5,
-    lineaFijada == null ? `rechazada: ${r14e.reason}` : String(lineaFijada.unit_price),
+    "14d. un pedido en USDT se rechaza con `moneda_invalida`",
+    !r14d.ok && r14d.reason === "moneda_invalida",
+    r14d.ok ? "ENTRÓ" : r14d.reason,
   );
 
   // ── 15. UNA BODEGA COLOMBIANA, que no convierte nada ──────────────────
@@ -861,11 +801,7 @@ try {
     await admin.from("catalog_share_links").delete().in("id", enlacesCreados);
   }
   if (productos.length) await admin.from("products").delete().in("id", productos);
-  // LA TASA DEL USDT SE BORRA, no se restaura a lo que hubiera: la 112 la
-  // vuelve a escribir sola en cuanto alguien abra el catálogo, y dejar aquí un
-  // número inventado por una prueba es peor que dejarla vacía — vacía significa
-  // «no se ofrece USDT», que es un estado honesto y visible.
-  await admin.from("usdt_p2p_rate").delete().eq("id", true);
+  // The USDT rate is no longer touched: since CT-171 this suite neither writes nor needs it.
   await admin.from("client_whatsapp_consents").delete().eq("phone", TEL);
 
   const { count: quedanProd } = await admin

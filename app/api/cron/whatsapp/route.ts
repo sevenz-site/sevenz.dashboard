@@ -7,6 +7,8 @@ import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getRateHealth } from "@/lib/admin/rate-health";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
+import { sendPendingAccountReady } from "@/lib/whatsapp/account-ready";
+import { sendTrialEndingNotices } from "@/lib/whatsapp/trial-ending";
 
 export const runtime = "nodejs";
 
@@ -76,6 +78,19 @@ export async function GET(request: Request) {
   // throws, and the batch below does not depend on it.
   await avisarTasaRetenida(await getRateHealth());
 
+  // `account_ready` catch-up (2026-11-12): whoever confirmed in the last 3 days and still has
+  // no successful send. Its own try, so a failure here never costs the weekly summary.
+  let cuentasListas: Awaited<ReturnType<typeof sendPendingAccountReady>> | null = null;
+  try {
+    cuentasListas = await sendPendingAccountReady();
+  } catch (e) {
+    console.error("cron whatsapp: account_ready:", e);
+  }
+
+  // `prueba_por_vencer` (2026-11-12): trials ending exactly 7 days from today. The one
+  // extraordinary third message of the week; never throws.
+  const pruebaPorVencer = await sendTrialEndingNotices();
+
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.
     const resumen = await enviarResumenSemanal();
@@ -84,6 +99,9 @@ export async function GET(request: Request) {
     // intenta para que no salga el lunes junto al resumen — las dos llevan
     // "clientes con plazo vencido" y el dueño leería la misma cifra dos veces
     // el mismo día.
+    //
+    // SINCE v0.6.0 (2026-11-13) both names lead to `lib/whatsapp/business-weekly.ts`: the
+    // business family, one template per slot, two slots a week per phone (migration 205).
     const atencion = dia >= 4 ? await enviarAtencionSemanal() : null;
 
     // LOS RECORDATORIOS DE PLAZO, todos los dias (MS-3). A diferencia de las
@@ -112,6 +130,8 @@ export async function GET(request: Request) {
       },
       atencion,
       recordatorios,
+      cuentasListas,
+      pruebaPorVencer,
       bloqueadasHoy,
     };
 

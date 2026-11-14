@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField } from "@/components/dashboard/description-field";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -307,13 +307,11 @@ export function QuickProductSheet({
 
           <div className="flex flex-col gap-1">
             <Label htmlFor="qp-desc">Descripción (opcional)</Label>
-            <Textarea
-              id="qp-desc"
-              className="h-[120px]"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Escribe descripción del producto"
-            />
+            {/* THE SAME FIELD AS THE WIZARD (CT-171): this sheet sends to the same
+                `createProduct` action, so it gets the same 500 limit and the same
+                format buttons. A second plain textarea here would be the door through
+                which a 600-character description reaches a server that now refuses it. */}
+            <DescriptionField id="qp-desc" value={descripcion} onChange={setDescripcion} />
           </div>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}

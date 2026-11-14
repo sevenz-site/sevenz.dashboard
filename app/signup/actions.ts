@@ -4,7 +4,7 @@ import { trackServer } from "@/lib/mixpanel-server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LEAKED_PASSWORD_MESSAGE, validatePasswordComplexity } from "@/lib/password";
-import { TEXTO_AVISOS_WHATSAPP_REGISTRO } from "@/lib/whatsapp-opt-in";
+import { TEXTO_AVISOS_WHATSAPP_REGISTRO_V2 } from "@/lib/whatsapp-opt-in";
 import { isReferralSource } from "@/lib/referral-source";
 import { mensajeDeError } from "@/lib/errores-legibles";
 
@@ -118,7 +118,7 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         // de `owners`. No se actualiza desde esta acción porque al terminar
         // signUp() todavía no hay sesión —la confirmación de correo está
         // activada— y el update chocaría con la política `id = auth.uid()`.
-        whatsapp_opt_in_text: TEXTO_AVISOS_WHATSAPP_REGISTRO,
+        whatsapp_opt_in_text: TEXTO_AVISOS_WHATSAPP_REGISTRO_V2,
       },
     },
   });

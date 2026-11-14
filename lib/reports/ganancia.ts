@@ -365,7 +365,7 @@ export function margenReal(
 // de más dinero. Estaba armado y no había disparado.
 // ═══════════════════════════════════════════════════════════════════════
 
-const CONOCIDAS = new Set<string>(["USD", "EUR", "COP", "VES", "USDT"]);
+const CONOCIDAS = new Set<string>(["USD", "EUR", "COP", "VES"]);
 
 /** `true` si la app sabe formatearla y tiene bandera para ella. */
 export function esMonedaConocida(c: string): c is PriceCurrency {

@@ -34,6 +34,11 @@ import { DEVICE_COOKIE, DEVICE_COOKIE_DAYS, identityFromHeaders } from "@/lib/se
 // WHY THE COOKIE IS SET EVEN WHEN NOTHING IS RECORDED: the cookie is what stops this from
 // asking the database again on every page of that browser, for ever.
 //
+// NO MIXPANEL EVENT, ON PURPOSE. Owner's decision of 2026-11-09 («Sí, sin evento»). The
+// one question it would answer, «how many accounts are covered by the new-device alert, and
+// how fast», is asked once or twice, and `owner_devices` already answers it with a read-only
+// query. An event nobody looks at after the first week is a column nobody reads.
+//
 // READS THROUGH `owner_security_facts`, NOT THE TABLE. Table grants to the service role have
 // differed between dev and production before (CLAUDE.md, 2026-09-04); the functions carry an
 // explicit grant and production already calls both.

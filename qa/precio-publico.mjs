@@ -89,7 +89,9 @@ check(
 // rate they cannot be computed.
 const TRES = ["USD", "EUR", "USDT"];
 const SIN_TASA = null;
-const TASA = { usd: 100, eur: 120, usdt: null };
+// No `usdt` since CT-171: `BolivarRates` carries only the dollar and the euro. The USDT
+// entries left in the fixtures above are now OLD DATA, and 1h/1i check it stays out.
+const TASA = { usd: 100, eur: 120 };
 
 check(
   "1e. al detal, sin tasa, solo se ofrece la moneda del precio",
@@ -257,14 +259,16 @@ check(
 const FILAS = [
   { product_id: "p1", tier: "retail", currency: "USD" },
   { product_id: "p1", tier: "retail", currency: "EUR" },
+  // An old USDT row, as a product saved before CT-171 could still hold until migration
+  // 203 removed them. `currenciesOf` must drop it: USDT is no longer in its order list.
   { product_id: "p1", tier: "retail", currency: "USDT" },
   { product_id: "p1", tier: "wholesale", currency: "EUR" },
   { product_id: "p2", tier: "retail", currency: "COP" },
 ];
 
 check(
-  "5a. el detal trae las suyas, con su base primera",
-  igual(currenciesOf(FILAS, "p1", "retail", "USD"), ["USD", "EUR", "USDT"]),
+  "5a. el detal trae las suyas, con su base primera, y deja fuera el USDT viejo",
+  igual(currenciesOf(FILAS, "p1", "retail", "USD"), ["USD", "EUR"]),
   JSON.stringify(currenciesOf(FILAS, "p1", "retail", "USD")),
 );
 check(
@@ -274,12 +278,12 @@ check(
 );
 check(
   "5c. LA BASE VA PRIMERA aunque el orden constante la pusiera después",
-  igual(currenciesOf(FILAS, "p1", "retail", "EUR"), ["EUR", "USD", "USDT"]),
+  igual(currenciesOf(FILAS, "p1", "retail", "EUR"), ["EUR", "USD"]),
   `${JSON.stringify(currenciesOf(FILAS, "p1", "retail", "EUR"))} — con el orden viejo habría salido USD primero, y el precio se habría escrito en dólares`,
 );
 check(
   "5d. la base entra aunque no tenga fila propia",
-  igual(currenciesOf(FILAS, "p1", "wholesale", "USDT"), ["USDT", "EUR"]),
+  igual(currenciesOf(FILAS, "p1", "wholesale", "USD"), ["USD", "EUR"]),
   "una ficha descuadrada no deja un escalón sin la moneda en la que guarda su precio",
 );
 check(

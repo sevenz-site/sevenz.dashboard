@@ -167,7 +167,7 @@ export default async function ReportesPage({
   // COP--. Es el mismo `usdt: null` deliberado de `app/c/[token]/page.tsx`:
   // una llamada de red por un dato que nadie va a pintar.
   const rates = ownerRate
-    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur, usdt: null }
+    ? { usd: ownerRate.effectiveRate.usd, eur: ownerRate.effectiveRate.eur }
     : null;
   const tasas = rates ? { usd: rates.usd, eur: rates.eur } : null;
 

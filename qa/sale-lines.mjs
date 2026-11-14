@@ -306,7 +306,7 @@ try {
     currency: "USDT",
   });
   check(
-    "5. una línea en USDT se rechaza — vuelve con el paso 11 (CT-79)",
+    "5. una línea en USDT se rechaza — y ya no vuelve: el dueño lo quitó de los productos (CT-171)",
     eUsdt != null,
     eUsdt?.message ?? "LA ACEPTÓ",
   );

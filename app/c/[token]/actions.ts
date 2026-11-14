@@ -73,11 +73,6 @@ export async function productosDelCarrito(
 
     // Las mismas tasas que la lista y el detalle, por el mismo camino: la del
     // tendero si la fijó, la del BCV si no, y ninguna fuera de Venezuela.
-    // THE USDT RATE HERE TOO, for the same reason as the catalogue and the
-    // detail: the cart recomputes every line, so if it resolved USDT
-    // differently from the screen the customer added from, a line would change
-    // price -- or vanish -- between one screen and the next. See migrations
-    // 112 and 113.
     const tasaBase =
       shared.owner_country === "VE" &&
       shared.current_bcv_usd != null &&
@@ -155,9 +150,8 @@ const MOTIVOS: Record<string, string> = {
   // have no rate right now" is fixed by waiting. Giving the same advice for
   // both sends the customer to change something that was not the problem.
   //
-  // In practice it falls to USDT: its rate comes from CriptoYa and public
-  // pages do not ask for it (decision of 2026-10-10), so a USDT order is only
-  // possible when the shopkeeper pinned that price by hand. See `CT-73`.
+  // Since CT-171 no product is priced in USDT, which is where this used to land; what
+  // is left is a dollar or euro price with no rate behind it.
   sin_tasa: "Ahora mismo no podemos calcular ese precio. Prueba con otra moneda.",
 };
 

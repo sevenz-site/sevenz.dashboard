@@ -142,6 +142,50 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "url_suffix",
   },
 
+  // Approved as Utility on 2026-11-12 (owner's report). Body, bullets, footer and the STATIC
+  // button «Ver mi negocio» → https://app.sevenz.site were compared with Kapso's preview that
+  // day. The variable NAMES and ORDER were the draft's (curl of 2026-11-09) until 2026-11-13,
+  // when the owner pasted Kapso's curl for the APPROVED template: same three named parameters
+  // in this order, `es`, the owners' number, no button component.
+  account_ready: {
+    cuerpo: ["owner_name", "business_name", "trial_end_date"],
+    boton: "sin_parametros",
+  },
+
+  // Approved on 2026-11-07; body, footer and button text compared with Kapso's preview that
+  // day. The variable names are compared since 2026-11-13: Kapso's curl for the approved
+  // template, pasted by the owner, shows these two named parameters in this order, `es`, the
+  // owners' number and no button component (its button is a fixed URL).
+  prueba_por_vencer: {
+    cuerpo: ["owner_name", "trial_end_date"],
+    boton: "sin_parametros",
+  },
+
+  // THE BUSINESS FAMILY, sent from 2026-11-13 (v0.6.0, `lib/whatsapp/business-weekly.ts`).
+  // All three carry a FIXED URL button to a section of Reportes (`lib/whatsapp/destinos.ts`).
+  //
+  // `atencion_negocio` IS COMPARED: on 2026-11-09 Kapso's curl showed these six named
+  // parameters in this order and no button component, and the owner gave the button's address
+  // from the editor. Approved by Meta on 2026-11-12.
+  //
+  // `negocio_resumen` AND `atencion_cobros` ARE COMPARED TOO, on 2026-11-13: the owner pasted
+  // Kapso's curl for both approved templates. Same named parameters in this order, language
+  // `es`, sent from the owners' number (1373508439159674), and no button component -- a fixed
+  // button. Before that day only the preview had been compared (2026-11-07), which shows
+  // neither variable names nor the button's URL type.
+  negocio_resumen: {
+    cuerpo: ["owner_name", "amount_due", "overdue_summary", "sales_summary"],
+    boton: "sin_parametros",
+  },
+  atencion_cobros: {
+    cuerpo: ["owner_name", "overdue_summary", "due_summary"],
+    boton: "sin_parametros",
+  },
+  atencion_negocio: {
+    cuerpo: ["owner_name", "overdue_summary", "due_summary", "out_of_stock", "low_stock", "open_orders"],
+    boton: "sin_parametros",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

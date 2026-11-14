@@ -69,3 +69,32 @@ export type SaleLineRow = {
   devueltoValor?: number;
   stockCounted?: boolean;
 };
+
+// WHICH LINES OF A SALE BELONG TO ONE BOOK. A sale can be paid in two currencies: the
+// dollar lines cash, the euro lines on credit. A fiado is one book of that sale, so it is
+// named after ITS lines only. Found in production on 2026-11-13 during the money-path
+// checklist: a mixed sale (Malta $0,80 cash, Camiseta €17,61 on credit) showed the euro
+// fiado as «Fiado • Malta • Camiseta» in the shopkeeper's history -- the malta listed as
+// owed when it had been paid. The amount was right; the label said something false.
+//
+// The client's view already filtered this way since migration 139 (`get_shared_balance`)
+// and so did the transaction detail (`lineasDe`); three owner screens did not, so the two
+// faces of the same fiado disagreed. This is the one rule, for every screen.
+//
+// NORMALISED: `sale_lines` spells the Colombian book 'COP' and `movements` spells it
+// NULL. Comparing the raw columns matches no Colombian line at all.
+export function libroDeLinea(currency: string | null | undefined): string {
+  return !currency || currency === "COP" ? "COP" : currency;
+}
+
+export function lineaDelLibro(
+  lineCurrency: string | null | undefined,
+  movementCurrency: string | null | undefined,
+): boolean {
+  return libroDeLinea(lineCurrency) === libroDeLinea(movementCurrency);
+}
+
+// The key of «this sale, this book», for maps of product names built once per page.
+export function claveDeLibro(saleId: string, currency: string | null | undefined): string {
+  return `${saleId}|${libroDeLinea(currency)}`;
+}

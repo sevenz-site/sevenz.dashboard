@@ -536,9 +536,7 @@ export default async function OrdenPage({
                   ? rates.usd
                   : moneda === "EUR"
                     ? rates.eur
-                    : moneda === "USDT"
-                      ? rates.usdt
-                      : null;
+                    : null;
             return (
               <div
                 key={t.currency}

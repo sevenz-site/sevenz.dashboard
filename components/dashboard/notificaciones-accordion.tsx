@@ -17,7 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { guardarAvisosWhatsapp } from "@/app/(app)/profile/actions";
-import { TEXTO_AVISOS_WHATSAPP, aceptaAvisosWhatsapp } from "@/lib/whatsapp-opt-in";
+import { TEXTO_AVISOS_WHATSAPP_V2, aceptaAvisosWhatsapp } from "@/lib/whatsapp-opt-in";
 import type { Owner } from "@/lib/types";
 
 // "Notificaciones", plegado por defecto.
@@ -46,7 +46,7 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
     // veces, y dos toques aquí son un alta y una baja seguidas.
     setActivo(siguiente);
     startTransition(async () => {
-      const r = await guardarAvisosWhatsapp(siguiente, TEXTO_AVISOS_WHATSAPP);
+      const r = await guardarAvisosWhatsapp(siguiente, TEXTO_AVISOS_WHATSAPP_V2);
       if (r.error) {
         setActivo(!siguiente);
         toast.error(r.error);
@@ -108,7 +108,7 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
 
             {/* El mismo string que se guarda en la ficha al aceptar. No es una
                 paráfrasis del consentimiento: es el consentimiento. */}
-            <p className="text-xs leading-relaxed text-muted-foreground">{TEXTO_AVISOS_WHATSAPP}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{TEXTO_AVISOS_WHATSAPP_V2}</p>
 
             <p className="text-xs text-muted-foreground">
               {owner.whatsapp?.trim()

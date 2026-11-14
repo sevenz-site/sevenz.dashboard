@@ -130,14 +130,19 @@ try {
   const fijar = (currency, amount, tier = "retail") =>
     admin.from("product_price_overrides").insert({ product_id: productoId, tier, currency, amount });
 
-  check("4a. fijar un precio a mano entra", (await fijar("USDT", 12.5)).error == null);
+  // In dollars since CT-171: these pinned USDT until the owner removed it (2026-11-12).
+  check("4a. fijar un precio a mano entra", (await fijar("USD", 12.5)).error == null);
   check(
     "4b. fijarlo DOS veces en la misma casilla es rechazado",
-    (await fijar("USDT", 99)).error != null,
+    (await fijar("USD", 99)).error != null,
   );
   check(
     "4c. la misma moneda en el otro escalón sí es otra casilla",
-    (await fijar("USDT", 11, "wholesale")).error == null,
+    (await fijar("USD", 11, "wholesale")).error == null,
+  );
+  check(
+    "4c2. un precio fijado en USDT lo rechaza la base (CT-171, migración 203)",
+    (await fijar("USDT", 10)).error?.code === "23514",
   );
   check("4d. un candado con importe 0 es rechazado", (await fijar("EUR", 0)).error != null);
 
@@ -147,7 +152,7 @@ try {
     .delete()
     .eq("product_id", productoId)
     .eq("tier", "retail")
-    .eq("currency", "USDT");
+    .eq("currency", "USD");
   const { count: trasAbrir } = await admin
     .from("product_price_overrides")
     .select("product_id", { count: "exact", head: true })

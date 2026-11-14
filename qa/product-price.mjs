@@ -34,9 +34,8 @@ import {
   parseAmount,
   formatAmountForInput,
   formatAmountWhileTyping,
-  SALE_CURRENCIES_LOCKED,
-  isSaleCurrencyLocked,
-  withoutLockedSaleCurrencies,
+  VE_PRICE_CURRENCIES,
+  formatPriceAmount,
 } from "../lib/products/price.ts";
 
 const filas = [];
@@ -45,9 +44,9 @@ function check(nombre, pasa, detalle) {
   console.log(`${pasa ? "PASS" : "FAIL"}  ${nombre}${detalle ? `  — ${detalle}` : ""}`);
 }
 
-// Tasas realistas de un dueño en BCV_AUTO, con el USDT por encima del oficial,
-// que es la situación normal en Venezuela.
-const TASAS = { usd: 160, eur: 180, usdt: 200 };
+// Tasas realistas de un dueño en BCV_AUTO. USDT left the products on 2026-11-12
+// (CT-171), so the rates carry only the dollar and the euro, as `BolivarRates` does.
+const TASAS = { usd: 160, eur: 180 };
 const BASE = { amount: 12, currency: "USD" };
 
 // ── 1. La moneda base se devuelve tal cual ────────────────────────────────
@@ -59,16 +58,14 @@ check(
 );
 
 // ── 2. Las conversiones pivotan sobre el bolívar ──────────────────────────
-// $12 × 160 = Bs 1.920. Entre 180 = €10,67. Entre 200 = 9,60 USDT.
+// $12 × 160 = Bs 1.920. Entre 180 = €10,67.
 const enEur = priceIn("EUR", BASE, TASAS);
 const enVes = priceIn("VES", BASE, TASAS);
-const enUsdt = priceIn("USDT", BASE, TASAS);
 check("2a. a euros: 12 × 160 ÷ 180 = 10,67", enEur.amount === 10.67, String(enEur.amount));
 check("2b. a bolívares: 12 × 160 = 1.920", enVes.amount === 1920, String(enVes.amount));
-check("2c. a USDT: 12 × 160 ÷ 200 = 9,60", enUsdt.amount === 9.6, String(enUsdt.amount));
 check(
-  "2d. las tres salen marcadas como calculadas",
-  [enEur, enVes, enUsdt].every((p) => p.origin === "derived"),
+  "2d. las dos salen marcadas como calculadas",
+  [enEur, enVes].every((p) => p.origin === "derived"),
 );
 
 // Ida y vuelta: euros → dólares tiene que devolver lo mismo.
@@ -80,42 +77,43 @@ check(
 );
 
 // ── 3. El candado manda ───────────────────────────────────────────────────
-const fijado = priceIn("USDT", BASE, TASAS, { USDT: 12.5 });
+const fijado = priceIn("EUR", BASE, TASAS, { EUR: 9.5 });
 check(
   "3a. un precio fijado a mano NO se recalcula",
-  fijado.amount === 12.5 && fijado.origin === "manual",
+  fijado.amount === 9.5 && fijado.origin === "manual",
   JSON.stringify(fijado),
 );
-const otraSinFijar = priceIn("EUR", BASE, TASAS, { USDT: 12.5 });
+const otraSinFijar = priceIn("VES", BASE, TASAS, { EUR: 9.5 });
 check(
   "3b. y fijar uno no afecta a los demás",
-  otraSinFijar.amount === 10.67 && otraSinFijar.origin === "derived",
+  otraSinFijar.amount === 1920 && otraSinFijar.origin === "derived",
 );
 // B, según el dueño, es "todos los candados cerrados" — no hay interruptor
 // aparte que construir.
-const todosFijados = allPrices(BASE, TASAS, { USD: 10, USDT: 10.5, EUR: 9.5, VES: 2000 });
+const todosFijados = allPrices(BASE, TASAS, { USD: 10, EUR: 9.5, VES: 2000 });
 check(
-  "3c. con los cuatro candados cerrados, los cuatro son manuales",
+  "3c. con todos los candados cerrados, todos son manuales",
   todosFijados.every((p) => p.origin === "manual"),
   todosFijados.map((p) => `${p.currency}:${p.amount}`).join(" "),
 );
 
 // ── 4. Una tasa que falta devuelve null, no un número ─────────────────────
-const sinUsdt = priceIn("USDT", BASE, { ...TASAS, usdt: null });
+const sinEuro = priceIn("EUR", BASE, { ...TASAS, eur: 0 });
 check(
-  "4a. sin precio de USDT devuelve null, no 0 ni NaN",
-  sinUsdt.amount === null,
-  String(sinUsdt.amount),
+  "4a. sin tasa del euro devuelve null, no 0 ni NaN",
+  sinEuro.amount === null,
+  String(sinEuro.amount),
 );
-const sinUsdtPeroFijado = priceIn("USDT", BASE, { ...TASAS, usdt: null }, { USDT: 11 });
+const sinEuroPeroFijado = priceIn("EUR", BASE, { ...TASAS, eur: 0 }, { EUR: 11 });
 check(
   "4b. pero si estaba fijado a mano, se enseña igual",
-  sinUsdtPeroFijado.amount === 11,
+  sinEuroPeroFijado.amount === 11,
 );
-const filaConHueco = allPrices(BASE, { ...TASAS, usdt: null });
+const filaConHueco = allPrices(BASE, { ...TASAS, eur: 0 });
 check(
   "4c. la moneda sin tasa viene con null en vez de omitirse",
-  filaConHueco.length === 4 && filaConHueco.find((p) => p.currency === "USDT").amount === null,
+  filaConHueco.length === VE_PRICE_CURRENCIES.length &&
+    filaConHueco.find((p) => p.currency === "EUR").amount === null,
   `monedas: ${filaConHueco.map((p) => p.currency).join(",")}`,
 );
 
@@ -399,77 +397,27 @@ for (const teclas of ["12345", "5760,4761", "1234.5", "999", "0,5", "1125"]) {
   );
 }
 
-// ── 9. EL CANDADO DEL PRECIO EN USDT ──────────────────────────────────────
+// ── 9. USDT YA NO ES UNA MONEDA DE PRECIO (CT-171) ───────────────────────
 //
-// `CT-79`. Es lógica pura, así que se puede probar sin base de datos y sin
-// sesión del tendero — y eso importa aquí más que de costumbre: la ficha de
-// producto está detrás de login, así que esta sección es lo ÚNICO del candado
-// que se puede comprobar corriéndolo. Lo que no cubre se dice en el informe.
-//
-// LO QUE ESTAS COMPROBACIONES IMPIDEN, que no es que la lista salga bonita:
-// el catálogo acepta una orden en USDT (`catalog_order_items`, migración 108)
-// y `movements` no (migración 025). Si el candado se cayera sin que nadie se
-// enterara, un cliente pediría en una moneda que el libro del dinero no sabe
-// guardar y el tendero se quedaría con un pedido que no puede registrar.
+// Replaces the CT-79 lock checks. The lock hid USDT from the sale price; on 2026-11-12
+// the owner removed it from sale price AND cost, and migration 203 took it out of the
+// schema. What can still reach this code is an old catalogue order line carrying the
+// string, so the checks are: it is not offered, it is never converted into an invented
+// number, and an old line still prints legibly.
 check(
-  "9a. USDT está bloqueada hoy",
-  isSaleCurrencyLocked("USDT"),
-  JSON.stringify(SALE_CURRENCIES_LOCKED),
+  "9a. la ficha venezolana ya no ofrece USDT",
+  !VE_PRICE_CURRENCIES.includes("USDT"),
+  JSON.stringify(VE_PRICE_CURRENCIES),
 );
 check(
-  "9b. y el dólar y el euro NO lo están",
-  !isSaleCurrencyLocked("USD") && !isSaleCurrencyLocked("EUR"),
-);
-
-check(
-  "9c. una lista normal no se toca",
-  JSON.stringify(withoutLockedSaleCurrencies(["USD", "EUR"])) === JSON.stringify(["USD", "EUR"]),
+  "9b. un USDT que llegue de datos viejos no se convierte: null, no un número",
+  priceIn("USDT", BASE, TASAS).amount === null,
+  String(priceIn("USDT", BASE, TASAS).amount),
 );
 check(
-  "9d. USDT secundaria se cae",
-  JSON.stringify(withoutLockedSaleCurrencies(["USD", "EUR", "USDT"])) ===
-    JSON.stringify(["USD", "EUR"]),
-  "es el caso de `Casco` en dev",
-);
-check(
-  "9e. y se cae también cuando es la única extra",
-  JSON.stringify(withoutLockedSaleCurrencies(["EUR", "USDT"])) === JSON.stringify(["EUR"]),
-  "es el caso del mayor de `Alicate` en dev",
-);
-
-// 9f ES LA COMPROBACIÓN QUE DE VERDAD PROTEGE DINERO, y la razón de que el
-// candado no sea un `filter` a secas. El primer elemento es la BASE del
-// escalón: la moneda en la que el precio está guardado. Quitarla no ocultaría
-// una moneda, REPRECIARÍA el producto — el mismo número leído como otra
-// moneda, sin nada en pantalla que lo diga.
-//
-// Hoy ningún producto de dev tiene USDT como base (medido el 2026-10-16: 0 de
-// 11), así que esto vigila un caso que no existe. Se escribe porque el trabajo
-// de bases por escalón de la migración `114` convirtió «no existe» en un bug
-// real la semana anterior.
-check(
-  "9f. la BASE no se cae nunca, aunque esté bloqueada",
-  JSON.stringify(withoutLockedSaleCurrencies(["USDT", "USD"])) ===
-    JSON.stringify(["USDT", "USD"]),
-  "si se cayera, el precio guardado en USDT pasaría a leerse como dólares",
-);
-check(
-  "9g. una lista de una sola moneda bloqueada se queda entera",
-  JSON.stringify(withoutLockedSaleCurrencies(["USDT"])) === JSON.stringify(["USDT"]),
-  "la acción de servidor la rechaza con un error; no la vacía en silencio",
-);
-check(
-  "9h. una lista vacía sigue vacía",
-  JSON.stringify(withoutLockedSaleCurrencies([])) === JSON.stringify([]),
-);
-
-// EL DÍA QUE SE DESTAPE (paso 13 del plan del 2026-10-16), esta comprobación
-// es la que debe empezar a fallar. Su mensaje dice qué hacer, para que quien
-// la vea en rojo no la "arregle" borrándola.
-check(
-  "9i. el candado sigue puesto: SALE_CURRENCIES_LOCKED tiene exactamente USDT",
-  SALE_CURRENCIES_LOCKED.length === 1 && SALE_CURRENCIES_LOCKED[0] === "USDT",
-  "si esto falla porque se vació a propósito, quita esta comprobación y la 9a, y cierra CT-79",
+  "9c. una línea vieja en USDT se sigue leyendo, no sale «undefined»",
+  formatPriceAmount(12, "USDT") === "12,00 USDT",
+  formatPriceAmount(12, "USDT"),
 );
 
 const fallos = filas.filter((f) => !f.pasa).length;
