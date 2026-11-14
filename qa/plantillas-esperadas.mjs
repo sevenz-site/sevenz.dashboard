@@ -144,16 +144,18 @@ export const PLANTILLAS_ESPERADAS = {
 
   // Approved as Utility on 2026-11-12 (owner's report). Body, bullets, footer and the STATIC
   // button «Ver mi negocio» → https://app.sevenz.site were compared with Kapso's preview that
-  // day. The variable NAMES and ORDER below are the ones the draft's curl showed on
-  // 2026-11-09; they are still to be read off the approved template before production.
+  // day. The variable NAMES and ORDER were the draft's (curl of 2026-11-09) until 2026-11-13,
+  // when the owner pasted Kapso's curl for the APPROVED template: same three named parameters
+  // in this order, `es`, the owners' number, no button component.
   account_ready: {
     cuerpo: ["owner_name", "business_name", "trial_end_date"],
     boton: "sin_parametros",
   },
 
   // Approved on 2026-11-07; body, footer and button text compared with Kapso's preview that
-  // day. The variable names below are the spec's; Kapso's preview does not show them, so they
-  // are still to be read off the approved template before production.
+  // day. The variable names are compared since 2026-11-13: Kapso's curl for the approved
+  // template, pasted by the owner, shows these two named parameters in this order, `es`, the
+  // owners' number and no button component (its button is a fixed URL).
   prueba_por_vencer: {
     cuerpo: ["owner_name", "trial_end_date"],
     boton: "sin_parametros",
