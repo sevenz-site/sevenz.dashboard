@@ -129,6 +129,8 @@ const { claveSemanal } = await import("../lib/whatsapp/send.ts");
 const periodoDeLaTanda = claveSemanal();
 const { data: memoriaAntes } = await db.from("whatsapp_attention_memory").select("owner_id, client_id").eq("period_key", periodoDeLaTanda);
 const memoriaDeAntes = new Set((memoriaAntes ?? []).map((m) => `${m.owner_id}|${m.client_id}`));
+const { data: itemsAntes } = await db.from("whatsapp_attention_item_memory").select("owner_id, kind, item_id").eq("period_key", periodoDeLaTanda);
+const itemsDeAntes = new Set((itemsAntes ?? []).map((m) => `${m.owner_id}|${m.kind}|${m.item_id}`));
 
 const { data: lista, error: errorLista } = await db.rpc("whatsapp_destinatarios_resumen");
 if (errorLista || !lista?.length) {
@@ -316,6 +318,12 @@ try {
   for (const m of memoriaDespues ?? []) {
     if (memoriaDeAntes.has(`${m.owner_id}|${m.client_id}`)) continue;
     await db.from("whatsapp_attention_memory").delete().eq("period_key", periodoDeLaTanda).eq("owner_id", m.owner_id).eq("client_id", m.client_id);
+  }
+  // Since 206 the same send also keeps that week's products and orders.
+  const { data: itemsDespues } = await db.from("whatsapp_attention_item_memory").select("owner_id, kind, item_id").eq("period_key", periodoDeLaTanda);
+  for (const m of itemsDespues ?? []) {
+    if (itemsDeAntes.has(`${m.owner_id}|${m.kind}|${m.item_id}`)) continue;
+    await db.from("whatsapp_attention_item_memory").delete().eq("period_key", periodoDeLaTanda).eq("owner_id", m.owner_id).eq("kind", m.kind).eq("item_id", m.item_id);
   }
 
   const { data: despuesFilas } = await db.from("whatsapp_sends").select("id");

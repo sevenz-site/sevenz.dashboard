@@ -235,6 +235,8 @@ export const MANIFEST = {
     whatsapp_cron_runs: { via: "none" },
     // 205: who was overdue in the last Thursday message. Server only, no policy.
     whatsapp_attention_memory: { via: "none" },
+    // 206: which products and orders were on the last Thursday message. Server only.
+    whatsapp_attention_item_memory: { via: "none" },
     whatsapp_sends: { via: "owner" },
     client_summary: { via: "owner" },
     client_summary_all: { via: "owner" },
@@ -268,6 +270,8 @@ export const MANIFEST = {
     whatsapp_business_weekly_targets: "service",
     whatsapp_ledger_states: "service",
     whatsapp_attention_remember: "service",
+    // 206: today's products and orders that need attention, read by the two above.
+    whatsapp_attention_items: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",

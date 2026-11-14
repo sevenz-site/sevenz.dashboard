@@ -45,6 +45,9 @@ export type WeeklyTarget = {
   open_orders: number;
   // Null when last Thursday nothing went out: there is nothing to compare against.
   new_overdue_clients: number | null;
+  // How many of today's products and orders were not on last Thursday's list (migration
+  // 206). With no Thursday sent last week, all of them.
+  new_attention_items: number;
   monday_used: boolean;
   thursday_used: boolean;
   phone_slots_used: number;
@@ -252,7 +255,12 @@ export function thursdayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
     { nombre: "due_summary", texto: dueSoonSummary(t) },
   ];
 
-  if (t.out_of_stock + t.low_stock + t.open_orders > 0) {
+  // PRODUCTS AND ORDERS ONLY WHEN SOMETHING IS NEW. Owner's decision of 2026-11-14 («Solo lo
+  // que cambió», «Bloque solo si hay algo nuevo»): the three lines come back only if, since
+  // last Thursday, a product ran out, one started running low, or an order arrived. When they
+  // do, they carry TODAY'S TOTALS, the figures Reportes shows; a count of only the new ones
+  // would say «1 agotado» with 4 out in the app. With nothing new, `atencion_cobros`.
+  if (t.out_of_stock + t.low_stock + t.open_orders > 0 && Number(t.new_attention_items ?? 0) > 0) {
     return {
       template: TEMPLATES.attentionBusiness,
       params: [

@@ -47,7 +47,7 @@ function nombresEnOrden(plan) {
 const base = (o = {}) => ({
   owner_id: "x", whatsapp: "584140000000", first_name: "Rosa", business_name: "Bodega QA", country: "VE",
   paused: false, is_test: false, ledgers: {}, overdue_clients: 0, sales: {}, out_of_stock: 0, low_stock: 0,
-  open_orders: 0, new_overdue_clients: null, monday_used: false, thursday_used: false, phone_slots_used: 0, ...o,
+  open_orders: 0, new_overdue_clients: null, new_attention_items: 0, monday_used: false, thursday_used: false, phone_slots_used: 0, ...o,
 });
 const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   ({ due, overdue_count: oc, overdue_amount: oa, soon_count: sc, soon_amount: sa });
@@ -115,7 +115,7 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   const cobros = thursdayPlan(base({ ledgers: { USD: libro(170, 2, 120, 1, 50), EUR: libro(30, 1, 30) } }));
   check("6a. jueves con deudores y sin inventario ni pedidos: atencion_cobros", cobros.template === "atencion_cobros" && nombresEnOrden(cobros), cobros.template);
   check("6b. por vencer, por moneda", param(cobros, "due_summary") === "1 cliente por $50,00", param(cobros, "due_summary"));
-  const negocio = thursdayPlan(base({ ledgers: { USD: libro(50, 0, 0, 1, 50) }, out_of_stock: 2, low_stock: 0, open_orders: 1 }));
+  const negocio = thursdayPlan(base({ ledgers: { USD: libro(50, 0, 0, 1, 50) }, out_of_stock: 2, low_stock: 0, open_orders: 1, new_attention_items: 1 }));
   check("6c. con productos o pedidos: atencion_negocio, seis parámetros en orden", negocio.template === "atencion_negocio" && nombresEnOrden(negocio), negocio.template);
   check("6d. solo por vencer, sin vencidos: sale igual, con «0 clientes» en vencidos",
     param(negocio, "overdue_summary") === "0 clientes" && param(negocio, "out_of_stock") === "2" && param(negocio, "low_stock") === "0",
@@ -123,6 +123,14 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   check("6e. sin deudores pero con productos: no sale (atencion_productos no está aprobada)",
     thursdayPlan(base({ ledgers: { USD: libro(50) }, out_of_stock: 3 })).skip === "sin_cobros");
   check("6f. un saldo a favor o cero no es un deudor", thursdayPlan(base()).skip === "sin_cobros");
+  // Migration 206, owner's decision of 2026-11-14: products and orders only when something is new.
+  const sinNada = thursdayPlan(base({ ledgers: { USD: libro(50, 1, 50) }, out_of_stock: 3, low_stock: 1, open_orders: 2, new_attention_items: 0 }));
+  check("6g. hay agotados y pedidos pero nada nuevo desde el jueves: atencion_cobros, sin esas líneas",
+    sinNada.template === "atencion_cobros" && param(sinNada, "out_of_stock") === undefined, sinNada.template);
+  const conUno = thursdayPlan(base({ ledgers: { USD: libro(50, 1, 50) }, out_of_stock: 4, low_stock: 1, open_orders: 2, new_attention_items: 1 }));
+  check("6h. con UNA cosa nueva salen las líneas, con los totales de hoy y no solo lo nuevo",
+    conUno.template === "atencion_negocio" && param(conUno, "out_of_stock") === "4" && param(conUno, "open_orders") === "2",
+    `${conUno.template} · ${param(conUno, "out_of_stock")} · ${param(conUno, "open_orders")}`);
 }
 {
   const t = base({ ledgers: { USD: libro(100, 2, 100) } });
@@ -275,6 +283,8 @@ try {
   check("17a. lunes: negocio_resumen con «2 clientes por $150,00 y 1 cliente por €30,00»",
     lunes.template === "negocio_resumen" && param(lunes, "overdue_summary") === "2 clientes por $150,00 y 1 cliente por €30,00",
     `${lunes.template} · ${param(lunes, "overdue_summary")}`);
+  check("15b. sin jueves anterior, todo lo de hoy cuenta como nuevo: 1 agotado + 1 por agotarse + 1 pedido",
+    Number(r.new_attention_items) === 3, String(r.new_attention_items));
   const jueves = thursdayPlan(r);
   check("17b. jueves: atencion_negocio (hay agotados y un pedido), por vencer «1 cliente por $50,00»",
     jueves.template === "atencion_negocio" && param(jueves, "due_summary") === "1 cliente por $50,00" && param(jueves, "open_orders") === "1",
@@ -311,19 +321,52 @@ try {
     conNuevo.new_overdue_clients === 1 && param(thursdayPlan(conNuevo), "overdue_summary").endsWith("(1 cliente nuevo esta semana)"),
     `${conNuevo.new_overdue_clients} · ${param(thursdayPlan(conNuevo), "overdue_summary")}`);
 
+  // MIGRATION 206: PRODUCTS AND ORDERS ONLY WHEN SOMETHING IS NEW. The memory written by
+  // remember (19a) holds this week's items; the next week compares against it.
+  const [pAgotado, pPocos] = productos;
+  const igual = await filaDe(A, siguiente, periodo);
+  check("21a. la semana siguiente, con los mismos productos y pedidos: 0 nuevos y atencion_cobros",
+    Number(igual.new_attention_items) === 0 && thursdayPlan(igual).template === "atencion_cobros",
+    `${igual.new_attention_items} · ${thursdayPlan(igual).template}`);
+  await admin.from("products").update({ stock_opening: 0 }).eq("id", pPocos);
+  const empeora = await filaDe(A, siguiente, periodo);
+  check("21b. el que se estaba agotando se agota: es nuevo, y salen las líneas con los totales de hoy",
+    Number(empeora.new_attention_items) === 1 && thursdayPlan(empeora).template === "atencion_negocio" && param(thursdayPlan(empeora), "out_of_stock") === "2",
+    `${empeora.new_attention_items} · ${thursdayPlan(empeora).template} · agotados ${param(thursdayPlan(empeora), "out_of_stock")}`);
+  await admin.from("products").update({ stock_opening: 2 }).eq("id", pPocos);
+  await admin.from("products").update({ stock_opening: 1 }).eq("id", pAgotado);
+  const repone = await filaDe(A, siguiente, periodo);
+  check("21c. el agotado se repone a medias (queda por agotarse): NO es nuevo",
+    Number(repone.new_attention_items) === 0 && thursdayPlan(repone).template === "atencion_cobros",
+    `${repone.new_attention_items} · ${thursdayPlan(repone).template}`);
+  await admin.from("products").update({ stock_opening: 0 }).eq("id", pAgotado);
+  const { data: o2 } = await admin.from("catalog_orders").insert({
+    owner_id: A, customer_name: "ZZ QA", customer_document: "7654321", customer_whatsapp: "584121112244", customer_whatsapp_raw: "04121112244",
+  }).select("id").single();
+  pedidos.push(o2.id);
+  const pedido = await filaDe(A, siguiente, periodo);
+  check("21d. llega un pedido nuevo: 1 nuevo, y la línea dice los 2 pedidos sin atender",
+    Number(pedido.new_attention_items) === 1 && param(thursdayPlan(pedido), "open_orders") === "2",
+    `${pedido.new_attention_items} · pedidos ${param(thursdayPlan(pedido), "open_orders")}`);
+  const { count: itemsMemoria } = await admin.from("whatsapp_attention_item_memory").select("item_id", { count: "exact", head: true }).eq("owner_id", A).eq("period_key", periodo);
+  check("21e. la memoria guardó los 3 de esa semana (agotado, por agotarse, pedido)", itemsMemoria === 3, String(itemsMemoria));
+
   // NOTHING OF THIS IS REACHABLE WITHOUT THE SERVER'S KEY.
   const intentos = await Promise.all([
     anon.rpc("whatsapp_business_weekly_targets", { p_period: periodo, p_prev_period: periodo }),
     anon.rpc("whatsapp_attention_remember", { p_owner_id: A, p_period: periodo }),
     anon.rpc("whatsapp_ledger_states", { p_owner_id: A }),
     anon.from("whatsapp_attention_memory").select("client_id"),
+    anon.from("whatsapp_attention_item_memory").select("item_id"),
+    anon.rpc("whatsapp_attention_items", { p_owner_id: A }),
   ]);
-  check("20. anon no llega a ninguna de las tres funciones ni a la tabla", intentos.every((x) => x.error), intentos.map((x) => x.error?.code ?? "SIN ERROR").join(" · "));
+  check("20. anon no llega a ninguna de las cuatro funciones ni a las dos tablas", intentos.every((x) => x.error), intentos.map((x) => x.error?.code ?? "SIN ERROR").join(" · "));
 } catch (e) {
   check("la prueba corrió entera", false, e instanceof Error ? e.message : String(e));
 } finally {
   for (const id of usuarios) {
     await admin.from("whatsapp_attention_memory").delete().eq("owner_id", id);
+    await admin.from("whatsapp_attention_item_memory").delete().eq("owner_id", id);
     await admin.from("whatsapp_sends").delete().eq("owner_id", id);
   }
   if (ventas.length) {
