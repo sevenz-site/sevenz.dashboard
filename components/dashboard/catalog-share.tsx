@@ -3,7 +3,7 @@
 import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, Loader2, MoreVertical, Share2 } from "lucide-react";
+import { Eye, Loader2, MoreVertical, Palette, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
+import { publicLinkBase } from "@/lib/public-link";
 
 export type PublishedCount = { retail: number; wholesale: number; any: number };
 
@@ -93,7 +94,7 @@ export function CatalogShareButton({
   const sinNada = publishedCount.any === 0;
 
   function urlDe(t: string) {
-    return `${window.location.origin}/c/${t}`;
+    return `${publicLinkBase()}/c/${t}`;
   }
 
   // Devuelve el token, creandolo si el negocio todavia no tiene. `null` si
@@ -337,6 +338,12 @@ export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
           >
             <Eye />
             Vista previa
+          </DropdownMenuItem>
+          {/* CT-170: «Personalizar catálogo», in this menu by the owner's choice of
+              2026-11-15 («Dentro del menú ⋮»), next to the preview it changes. */}
+          <DropdownMenuItem onSelect={() => router.push("/productos/personalizar")}>
+            <Palette />
+            Personalizar catálogo
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

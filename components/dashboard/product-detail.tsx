@@ -26,6 +26,7 @@ import { ProductShareButton } from "@/components/dashboard/product-share-button"
 import { StockBadge } from "@/components/stock-badge";
 import { DescriptionText } from "@/components/description-text";
 import { ProductGallery } from "@/components/product-gallery";
+import { PRODUCT_PHOTO_BOX } from "@/components/product-photo";
 import { photosInOrder } from "@/lib/products/photos";
 import { trashProduct } from "@/app/(app)/productos/actions";
 import type { ProductRow } from "@/lib/products/catalog";
@@ -80,8 +81,12 @@ export function ProductDetail({
   catalogToken,
   lowStockThreshold,
   extraPhotos = [],
+  overrides = { retail: {}, wholesale: {} },
 }: {
   product: ProductRow;
+  // The prices the owner typed in each currency, per tier: they win over the conversion
+  // (owner's rule of 2026-11-15). See `BloqueDePrecios`.
+  overrides?: Record<"retail" | "wholesale", Partial<Record<PriceCurrency, number>>>;
   // Photos 2 to 5 (CT-171). The cover is `product.photo_path`.
   extraPhotos?: string[];
   // null en un negocio colombiano: no hay equivalencias que calcular.
@@ -147,7 +152,7 @@ export function ProductDetail({
         paths={photosInOrder(product.photo_path, extraPhotos)}
         alt={product.name}
         sizes="(max-width: 640px) 100vw, 640px"
-        className="h-50 w-full shrink-0"
+        className={`${PRODUCT_PHOTO_BOX} shrink-0`}
       >
 
         {/* LA FLECHA VUELVE AL CATÁLOGO, Y NO ES `router.back()`.
@@ -237,6 +242,7 @@ export function ProductDetail({
           margen={product.margin_retail_pct == null ? null : Number(product.margin_retail_pct)}
           base={baseDetal}
           rates={rates}
+          overrides={overrides.retail}
           enTarjeta
         />
         {/* «Margen al mayor», y el frame dice «Margen al detal» en los dos
@@ -252,6 +258,7 @@ export function ProductDetail({
           }
           base={baseMayor}
           rates={rates}
+          overrides={overrides.wholesale}
           enTarjeta
         />
 

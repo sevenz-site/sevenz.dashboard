@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { StockBadge } from "@/components/stock-badge";
 import { ImageOff } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ProductDetail } from "@/components/public/product-detail";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { PRODUCT_PHOTO_BOX, ProductPhoto } from "@/components/product-photo";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
@@ -59,7 +58,7 @@ export function ProductSheet({
   monedasPermitidas: PriceCurrency[];
   onAgregar: (linea: { quantity: number; currency: PriceCurrency }) => void;
 }) {
-  const foto = producto.photoPath ? getPublicProductPhotoUrl(producto.photoPath) : null;
+  const foto = producto.photoPath || null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -78,9 +77,9 @@ export function ProductSheet({
         // es un control de más.
         showCloseButton={false}
       >
-        <div className="relative h-[200px] w-full shrink-0 overflow-hidden bg-muted">
+        <div className={`relative ${PRODUCT_PHOTO_BOX} shrink-0 overflow-hidden bg-muted`}>
           {foto ? (
-            <Image src={foto} alt="" fill unoptimized sizes="100vw" className="object-cover" />
+            <ProductPhoto path={foto} alt="" fill sizes="100vw" />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
               <ImageOff className="size-8" aria-hidden="true" />

@@ -128,7 +128,7 @@ export function ReportesAvisoSheet({
                           alt=""
                           width={48}
                           height={48}
-                          className="size-12 object-cover"
+                          className="size-12"
                         />
                       ) : (
                         <ImageOff className="size-5 text-muted-foreground" aria-hidden />

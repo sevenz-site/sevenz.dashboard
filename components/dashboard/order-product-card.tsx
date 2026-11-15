@@ -174,7 +174,7 @@ export const OrderProductRowButton = forwardRef<
           alt=""
           width={80}
           height={80}
-          className="size-10 shrink-0 rounded border object-cover"
+          className="size-10 shrink-0 rounded border"
         />
       ) : (
         <span className="flex size-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">

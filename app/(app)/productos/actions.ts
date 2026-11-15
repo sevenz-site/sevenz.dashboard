@@ -550,6 +550,51 @@ async function categoriaPermitida(
 
 const CATEGORIA_AJENA = "No encontramos esa categoría. Elige otra o créala de nuevo.";
 
+// ── IS THIS NAME ALREADY IN THE OWNER'S CATALOGUE? ─────────────────────────
+//
+// Owner's request of 2026-11-15: «El app debe mostrar modal de alerta cuando se crea un
+// producto repetido (nombre), la modal debe alertar pero no limitar la creación del
+// producto». So this only ANSWERS; `createProduct` still accepts a repeated name, on
+// purpose. Two «Queso blanco» can be two real products (two brands, two sizes written the
+// same way), and the owner decides.
+//
+// THE SAME NAME means equal once accents, case and spaces are folded (`foldForSearch`):
+// «Café molido» and «cafe  molido» are the same name to a shopkeeper reading a list.
+// Products in the bin do not count -- they are not in the catalogue -- and neither does
+// the product being edited (`exceptId`).
+//
+// IT NEVER STOPS A SAVE: no session, a failed read or anything unexpected answers «not
+// taken», and the save goes on as it did before this check existed. Only the owner's
+// own products are read (`owner_id` from the session, never from the browser).
+export async function productNameTaken(name: string, exceptId?: string | null): Promise<boolean> {
+  try {
+    const wanted = foldForSearch(String(name ?? "")).replace(/\s+/g, " ").trim();
+    if (!wanted) return false;
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name")
+      .eq("owner_id", user.id)
+      .is("trashed_at", null)
+      // bounded: the owner's catalogue, a few hundred rows at most.
+      .limit(5000);
+    if (error) {
+      console.error("[productNameTaken]", error.message);
+      return false;
+    }
+    return (data ?? []).some(
+      (p) => p.id !== exceptId && foldForSearch(String(p.name ?? "")).replace(/\s+/g, " ").trim() === wanted,
+    );
+  } catch (error) {
+    console.error("[productNameTaken] threw", error instanceof Error ? error.message : error);
+    return false;
+  }
+}
+
 export async function createProduct(input: ProductInput): Promise<ProductResult> {
   const supabase = await createClient();
   const {

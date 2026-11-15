@@ -129,7 +129,11 @@ export function CatalogSearchGrid({
 
   return (
     <div className="flex flex-col gap-4">
-      <SearchField value={query} onChange={buscar} placeholder="Buscar producto" />
+      {/* 640px wide on the web, as frame `2115:21784` draws it, now that the catalogue
+          takes the full width there. */}
+      <div className="w-full md:max-w-[640px]">
+        <SearchField value={query} onChange={buscar} placeholder="Buscar producto" />
+      </div>
 
       {/* THE OWNER'S SECTION, WITH A VARIANT — his answer of 2026-11-03: the
           same title and chips, no «Editar», because the customer manages
@@ -154,7 +158,8 @@ export function CatalogSearchGrid({
         />
       ) : (
         <>
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {/* Four a row from `lg`, frame `2115:21794` (owner's choice of 2026-11-15). */}
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {deEstaPagina.map((i) => i.card)}
           </ul>
           <NumberedPagination page={enPagina} pages={paginas} onChange={irAPagina} />

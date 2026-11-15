@@ -29,3 +29,14 @@ const FICHA_DE_PRODUCTO =
 export function isProductDetailRoute(pathname: string): boolean {
   return FICHA_DE_PRODUCTO.test(pathname);
 }
+
+// THE «PERSONALIZAR CATÁLOGO» SCREEN (CT-170, frames `2115:21868` and `2115:21966`),
+// since 2026-11-15. A full screen with its own back row and its buttons pinned at the
+// bottom, so it goes in the same three lists as the product form: no bottom bar on top
+// of «Guardar cambios», and no extra air under it. The app header is already hidden for
+// it by `startsWith("/productos")` in `app-header.tsx`.
+export const CATALOG_BRANDING_ROUTE = "/productos/personalizar";
+
+export function isCatalogBrandingRoute(pathname: string): boolean {
+  return pathname === CATALOG_BRANDING_ROUTE;
+}

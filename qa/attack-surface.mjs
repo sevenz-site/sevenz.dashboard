@@ -479,6 +479,8 @@ export const MANIFEST = {
     "app/(app)/dashboard/search-transactions.ts#searchTransactionsByCode": "atacada",
     "app/(app)/import/actions.ts#confirmImport": "atacada",
     "app/(app)/productos/actions.ts#buscarProductos": "atacada",
+    // 2026-11-15: answers yes / no about the caller's own catalogue; asked for B's name.
+    "app/(app)/productos/actions.ts#productNameTaken": "atacada",
     "app/(app)/productos/actions.ts#createProduct": "atacada",
     // 184: takes only a name and writes it for auth.uid(); no id of anyone's travels
     "app/(app)/devoluciones/actions.ts#registrarDevolucionDeContado": "cubierta: qa:devoluciones-contado, la función comprueba al dueño con sus propios derechos",
@@ -487,6 +489,8 @@ export const MANIFEST = {
     "app/(app)/productos/actions.ts#eliminarCategoria": "atacada",
     "app/(app)/productos/actions.ts#renombrarCategoria": "atacada",
     "app/(app)/productos/actions.ts#getOrCreateCatalogLink": "atacada",
+    // CT-170 (210): the cover of B, a path out of A's folder, a link in the welcome, CSS in the colour.
+    "app/(app)/productos/personalizar/actions.ts#saveCatalogBranding": "atacada",
     "app/(app)/productos/actions.ts#restoreProduct": "atacada",
     "app/(app)/productos/actions.ts#setProductPublished": "atacada",
     "app/(app)/productos/actions.ts#trashProduct": "atacada",

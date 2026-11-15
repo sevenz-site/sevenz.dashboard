@@ -174,7 +174,7 @@ export function CatalogStrip({
                     alt=""
                     fill
                     sizes="120px"
-                    className="absolute inset-0 object-cover"
+                    className="absolute inset-0"
                   />
                   {/* The gradient is what makes the name readable over a
                       photo nobody vetted: a pale bag of rice and white text

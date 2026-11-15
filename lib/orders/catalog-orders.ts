@@ -245,6 +245,11 @@ export type OrderProductRow = {
   price_wholesale: number | null;
   base_currency_retail: string | null;
   base_currency_wholesale: string | null;
+  // The prices the owner TYPED in each currency, per tier (`product_price_overrides`). The
+  // order sheet shows today's catalogue prices, and a typed one wins over the conversion:
+  // owner's rule of 2026-11-15, «el valor escrito a mano es el que manda». Filled by
+  // `readOrderProducts`; absent means none.
+  overrides?: Record<"retail" | "wholesale", Partial<Record<string, number>>>;
 };
 
 export const ORDER_PRODUCT_COLUMNS =
@@ -283,5 +288,23 @@ export async function readOrderProducts(
     return new Map();
   }
 
-  return new Map((data ?? []).map((p) => [p.id, p as OrderProductRow]));
+  // The typed prices of the same products, in one more query. A failed read leaves them
+  // out and the sheet falls back to converting, which is what it did before: logged, never
+  // a broken dialog.
+  const { data: pinned, error: pinnedError } = await supabase
+    .from("product_price_overrides")
+    .select("product_id, tier, currency, amount")
+    .in("product_id", ids);
+  if (pinnedError) console.error("[orders] readOrderProducts overrides:", pinnedError.message);
+
+  return new Map(
+    (data ?? []).map((p) => {
+      const overrides: Record<"retail" | "wholesale", Partial<Record<string, number>>> = { retail: {}, wholesale: {} };
+      for (const o of pinned ?? []) {
+        if (o.product_id !== p.id || (o.tier !== "retail" && o.tier !== "wholesale")) continue;
+        overrides[o.tier as "retail" | "wholesale"][o.currency as string] = Number(o.amount);
+      }
+      return [p.id, { ...(p as OrderProductRow), overrides }];
+    }),
+  );
 }

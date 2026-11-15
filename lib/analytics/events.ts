@@ -371,6 +371,19 @@ export type EventProps = {
     has_tax_id: boolean;
   };
   "Business Profile Rejected": { reason: "required_field" | "invalid_whatsapp" | "invalid_country" | "logo_gone" | "db_error" };
+  // CT-170: «Personalizar catálogo». Yes / no per part and what changed; never a value.
+  "Catalog Customized": {
+    has_color: boolean;
+    color_adjusted: boolean;
+    has_cover: boolean;
+    has_welcome: boolean;
+    welcome_length: number;
+    show_address: boolean;
+    changed: string[];
+  };
+  "Catalog Customization Rejected": {
+    reason: "no_session" | "invalid_color" | "welcome_too_long" | "welcome_has_link" | "invalid_cover" | "cover_gone" | "db_error";
+  };
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };
   "Owner Notices Prompt Shown": { ask_number: number };

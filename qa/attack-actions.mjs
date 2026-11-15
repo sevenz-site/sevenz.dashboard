@@ -253,7 +253,7 @@ try {
     ["/productos", A.cookie], ["/productos/nuevo", A.cookie], [`/productos/${ctx.pA}`, A.cookie], [`/productos/${ctx.pA}/editar`, A.cookie],
     ["/productos/ordenes", A.cookie], [`/productos/ordenes/${ctx.oA}`, A.cookie], [`/productos/ordenes/${ctx.oA}/registrar`, A.cookie],
     ["/ventas/nueva", A.cookie], [`/ventas/${ctx.sA}`, A.cookie], ["/abonos/nuevo", A.cookie], [`/abonos/nuevo/${ctx.mA}`, A.cookie],
-    [`/abonos/nuevo/${ctx.mA}/monto`, A.cookie], [`/abonos/${ctx.mA}`, A.cookie], ["/import", A.cookie], ["/profile", A.cookie],
+    [`/abonos/nuevo/${ctx.mA}/monto`, A.cookie], [`/abonos/${ctx.mA}`, A.cookie], ["/import", A.cookie], ["/profile", A.cookie], ["/productos/personalizar", A.cookie],
     ["/reportes", A.cookie], ["/malas-pagas", A.cookie], ["/papelera", A.cookie], ["/notificaciones", A.cookie], [`/transacciones/${ctx.mA}`, A.cookie],
     ["/admin", SA], ["/admin/cuentas", SA], [`/admin/cuentas/${A.id}`, SA],
     [`/s/${ctx.tokB}`, null], [`/s/${ctx.tokB}/perfil`, null], [`/c/${ctx.linkB}`, null], [`/c/${ctx.linkB}/carrito`, null],
@@ -345,6 +345,10 @@ try {
     })),
     { clave: P("dashboard/search-transactions.ts#searchTransactionsByCode"), fase: 2, ataques: [["busca el código de un movimiento de B", A.cookie, () => [ctx.codigoB ?? "ZZZZZZZ"]]], control: [A.cookie, () => ["zz"]] },
     { clave: P("productos/actions.ts#buscarProductos"), fase: 2, inalcanzable: "su único componente (movement-products-field) no está montado en ninguna pantalla", ataques: [["busca el producto de B por su nombre", A.cookie, () => ["Producto de B"]]], control: [A.cookie, () => ["Producto de A"]], exito: (r) => funciono(r) && JSON.stringify(r.valor).includes("Producto de A") },
+    // 2026-11-15: the repeated-name warning. It must answer about A's own catalogue only:
+    // asked for B's product name it says «not taken», and the control proves it does say
+    // «taken» for one of A's.
+    { clave: P("productos/actions.ts#productNameTaken"), fase: 2, ataques: [["pregunta si existe el nombre del producto de B", A.cookie, () => ["Producto de B"]]], juzgar: (r) => r.valor === false, control: [A.cookie, () => ["Producto de A"]], exito: (r) => funciono(r) && r.valor === true },
     { clave: P("ventas/actions.ts#buscarProductosParaVenta"), fase: 2, ataques: [["busca el producto de B por su nombre", A.cookie, () => ["Producto de B"]]], control: [A.cookie, () => ["Producto de A"]], exito: (r) => funciono(r) && JSON.stringify(r.valor).includes("Producto de A") },
 
     // ── FASE 2: writes by id ──
@@ -394,6 +398,35 @@ try {
         const { data } = await svc.from("owners").select("country,logo_path").eq("id", A.id).single();
         const { data: files } = await svc.storage.from("logos").list(B.id);
         return data.country === "VE" && !String(data.logo_path ?? "").includes(B.id) && (files ?? []).some((o) => o.name === "logo.png");
+      } },
+    // CT-170 (migration 210): the catalogue's branding. Every value is decided again by the
+    // action -- the cover must be in A's own folder, the welcome text carries no link, the
+    // colour is a real #RRGGBB -- and the verdict is read in the database, never in the
+    // answer. The control uploads A's own cover first, as the app does, because a NEW cover
+    // path must name a file that exists (DM-12).
+    { clave: P("productos/personalizar/actions.ts#saveCatalogBranding"), fase: 2, ataques: [
+      ["pone como portada el archivo de B", A.cookie, () => [{ brandColor: null, coverPath: `${B.id}/logo.png`, welcome: "", showAddress: false }]],
+      ["llega a la carpeta de B saliendo de la suya (../)", A.cookie, () => [{ brandColor: null, coverPath: `${A.id}/../${B.id}/logo.png`, welcome: "", showAddress: false }]],
+      ["publica un enlace en la bienvenida", A.cookie, () => [{ brandColor: null, coverPath: null, welcome: "Paga aquí: https://estafa.io/pago", showAddress: false }]],
+      ["mete CSS en el color", A.cookie, () => [{ brandColor: "red;background:url(https://x.io)", coverPath: null, welcome: "", showAddress: false }]]],
+      control: [A.cookie, async () => {
+        await svc.storage.from("logos").upload(`${A.id}/cover-1730000000000.jpg`, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { contentType: "image/jpeg", upsert: true });
+        return [{ brandColor: "#FF0000", coverPath: `${A.id}/cover-1730000000000.jpg`, welcome: "Abrimos de lunes a sábado.", showAddress: false }];
+      }],
+      // The control proves the action works AND adjusts: #FF0000 cannot carry readable
+      // text, so what is stored is #C20000 (owner's decision, «ajustarlo y avisar»).
+      exitoAsync: async (r) => {
+        if (!funciono(r)) return false;
+        const { data } = await svc.from("owners").select("brand_color,catalog_cover_path").eq("id", A.id).single();
+        return data.brand_color === "#C20000" && data.catalog_cover_path === `${A.id}/cover-1730000000000.jpg`;
+      },
+      juzgar: async () => {
+        const { data } = await svc.from("owners").select("brand_color,catalog_cover_path,catalog_welcome").eq("id", A.id).single();
+        const { data: files } = await svc.storage.from("logos").list(B.id);
+        return !String(data.catalog_cover_path ?? "").includes(B.id) &&
+          !/https?:|www\./i.test(String(data.catalog_welcome ?? "")) &&
+          (data.brand_color === null || /^#[0-9A-F]{6}$/.test(data.brand_color)) &&
+          (files ?? []).some((o) => o.name === "logo.png");
       } },
     { clave: P("productos/actions.ts#createProduct"), fase: 2, ataques: [["crea un producto con owner_id de B", A.cookie, () => [{ ...productoBase("ZZ plantado"), owner_id: B.id }]], ["crea un producto en la categoría de B (184)", A.cookie, () => [{ ...productoBase("ZZ categoría ajena"), categoryId: ctx.catB }]]], control: [A.cookie, () => [{ ...productoBase("ZZ propio"), categoryId: ctx.catA }]] },
     { clave: P("productos/actions.ts#updateProduct"), fase: 2, ataques: [["edita el producto de B", A.cookie, () => [ctx.pB, productoBase("HACKED")]], ["pone su producto en la categoría de B (184)", A.cookie, () => [ctx.pA, { ...productoBase("Producto de A"), categoryId: ctx.catB }]]], control: [A.cookie, () => [ctx.pA, { ...productoBase("Producto de A"), categoryId: ctx.catA }]] },

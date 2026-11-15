@@ -2,6 +2,7 @@
 
 import type { Categoria } from "@/lib/products/categories";
 import { ordenarCategorias } from "@/lib/products/categories";
+import { BRAND_BG, BRAND_BORDER, BRAND_TEXT } from "@/lib/catalog/brand-style";
 
 // THE CATEGORY CHIPS: «Todas (N)», then «Nombre (N)» per category. Drawn in
 // frame `1958:16272` (component `chip-catalog-categories`, owner's request of
@@ -61,8 +62,13 @@ export function CategoryChips({
             // 34px tall, 8px padding, 12/16 text, as drawn. `border-primary`
             // on the chosen one so its edge does not show a lighter ring
             // around the dark fill.
+            //
+            // THE CHOSEN ONE TAKES THE CATALOGUE'S BRAND COLOUR (CT-170, frames
+            // `2115:21715` and `2115:21751`) through `BRAND_*`, which fall back to
+            // `primary` where no catalogue sets the colour: the owner's catalogue and
+            // the sale look exactly as before.
             className={`h-[34px] shrink-0 rounded-full border px-2 text-xs leading-4 whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
-              activo ? "border-primary bg-primary text-primary-foreground" : "border-border text-primary hover:bg-muted"
+              activo ? `${BRAND_BORDER} ${BRAND_BG} ${BRAND_TEXT}` : "border-border text-primary hover:bg-muted"
             }`}
           >
             {c.name} ({c.productos})

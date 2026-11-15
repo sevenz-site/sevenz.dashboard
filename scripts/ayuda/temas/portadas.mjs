@@ -37,6 +37,9 @@ if (want("calculadora-de-tasa")) {
 if (want("ver-tus-reportes")) { await go("/reportes", 8000); await snap("ver-tus-reportes"); }
 if (want("crear-un-producto")) { await go(`/productos/${M.productos.harina}`, 5000); await snap("crear-un-producto"); }
 if (want("compartir-tu-catalogo")) { await go(`/c/${M.catalogToken}`, 6000); await clearPopups(); await snap("compartir-tu-catalogo"); }
+// Its cover needs the branding saved and then undone, so `temas/personalizar.mjs
+// --finalizar` takes it along with the steps.
+if (only.includes("personalizar-tu-catalogo")) console.log("  → personalizar-tu-catalogo: node temas/personalizar.mjs --finalizar");
 if (want("importar-tu-libreta")) { await go("/import", 5000); await snap("importar-tu-libreta"); }
 if (want("la-papelera")) {
   await go(`/clients/${M.clientes.carmen}`, 5000);

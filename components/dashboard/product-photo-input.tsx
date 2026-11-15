@@ -77,7 +77,7 @@ export function ProductPhotoInput({
           alt="Foto del producto"
           width={64}
           height={64}
-          className="size-16 shrink-0 rounded-lg border object-cover"
+          className="size-16 shrink-0 rounded-lg border"
         />
         <Button
           type="button"

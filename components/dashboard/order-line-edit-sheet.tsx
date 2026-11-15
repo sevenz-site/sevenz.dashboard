@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { StockBadge } from "@/components/stock-badge";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { PRODUCT_PHOTO_BOX, ProductPhoto } from "@/components/product-photo";
 import { ChevronRight, ImageOff } from "lucide-react";
 import {
   Sheet,
@@ -66,6 +66,7 @@ export function OrderLineEditSheet({
   descripcion: string | null;
   unidad: string | null;
   stock: number | null;
+  // The photo's path in `product-photos`, not a URL: `ProductPhoto` builds it.
   foto: string | null;
   cantidad: number;
   moneda: PriceCurrency;
@@ -131,15 +132,14 @@ export function OrderLineEditSheet({
             </SheetTitle>
           </SheetHeader>
 
-          <div className="h-[200px] w-full bg-muted">
+          <div className={`${PRODUCT_PHOTO_BOX} bg-muted`}>
             {foto ? (
-              <Image
-                src={foto}
+              <ProductPhoto
+                path={foto}
                 alt=""
                 width={1200}
                 height={800}
-                unoptimized
-                className="size-full object-cover"
+                className="size-full"
               />
             ) : (
               <div className="flex size-full items-center justify-center text-muted-foreground">

@@ -29,6 +29,7 @@ import { deleteMovement, getOrCreateShareLink } from "@/app/(app)/dashboard/acti
 import { mensajeDeTransaccion, type DatosParaCompartir } from "@/lib/share-balance";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { publicLinkBase } from "@/lib/public-link";
 
 // EL «⋮» DEL DETALLE DE UNA TRANSACCIÓN, en la barra de arriba.
 //
@@ -75,7 +76,7 @@ export async function compartirTransaccion(compartir: DatosParaCompartir | null,
       }
       token = result.token;
     }
-    const url = `${window.location.origin}/s/${token}/${rutaPublica}`;
+    const url = `${publicLinkBase()}/s/${token}/${rutaPublica}`;
 
     const mensaje = mensajeDeTransaccion(compartir.clientName, compartir.transactionCode, url);
 
