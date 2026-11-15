@@ -35,6 +35,20 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // NOTHING ON THIS APP BELONGS IN A SEARCH ENGINE (SEO pass of
+          // 2026-11-15). The public site is sevenz.site; this host is a login
+          // screen, a private app, and the client links (/s, /c), which already
+          // carry a noindex of their own because they show a real person's
+          // balance. Until now /login and /signup were indexable with the
+          // title «Sevenz — ¡Cuentas claras sin tanta vaina!», so a search for
+          // «sevenz» could rank the login screen against the actual site.
+          //
+          // A header and not a robots.txt `Disallow`: a blocked URL is never
+          // fetched, so Google never reads the noindex and can still list it
+          // bare, from links. Crawl stays allowed so the noindex is seen.
+          // It applies to dev.sevenz.site and every Vercel preview too, which
+          // run this same config. Link previews (WhatsApp, Facebook) ignore it.
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },
     ];
