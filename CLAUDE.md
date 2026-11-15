@@ -519,6 +519,43 @@ question before implementing. Don't guess and bake the guess into code or
 a migration — this is doubly true for anything touching real customer
 balances or money.
 
+## NUNCA SE ELIMINA UNA FUNCIÓN QUE YA EXISTE, salvo que el dueño lo pida
+
+**Regla de negocio del dueño, 2026-11-15**: *«No debes eliminar funciones ya existentes,
+ejemplo en este caso la solicitud fue poder agregar hasta 5 fotos al crear el producto y
+al implementarlo eliminaste la opción de tomar foto. Está mal, por ninguna razón debes
+eliminar funciones existentes al implementar otras o refactorizarlas o editarlas a menos
+que te lo pida explícitamente»*.
+
+**La regla**: al implementar algo nuevo, al refactorizar o al editar, todo lo que la
+pantalla o el componente ya hacía **sigue haciéndolo**. Un botón, un camino, una opción
+del selector, un atajo: si existía, sigue. Quitar algo es una decisión del dueño, pedida
+por él en ese encargo; nunca un efecto secundario de construir otra cosa.
+
+**Cómo se cumple, porque «tener cuidado» no basta:**
+
+1. **Antes de sustituir un componente o reescribir una pantalla**, se lee el que se va
+   y se apunta en el reporte **la lista de lo que hace**: cada botón, cada entrada,
+   cada atributo que cambia el comportamiento (`capture`, `multiple`, `accept`,
+   `inputMode`, un `href`), cada estado.
+2. **Al terminar, se repasa esa lista contra lo nuevo**, punto por punto, y se prueba.
+   Lo que falte se devuelve antes de entregar.
+3. **Si algo de verdad no cabe en lo nuevo**, no se quita: se le pregunta al dueño,
+   nombrándolo, antes de construir.
+4. **Un frame que no dibuja una función existente no es una orden de quitarla.** Se le
+   pregunta al dueño si el frame la omitió o si de verdad la quiere fuera.
+
+**El caso que la motivó.** `CT-171` (v0.6.0) cambió `ProductPhotoInput` —una foto, con
+«Adjuntar foto» y «Tomar foto» en el teléfono— por `ProductPhotosInput`, de hasta 5. El
+nuevo se construyó desde el frame, que dibuja solo «+ Agregar», y llevaba un único
+`<input multiple>`: en Android, `multiple` saca la cámara del selector. La opción de
+tomar la foto desapareció sin que nadie lo decidiera, y lo encontró el dueño en su
+teléfono, en producción. Se devolvió el 2026-11-15.
+
+**Por qué merece regla propia.** Una función que se pierde no da error: la pantalla nueva
+funciona y se ve bien. Lo único que pasa es que el tendero ya no puede hacer algo que hacía
+ayer, y eso solo lo descubre él, en mitad de su trabajo.
+
 ## Todo encargo se evalúa por sus bordes antes de construirlo
 
 **Pedido por el dueño el 2026-10-22, después de que un encargo suyo llegara

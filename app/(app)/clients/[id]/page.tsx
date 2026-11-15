@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { ordenarHistorial } from "@/lib/orden-del-historial";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClientActionsRow } from "@/components/dashboard/client-actions-row";
@@ -60,10 +60,8 @@ export default async function ClientDetailPage({
   // y el diálogo se borró el 2026-10-24. Leer un marcador que nadie pone era
   // lo único que quedaba de ese camino.
   const { from } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [
     { data: client },
@@ -81,10 +79,11 @@ export default async function ClientDetailPage({
       // silently rendered as $0 here would be worse than not opening at all.
       // The filtered view stays the default everywhere a client is *listed*.
       supabase.from("client_summary_all").select("*").eq("client_id", id).maybeSingle(),
-      getOwnerRateContext(supabase, user!.id),
+      // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+      getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
       // getOwnerRateContext reads owners.country too, but discards it for a CO
       // owner. Asking again here is cheaper than widening its contract.
-      supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+      getOwnerShellRow(supabase, user!.id),
       // Si el TELEFONO de este cliente ya acepta avisos -- no la ficha. Decide
       // si el formulario de movimiento ensena la casilla del permiso o solo la
       // linea de estado (MS-34).
@@ -516,7 +515,7 @@ async function CreditScoreSection({
   worstChargeDueAt: string | null;
   isFlagged: boolean;
 }) {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const [{ data: movements }, { data: lastUnflag }] = await Promise.all([
     supabase
@@ -598,7 +597,7 @@ async function MovementHistory({
   ledger: LedgerDisplay | null;
   diasSinPagar: number;
 }) {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: movements } = await supabase
     .from("movements")
@@ -742,7 +741,7 @@ async function MovementHistory({
 
 // Renders nothing when the client has never been flagged — most clients.
 async function ClientFlagHistory({ clientId }: { clientId: string }) {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: flags } = await supabase
     .from("client_flags")

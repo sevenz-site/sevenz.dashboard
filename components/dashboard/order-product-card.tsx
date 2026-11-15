@@ -5,7 +5,7 @@ import { ChevronRight, ImageOff, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import {
   formatPriceAmount,
   priceIn,
@@ -160,7 +160,7 @@ export const OrderProductRowButton = forwardRef<
     fotoPath: string | null;
   }
 >(function OrderProductRowButton({ nombre, fotoPath, ...props }, ref) {
-  const fotoUrl = fotoPath ? getPublicProductPhotoUrl(fotoPath) : null;
+  const fotoUrl = fotoPath ? getProductThumbnailUrl(fotoPath) : null;
 
   return (
     <button

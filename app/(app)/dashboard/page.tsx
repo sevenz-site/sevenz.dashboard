@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { RegisterButton } from "@/components/dashboard/register-button";
@@ -60,10 +60,8 @@ export default async function DashboardPage({
   // Un valor desconocido no abre nada, que es lo que debe pasar con una URL
   // escrita a mano o con un marcador viejo guardado en un favorito.
   const { nuevo, origen } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [
     summaries,
@@ -111,7 +109,8 @@ export default async function DashboardPage({
       )
       .eq("id", user!.id)
       .single(),
-    getOwnerRateContext(supabase, user!.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
     // The red number on the Pedidos card. In the same batch and not after it:
     // it is a `head: true` count, and waiting for it in series would hold the
     // whole screen for a figure that decorates one line.

@@ -254,12 +254,22 @@ try {
     "rechazada",
   );
 
-  const conComa = `Te fiaron ${(hechosReales.lent.EUR ?? hechosReales.lent.USD ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}, y eso pesa.`;
+  // THE FIRST BOOK THAT ACTUALLY LENT SOMETHING, not `EUR ?? USD`. A book with no fiados in
+  // the period is 0, which is not nullish: the sentence then said «0,00», the validator
+  // rejected it as a figure nobody stated, and this row went red on 2026-11-15 because the
+  // test business had gone a week without a fiado in euros, not because anything broke.
+  // Any money fact will do: the row is about the comma after a real figure, not about
+  // which figure. Lent first, then what is owed and what came in. With every one at zero
+  // the row fails saying so, instead of testing a zero.
+  const prestado = [hechosReales.lent, hechosReales.receivable, hechosReales.collectedOnDebt, hechosReales.collectedCash]
+    .flatMap((m) => [m?.EUR, m?.USD, m?.COP])
+    .find((n) => Number(n) > 0);
+  const conComa = `La cifra es ${Number(prestado ?? 0).toLocaleString("es-VE", { minimumFractionDigits: 2 })}, y eso pesa.`;
   const vComa = validarNota({ summary: conComa, recommendations: [] }, hechosReales);
   check(
     "8d. una cifra REAL seguida de coma NO se rechaza (mi fallo del 2026-10-30)",
-    vComa.ok === true,
-    vComa.ok ? conComa : vComa.detalle,
+    prestado != null && vComa.ok === true,
+    prestado == null ? "el negocio de prueba no tiene ninguna cifra de dinero en el periodo: no hay con qué probar" : vComa.ok ? conComa : vComa.detalle,
   );
 
   check(

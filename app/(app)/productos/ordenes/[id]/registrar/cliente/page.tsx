@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { OrderClientStep } from "@/components/dashboard/order-client-step";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { readOwnerCountry } from "@/lib/owner-country";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import {
@@ -42,10 +42,8 @@ export default async function ClienteDelPedidoPage({
 }) {
   const { id } = await params;
   const { nuevo, moneda, ficha: fichaElegida } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const { data: order, error } = await supabase
     .from("catalog_orders")

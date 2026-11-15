@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { readAllPages } from "@/lib/supabase/read-all";
 import { ClientTable } from "@/components/dashboard/client-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
@@ -13,10 +13,8 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export default async function ClientsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [summaries, { data: owner }, ownerRate] = await Promise.all([
     // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
@@ -33,8 +31,9 @@ export default async function ClientsPage() {
       console.error("[clientes] client_summary:", e instanceof Error ? e.message : e);
       return [] as ClientSummary[];
     }),
-    supabase.from("owners").select("business_name, country").eq("id", user!.id).single(),
-    getOwnerRateContext(supabase, user!.id),
+    getOwnerShellRow(supabase, user!.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
   ]);
 
   // Mismo criterio que Cartera: no saber el país no es saber que es CO. Esta

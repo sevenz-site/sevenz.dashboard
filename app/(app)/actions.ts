@@ -4,7 +4,7 @@ import { trackServer } from "@/lib/mixpanel-server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { refreshStockAlerts } from "@/lib/stock-alerts";
-import { BADGE_MAX } from "@/lib/types";
+import { countUnreadNotifications } from "@/lib/notifications/unread-count";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
 
 // ── WHERE THE SESSION ENDS: THIS DEVICE OR ALL OF THEM ──────────────────
@@ -714,71 +714,7 @@ export async function getUnreadNotificationCount(): Promise<number> {
   } = await supabase.auth.getUser();
   if (!user) return 0;
 
-  // The badge renders "9+" above nine, so nothing above ten is ever read —
-  // and an exact count is the most expensive way to ask, because Postgres has
-  // to walk (and RLS-check) every unread row just to reach a total nobody
-  // sees. Fetching at most CAP ids per table answers the same question and
-  // stops as soon as it has enough. This runs on a timer in every open tab,
-  // so it's the query that scales with how many owners have the app open
-  // rather than with what they're doing.
-  const CAP = BADGE_MAX + 1;
-  const [
-    { data: opens, error: openError },
-    { data: imports, error: importError },
-    { data: deletions, error: deletionError },
-    { data: hides, error: hideError },
-    { data: productHides, error: productHideError },
-    { data: unattendedOrders, error: ordersCountError },
-    { data: unreadStockAlerts, error: stockAlertsCountError },
-  ] = await Promise.all([
-    supabase.from("link_opens").select("id").is("read_at", null).limit(CAP),
-    supabase
-      .from("import_notifications")
-      .select("id")
-      .eq("owner_id", user.id)
-      .is("read_at", null)
-      .limit(CAP),
-    supabase
-      .from("movement_deletions")
-      .select("id")
-      .eq("owner_id", user.id)
-      .is("read_at", null)
-      .limit(CAP),
-    supabase.from("client_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
-    supabase.from("product_hides").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
-    // ORDERS COUNT BY `status`, NOT BY `read_at`, and that is the whole point
-    // of the owner's decision on 2026-10-16 (CT-71). Every other row above
-    // leaves this count when somebody opens the bell; an order leaves it when
-    // somebody ATTENDS it. Counting them the same way would show zero with
-    // orders still waiting, which is the one number this badge must never
-    // show.
-    supabase
-      .from("catalog_orders")
-      .select("id")
-      .eq("owner_id", user.id)
-      .eq("status", "new")
-      .limit(CAP),
-    supabase.from("stock_alerts").select("id").eq("owner_id", user.id).is("read_at", null).limit(CAP),
-  ]);
-
-  if (openError) console.error("getUnreadNotificationCount: link_opens query failed", openError);
-  if (importError) console.error("getUnreadNotificationCount: import_notifications query failed", importError);
-  if (deletionError) console.error("getUnreadNotificationCount: movement_deletions query failed", deletionError);
-  if (hideError) console.error("getUnreadNotificationCount: client_hides query failed", hideError);
-  if (productHideError)
-    console.error("getUnreadNotificationCount: product_hides query failed", productHideError);
-  if (ordersCountError)
-    console.error("getUnreadNotificationCount: catalog_orders query failed", ordersCountError);
-  if (stockAlertsCountError)
-    console.error("getUnreadNotificationCount: stock_alerts query failed", stockAlertsCountError);
-
-  return (
-    (opens?.length ?? 0) +
-    (imports?.length ?? 0) +
-    (deletions?.length ?? 0) +
-    (hides?.length ?? 0) +
-    (productHides?.length ?? 0) +
-    (unattendedOrders?.length ?? 0) +
-    (unreadStockAlerts?.length ?? 0)
-  );
+  // The queries live in lib/notifications/unread-count.ts, shared with the
+  // layout. Same queries, same cap, same logging as before the move.
+  return countUnreadNotifications(supabase, user.id);
 }

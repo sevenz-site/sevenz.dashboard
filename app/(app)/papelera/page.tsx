@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { readAllPages } from "@/lib/supabase/read-all";
 import { PapeleraTable } from "@/components/dashboard/papelera-table";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
@@ -8,10 +8,8 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { ClientSummaryAll } from "@/lib/types";
 
 export default async function PapeleraPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [summaries, ownerRate] = await Promise.all([
     // One of the three places allowed to read the unfiltered view. Clients
@@ -33,7 +31,8 @@ export default async function PapeleraPage() {
       console.error("[papelera] client_summary_all:", e instanceof Error ? e.message : e);
       return [] as ClientSummaryAll[];
     }),
-    getOwnerRateContext(supabase, user!.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
   ]);
 
   const rows = summaries;

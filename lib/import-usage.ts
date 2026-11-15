@@ -1,5 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { OwnerPlan } from "@/lib/types";
+import { getOwnerShellRow } from "@/lib/supabase/current-user";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -23,7 +24,9 @@ export async function getImportUsageForOwner(
   ownerId: string,
 ): Promise<ImportUsage> {
   const [{ data: owner }, { count }] = await Promise.all([
-    supabase.from("owners").select("plan").eq("id", ownerId).single(),
+    // Through the request-scoped loader: the layout calls this on every page,
+    // right next to its own owners read. See lib/supabase/current-user.ts.
+    getOwnerShellRow(supabase, ownerId),
     supabase
       .from("import_notifications")
       .select("*", { count: "exact", head: true })

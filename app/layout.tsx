@@ -42,6 +42,13 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://app.sevenz.site"),
   title: TITULO,
   description: DESCRIPCION,
+  // public/manifest.json cannot hold comments, so its two choices are explained here.
+  // `start_url` is "/dashboard" since 2026-11-15: "/" only ran getUser to redirect, one
+  // extra server round trip on every open of the installed app, on weak phone data. A
+  // signed-out owner opening /dashboard is still sent to /login by the proxy.
+  // `"id": "/"` keeps the installed app the same app: with no `id`, browsers derive the
+  // identity FROM start_url, so changing it alone would make an already installed Sevenz
+  // stop receiving manifest updates (or be offered as a second install).
   manifest: "/manifest.json",
   icons: {
     // El sufijo -v2 no es decoración: ver la nota de public/manifest.json en

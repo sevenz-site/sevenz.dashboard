@@ -120,53 +120,68 @@ export function QuickProductSheet({
   function guardar() {
     setError(null);
     startTransition(async () => {
-      const r = await createProduct({
-        analitica: { source: "quick_sheet" },
-        name: nombre.trim(),
-        unit: null,
-        // UNA SOLA MONEDA, Y LA MISMA EN LOS DOS ESCALONES.
-        //
-        // ESTO ESTABA ROTO Y NO FUNCIONÓ NI UNA VEZ. La primera versión mandaba
-        // el mayoreo VACÍO, razonando que no se había preguntado y que un
-        // escalón inventado haría que el carrito cobrara otro precio al subir
-        // la cantidad. El razonamiento era bueno y la consecuencia no se
-        // comprobó: `createProduct` exige al menos una moneda POR ESCALÓN, así
-        // que toda alta desde esta hoja moría con «Deja al menos una moneda en
-        // el precio al mayor» — un mensaje sobre un campo que esta pantalla ni
-        // siquiera enseña. Lo reportó el dueño el 2026-10-18 con una captura.
-        //
-        // LA MONEDA NO ES UN PRECIO. `priceWholesale` sigue siendo `null`, y
-        // `armarProductos` devuelve bloque nulo para todo escalón sin precio
-        // — así que el carrito nunca puede elegir el mayoreo y el temor de la
-        // primera versión no se cumple. Lo único que esto rellena es
-        // `base_currency_wholesale`, que la tabla exige NOT NULL desde la
-        // migración 114.
-        //
-        // Y NO ES UN ESTADO NUEVO: en dev hay cinco productos así —moneda de
-        // mayoreo puesta, precio nulo— creados desde el diálogo del catálogo,
-        // que es como se comprobó que esta forma ya vive y funciona.
-        activeCurrenciesRetail: [moneda],
-        activeCurrenciesWholesale: [moneda],
-        priceRetail: precio,
-        priceWholesale: null,
-        fixedRetail: {},
-        fixedWholesale: {},
-        cost: null,
-        costCurrency: null,
-        costCurrencyOther: null,
-        marginRetailPct: null,
-        marginWholesalePct: null,
-        stockOpening: null,
-        supplier: null,
-        wholesaleMinQuantity: null,
-        publishedRetail: publicar,
-        // PUBLICAR ES UNA SOLA CASILLA EN EL FRAME, y se aplica al detal. El
-        // mayor no se publica porque no se creó: publicar un escalón sin
-        // precio dejaría al cliente viendo un producto que no puede pedir.
-        publishedWholesale: false,
-        photoPath,
-        description: descripcion.trim() || null,
-      });
+      // A DROPPED REQUEST THROWS instead of returning `{ error }`, and an error
+      // thrown inside a transition reaches the page's error boundary: the whole
+      // sale, cart included, was replaced by the error screen. Caught here, the
+      // sheet stays open with what was typed. The product MAY have been saved
+      // before the answer was lost, and `createProduct` does not refuse a
+      // repeated name, so the message asks to look before saving again.
+      let r: Awaited<ReturnType<typeof createProduct>>;
+      try {
+        r = await createProduct({
+          analitica: { source: "quick_sheet" },
+          name: nombre.trim(),
+          unit: null,
+          // UNA SOLA MONEDA, Y LA MISMA EN LOS DOS ESCALONES.
+          //
+          // ESTO ESTABA ROTO Y NO FUNCIONÓ NI UNA VEZ. La primera versión mandaba
+          // el mayoreo VACÍO, razonando que no se había preguntado y que un
+          // escalón inventado haría que el carrito cobrara otro precio al subir
+          // la cantidad. El razonamiento era bueno y la consecuencia no se
+          // comprobó: `createProduct` exige al menos una moneda POR ESCALÓN, así
+          // que toda alta desde esta hoja moría con «Deja al menos una moneda en
+          // el precio al mayor» — un mensaje sobre un campo que esta pantalla ni
+          // siquiera enseña. Lo reportó el dueño el 2026-10-18 con una captura.
+          //
+          // LA MONEDA NO ES UN PRECIO. `priceWholesale` sigue siendo `null`, y
+          // `armarProductos` devuelve bloque nulo para todo escalón sin precio
+          // — así que el carrito nunca puede elegir el mayoreo y el temor de la
+          // primera versión no se cumple. Lo único que esto rellena es
+          // `base_currency_wholesale`, que la tabla exige NOT NULL desde la
+          // migración 114.
+          //
+          // Y NO ES UN ESTADO NUEVO: en dev hay cinco productos así —moneda de
+          // mayoreo puesta, precio nulo— creados desde el diálogo del catálogo,
+          // que es como se comprobó que esta forma ya vive y funciona.
+          activeCurrenciesRetail: [moneda],
+          activeCurrenciesWholesale: [moneda],
+          priceRetail: precio,
+          priceWholesale: null,
+          fixedRetail: {},
+          fixedWholesale: {},
+          cost: null,
+          costCurrency: null,
+          costCurrencyOther: null,
+          marginRetailPct: null,
+          marginWholesalePct: null,
+          stockOpening: null,
+          supplier: null,
+          wholesaleMinQuantity: null,
+          publishedRetail: publicar,
+          // PUBLICAR ES UNA SOLA CASILLA EN EL FRAME, y se aplica al detal. El
+          // mayor no se publica porque no se creó: publicar un escalón sin
+          // precio dejaría al cliente viendo un producto que no puede pedir.
+          publishedWholesale: false,
+          photoPath,
+          description: descripcion.trim() || null,
+        });
+      } catch (e) {
+        console.error("[QuickProductSheet] createProduct:", e);
+        setError(
+          "No pudimos confirmar que se guardó, revisa tu conexión. Antes de intentar de nuevo, búscalo en la venta: puede que ya esté guardado.",
+        );
+        return;
+      }
       if (avisarCuentaPausada(r.error)) return;
       if (r.error || !r.id) {
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");

@@ -21,7 +21,7 @@ import {
   type CatalogOrderRow,
 } from "@/lib/orders/catalog-orders";
 import { findOrderClient } from "@/lib/orders/order-client-match";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
 // STEP `1/4 Pedido` — frame `1652:12752`, read with the desktop bridge on
@@ -56,10 +56,8 @@ export default async function RegistrarPedidoPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // `.eq("owner_id", user.id)` EXPLÍCITO: el id viene de la URL.

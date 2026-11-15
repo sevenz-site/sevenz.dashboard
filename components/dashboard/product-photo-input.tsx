@@ -6,7 +6,7 @@ import { Camera, ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { fileToResizedBlob } from "@/lib/image";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -81,7 +81,7 @@ export function ProductPhotoInput({
             host in `images.remotePatterns`, and a product photo is already
             resized on the device before it is uploaded. */}
         <Image
-          src={getPublicProductPhotoUrl(value)}
+          src={getProductThumbnailUrl(value)}
           alt="Foto del producto"
           width={64}
           height={64}

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { readAllPages } from "@/lib/supabase/read-all";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
@@ -9,10 +9,8 @@ import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 
 export default async function ImportPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   // balance_usd/balance_eur alongside balance: the review table's running
   // total is per currency, so it needs the right starting point for each one.
@@ -50,7 +48,7 @@ export default async function ImportPage() {
       console.error("[importar] client_summary_all:", e instanceof Error ? e.message : e);
       return [] as Record<string, unknown>[];
     }),
-    supabase.from("owners").select("country").eq("id", user!.id).maybeSingle(),
+    getOwnerShellRow(supabase, user!.id),
     // Para la línea de bolívares del resumen de confirmación, nada más.
     getOwnerRateContext(supabase, user!.id),
   ]);

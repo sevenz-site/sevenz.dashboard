@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { ownerPreviewPriceInput, previewPriceLine } from "@/lib/products/preview-price";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { DEFAULT_LOW_STOCK_THRESHOLD } from "@/lib/products/availability";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -34,10 +34,8 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const [cargado, { data: owner }, { data: catalogLink }, rateContext] = await Promise.all([
@@ -56,7 +54,8 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
     // a una URL de distancia de un catálogo que nunca decidió publicar. Crear
     // es cosa del primer «Compartir».
     supabase.from("catalog_share_links").select("token").eq("owner_id", user.id).maybeSingle(),
-    getOwnerRateContext(supabase, user.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user.id, { refresh: "background" }),
   ]);
 
   // Un producto de otro negocio, o uno en la papelera, no existe para esta

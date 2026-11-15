@@ -1,7 +1,9 @@
 "use client";
 
 import { sendPublicEvent } from "@/components/public/public-event";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NumberedPagination } from "@/components/numbered-pagination";
+import { PRODUCTS_PER_PAGE, clampPage, pageCount } from "@/lib/products/pagination";
 import type { ReactNode } from "react";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -59,6 +61,29 @@ export function CatalogSearchGrid({
 }) {
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  // PAGES OF TEN, the same numbered pages as the sale's product step: owner's decision
+  // of 2026-11-15, «mismo paginado y filtros para ambos».
+  //
+  // PAGED HERE, IN THE BROWSER, NOT IN THE DATABASE, and what that buys is said plainly:
+  // the cards' text still arrives whole (see the cost noted above), but only the ten
+  // cards on screen are in the page, so only their photos download — and the photos are
+  // what weigh, hundreds of KB each against a few hundred bytes of text. Paging the RPC
+  // instead would need `get_shared_catalog` to take a page and a category, a migration
+  // on a public function, for a saving the catalogues of today do not need yet.
+  const [pagina, setPagina] = useState(1);
+  const arribaDeLaLista = useRef<HTMLDivElement>(null);
+  const buscar = (texto: string) => {
+    setQuery(texto);
+    setPagina(1);
+  };
+  const filtrar = (id: string | null) => {
+    setCategoryId(id);
+    setPagina(1);
+  };
+  const irAPagina = (n: number) => {
+    setPagina(n);
+    arribaDeLaLista.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
 
   // `foldForSearch`, EXACTLY what the owner's catalogue does in
   // `catalog-filters.tsx`: «azucar» finding a product on the shopkeeper's
@@ -98,9 +123,13 @@ export function CatalogSearchGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyticsToken, categoryId]);
 
+  const paginas = pageCount(visibles.length);
+  const enPagina = clampPage(pagina, paginas);
+  const deEstaPagina = visibles.slice((enPagina - 1) * PRODUCTS_PER_PAGE, enPagina * PRODUCTS_PER_PAGE);
+
   return (
     <div className="flex flex-col gap-4">
-      <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
+      <SearchField value={query} onChange={buscar} placeholder="Buscar producto" />
 
       {/* THE OWNER'S SECTION, WITH A VARIANT — his answer of 2026-11-03: the
           same title and chips, no «Editar», because the customer manages
@@ -110,9 +139,11 @@ export function CatalogSearchGrid({
           <h2 id="catalogo-categorias" className="text-sm leading-5">
             Categorías
           </h2>
-          <CategoryChips categorias={conChips} total={items.length} value={categoryId} onChange={setCategoryId} />
+          <CategoryChips categorias={conChips} total={items.length} value={categoryId} onChange={filtrar} />
         </section>
       ) : null}
+
+      <div ref={arribaDeLaLista} className="scroll-mt-4" aria-hidden="true" />
 
       {visibles.length === 0 ? (
         // DICE QUÉ SE BUSCÓ, no solo que no hay nada. En un teléfono es fácil
@@ -122,9 +153,12 @@ export function CatalogSearchGrid({
           subtitle="Prueba con otra palabra."
         />
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {visibles.map((i) => i.card)}
-        </ul>
+        <>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {deEstaPagina.map((i) => i.card)}
+          </ul>
+          <NumberedPagination page={enPagina} pages={paginas} onChange={irAPagina} />
+        </>
       )}
     </div>
   );

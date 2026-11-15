@@ -16,7 +16,7 @@ import {
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { StockBadge } from "@/components/stock-badge";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -346,7 +346,7 @@ function FilaDeProducto({
   /** `owners.low_stock_threshold`: what «running low» means for this shop. */
   umbral: number;
 }) {
-  const foto = p.fotoPath ? getPublicProductPhotoUrl(p.fotoPath) : null;
+  const foto = p.fotoPath ? getProductThumbnailUrl(p.fotoPath) : null;
   // LOS ESTADOS SE DECIDEN EN `StockBadge` desde el 2026-10-29, y con ellos se
   // fue de aquí la razón que los separaba — que sigue siendo cierta y está
   // escrita en `lib/products/availability.ts`: «Sin cantidad anotada» es gris y

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import {
   OrderProductSheet,
   OrderProductRowButton,
@@ -71,10 +71,8 @@ export default async function OrdenPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   // `.eq("owner_id", user.id)` EXPLICITLY. The id arrives from the URL, so
   // this is not convenience: without it, changing the identifier in the
@@ -132,7 +130,8 @@ export default async function OrdenPage({
   // espera una respuesta inmediata.
   const [productosPorId, rateContext] = await Promise.all([
     readOrderProducts(supabase, user!.id, items),
-    getOwnerRateContext(supabase, user!.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
   ]);
 
   // Un negocio colombiano no tiene Bs/COP y no convierte nada: sin tasas, el

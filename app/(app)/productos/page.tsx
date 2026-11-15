@@ -1,5 +1,5 @@
 import { OrdersCard } from "@/components/dashboard/orders-card";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { countUnregisteredOrders } from "@/lib/orders/catalog-orders";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { CatalogTable } from "@/components/dashboard/catalog-table";
@@ -44,10 +44,8 @@ import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
 // para abrir el diálogo de alta sin sacar su estado de esta pantalla. Con el
 // alta en su propia ruta (`/productos/nuevo`), ese botón simplemente navega.
 export default async function ProductosPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [
     { data: products, error: productsError },
@@ -80,7 +78,7 @@ export default async function ProductosPage() {
       // para los dos diálogos que montaba. Desde el 2026-10-20 el alta y la
       // edición son rutas propias y cada una pide lo suyo, así que el
       // catálogo hace tres viajes menos por carga.
-      supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
+      getOwnerShellRow(supabase, user!.id),
       // EL ENLACE QUE YA TIENE, LEIDO SIN CREARLO. Las dos razones son
       // distintas y las dos importan:
       //
@@ -97,7 +95,8 @@ export default async function ProductosPage() {
         .eq("owner_id", user!.id)
         .maybeSingle(),
       readOwnerCountry(supabase, user!.id),
-      getOwnerRateContext(supabase, user!.id),
+      // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+      getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
       // IN THE SAME ROUND TRIP as everything else this screen needs. It is a
       // `head: true` count, so it costs a plan and no rows.
       countUnregisteredOrders(supabase, user!.id),

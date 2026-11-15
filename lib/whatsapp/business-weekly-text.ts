@@ -51,6 +51,14 @@ export type WeeklyTarget = {
   monday_used: boolean;
   thursday_used: boolean;
   phone_slots_used: number;
+  // Migration 207, for the three Monday templates approved on 2026-11-15. Optional: until
+  // 207 runs they are absent, and Monday falls back to what it sent before (see mondayPlan).
+  account_age_days?: number;
+  clients_count?: number;
+  products_count?: number;
+  has_records?: boolean;
+  first_week_sent?: boolean;
+  status_streak?: number;
 };
 
 export type Parametro = { nombre: string; texto: string };
@@ -64,7 +72,11 @@ export type SkipReason =
   | "tope_telefono"
   | "pausado"
   | "cuenta_de_prueba"
-  | "sin_cobros";
+  | "sin_cobros"
+  // `negocio_estado` already went out three Mondays in a row: it stops (207).
+  | "estado_detenido"
+  // Nothing owed, nothing sold, no clients and no products: a message would be all zeros.
+  | "cuenta_vacia";
 
 // Two slots a week, counted by phone (CLAUDE.md, point 4). `prueba_por_vencer` and the
 // security notices do not count and do not go through here.
@@ -76,6 +88,9 @@ export const PHONE_WEEKLY_CAP = 2;
 // message on an unknown one, so the name is part of choosing the template, not a detail.
 export const TEMPLATES = {
   businessSummary: "negocio_resumen",
+  salesSummary: "ventas_resumen",
+  businessStatus: "negocio_estado",
+  firstWeek: "primera_semana",
   legacySummary: "cartera_summary_v2",
   paused: "cartera_pausada",
   attentionDebts: "atencion_cobros",
@@ -201,6 +216,33 @@ export function mondayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
     };
   }
 
+  // 207 RAN: the three Monday templates approved on 2026-11-15 can be chosen. Without it the
+  // new fields are absent and every account keeps what it got before (owner's decision of
+  // 2026-11-12, below), so the code can ship before or after the migration without either
+  // order sending a wrong message.
+  const family = !t.is_test && typeof t.account_age_days === "number";
+
+  // `primera_semana` REPLACES THE MONDAY IT FALLS ON («sustituye a su lunes»): the first
+  // Monday with at least 5 days of account, once, if something was registered. «El primer
+  // lunes» is a window of one week, days 5 to 11: an account created on a Thursday is 4 days
+  // old on its first Monday and 11 on the next. Older accounts never get it.
+  if (
+    family &&
+    !t.first_week_sent &&
+    t.has_records &&
+    t.account_age_days! >= 5 &&
+    t.account_age_days! < 12
+  ) {
+    return {
+      template: TEMPLATES.firstWeek,
+      params: [
+        { nombre: "owner_name", texto: name },
+        { nombre: "sales_summary", texto: salesSummary(t) },
+        { nombre: "amount_due", texto: amountDue(t) },
+      ],
+    };
+  }
+
   // `negocio_resumen` needs something owed: its first line is «Por cobrar». A real account
   // only (the spec's «cuenta real, no de prueba»).
   if (!t.is_test && hasDebt(t)) {
@@ -215,11 +257,45 @@ export function mondayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
     };
   }
 
-  // NOTHING OWED, OR A TEST ACCOUNT: the Monday message it got before the family, unchanged.
+  // NOTHING OWED, ON A REAL ACCOUNT, ONCE 207 RAN: the family's own Mondays.
+  if (family) {
+    // Sold in the last 7 days: `ventas_resumen`, the sales line on its own.
+    if (ledgersOf(t.country).some((l) => Number(t.sales[l]?.count ?? 0) > 0)) {
+      return {
+        template: TEMPLATES.salesSummary,
+        params: [
+          { nombre: "owner_name", texto: name },
+          { nombre: "sales_summary", texto: salesSummary(t) },
+        ],
+      };
+    }
+    // No sales and nothing owed, but clients or products loaded: `negocio_estado`, three
+    // Mondays in a row at most and then it stops («Máximo tres lunes seguidos, y se
+    // detiene»). It is the one most likely to be read as marketing: nothing happened.
+    const clients = Number(t.clients_count ?? 0);
+    const products = Number(t.products_count ?? 0);
+    if (clients + products > 0) {
+      if (Number(t.status_streak ?? 0) >= 3) return { skip: "estado_detenido" };
+      return {
+        template: TEMPLATES.businessStatus,
+        params: [
+          { nombre: "owner_name", texto: name },
+          { nombre: "clients_count", texto: String(clients) },
+          { nombre: "products_count", texto: String(products) },
+        ],
+      };
+    }
+    // An empty account gets nothing: «Una cuenta vacía no la recibe, porque solo diría
+    // ceros», and two messages a week is the ceiling, not the goal.
+    return { skip: "cuenta_vacia" };
+  }
+
+  // A TEST ACCOUNT, OR 207 NOT RUN YET: the Monday message it got before the family.
   // OWNER'S DECISION OF 2026-11-12 (MS-51, point 1): whoever has nothing to collect keeps
   // getting `cartera_summary_v2`, with «$0,00», until `negocio_estado` and `primera_semana`
-  // are approved. That is why the Monday slot also counts the old template: both families
-  // share the day.
+  // are approved. They were on 2026-11-15, so from 207 on this only reaches test accounts,
+  // which the family never writes to. That is why the Monday slot also counts the old
+  // template: both families share the day.
   return {
     template: TEMPLATES.legacySummary,
     params: [

@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EffectiveRate } from "@/lib/exchange-rate/convert";
 import type { ExchangeRateMode } from "@/lib/types";
-import { refreshBcvRateIfStale } from "@/lib/exchange-rate/ensure-fresh";
+import { refreshBcvRateIfStale, type RefreshWait } from "@/lib/exchange-rate/ensure-fresh";
+import { getOwnerShellRow } from "@/lib/supabase/current-user";
 import { rateStatusFor, todayInCaracas, type RateStatus } from "@/lib/exchange-rate/rate-status";
 
 export type { RateStatus };
@@ -60,6 +61,9 @@ export async function getOwnerRateContextResult(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>,
   ownerId: string,
+  // See RefreshWait in ensure-fresh.ts. Omitted means "deadline", which is
+  // what every write path relies on; only display screens pass "background".
+  options: { refresh?: RefreshWait } = {},
 ): Promise<OwnerRateContextResult> {
   // Dos intentos, igual que readOwnerCountry, y por el mismo motivo: rechazar
   // el fiado de alguien por un parpadeo de red es un precio alto para una
@@ -67,7 +71,14 @@ export async function getOwnerRateContextResult(
   // registra su propio rechazo, con el origen concreto.
   let country: string | null = null;
   for (let intento = 1; intento <= 2; intento++) {
-    const { data: owner } = await supabase.from("owners").select("country").eq("id", ownerId).single();
+    // The first attempt goes through the request-scoped loader, so a render
+    // that already read `owners` (the layout does, every page) pays nothing.
+    // The retry must NOT: cache() would hand back the same failed answer, and
+    // the retry exists precisely to ask the database again.
+    const { data: owner } =
+      intento === 1
+        ? await getOwnerShellRow(supabase, ownerId)
+        : await supabase.from("owners").select("country").eq("id", ownerId).single();
     country = (owner?.country as string | undefined) ?? null;
     if (country) break;
     if (intento === 1) await new Promise((r) => setTimeout(r, 500));
@@ -76,7 +87,7 @@ export async function getOwnerRateContextResult(
   if (!country) return { kind: "pais_desconocido" };
   if (country !== "VE") return { kind: "co" };
 
-  const context = await getOwnerRateContext(supabase, ownerId);
+  const context = await getOwnerRateContext(supabase, ownerId, options);
   return context ? { kind: "ve", context } : { kind: "ve_sin_tasa" };
 }
 
@@ -94,9 +105,11 @@ export async function getOwnerRateContext(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>,
   ownerId: string,
+  options: { refresh?: RefreshWait } = {},
 ): Promise<OwnerRateContext | null> {
   const [{ data: owner }, { data: settings }, { data: current }] = await Promise.all([
-    supabase.from("owners").select("country").eq("id", ownerId).single(),
+    // Request-scoped: getOwnerRateContextResult just read this same row.
+    getOwnerShellRow(supabase, ownerId),
     supabase.from("owner_exchange_settings").select("*").eq("owner_id", ownerId).maybeSingle(),
     supabase.rpc("get_current_bcv_rate").maybeSingle(),
   ]);
@@ -120,7 +133,7 @@ export async function getOwnerRateContext(
   // both the number on screen and the rate stamped onto a new fiado on the
   // same value, which is the whole point: an owner must never be shown one
   // rate and have another one recorded.
-  const refresh = await refreshBcvRateIfStale(stored.fetched_at);
+  const refresh = await refreshBcvRateIfStale(stored.fetched_at, options.refresh ?? "deadline");
   const officialRate =
     refresh.status === "refreshed"
       ? { usd: refresh.usd, eur: refresh.eur, rateDate: refresh.rateDate }

@@ -16,6 +16,27 @@ export function getPublicProductPhotoUrl(path: string): string {
   return `${base}/storage/v1/object/public/product-photos/${path}`;
 }
 
+// A PRODUCT PHOTO FOR A GRID OR A LIST, 400px wide, for performance on weak signals:
+// owner's go-ahead of 2026-11-15 («Implementa todas las soluciones propuestas de
+// rendimiento»). The original is up to 1600px and 267-374 KB (see below); the grids
+// draw it at 48-320 CSS px, so a page of ten cards was 3-4 MB of photo. Measured in dev on
+// 2026-11-15 with the browser's Accept header (Supabase answers WebP): originals of 210, 335
+// and 374 KB came back at 16, 70 and 50 KB at 400px and quality 60; 480px at quality 70 was
+// 21-90 KB for no visible gain on a phone tile.
+//
+// WIDTH ONLY, no height and no crop: Supabase keeps the proportion, and each screen
+// already crops with `object-cover`, so a tall photo and a wide one both fill their tile
+// exactly as before.
+//
+// IT DEPENDS ON THE PAID IMAGE TRANSFORMATIONS, the same dependency as the link preview
+// below: if they were ever turned off, these URLs would fail and the grids would show
+// their «no photo» placeholder. Galleries and detail sheets keep the original, because
+// there the photo is the point and is drawn large.
+export function getProductThumbnailUrl(path: string): string {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "");
+  return `${base}/storage/v1/render/image/public/product-photos/${path}?width=400&quality=60`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // LA FOTO DEL PRODUCTO PARA LA VISTA PREVIA DE UN ENLACE
 //

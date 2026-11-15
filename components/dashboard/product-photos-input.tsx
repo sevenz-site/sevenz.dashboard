@@ -2,10 +2,11 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Loader2, Plus, X } from "lucide-react";
+import { Camera, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { fileToResizedBlob } from "@/lib/image";
 import { MAX_PRODUCT_PHOTOS } from "@/lib/products/photos";
 
@@ -22,6 +23,10 @@ import { MAX_PRODUCT_PHOTOS } from "@/lib/products/photos";
 // UPLOADS GO TO THE OWNER'S OWN FOLDER, one by one, exactly as the single-photo input did
 // (`product-photo-input.tsx`): the storage policy checks the folder, and the server
 // checks it again with `ownPhotoPath` before writing any path.
+// «Agregar» and «Foto» are the same tile: one class list, so they cannot drift apart.
+const TILE =
+  "flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed text-muted-foreground disabled:opacity-50";
+
 export function ProductPhotosInput({
   ownerId,
   value,
@@ -34,6 +39,8 @@ export function ProductPhotosInput({
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   const [uploading, setUploading] = useState(false);
   const lleno = value.length >= MAX_PRODUCT_PHOTOS;
 
@@ -71,6 +78,7 @@ export function ProductPhotosInput({
       if (subidas.length) onChange([...value, ...subidas].slice(0, MAX_PRODUCT_PHOTOS));
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
   }
 
@@ -92,7 +100,7 @@ export function ProductPhotosInput({
             {/* `unoptimized`: a Supabase public URL of a photo already resized on the
                 device, same as the single-photo input. */}
             <Image
-              src={getPublicProductPhotoUrl(path)}
+              src={getProductThumbnailUrl(path)}
               alt={i === 0 ? "Portada del producto" : `Foto ${i + 1} del producto`}
               width={64}
               height={64}
@@ -121,7 +129,7 @@ export function ProductPhotosInput({
             type="button"
             disabled={disabled || uploading}
             onClick={() => inputRef.current?.click()}
-            className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed text-muted-foreground disabled:opacity-50"
+            className={TILE}
           >
             {uploading ? (
               <Loader2 className="size-5 animate-spin" />
@@ -133,6 +141,45 @@ export function ProductPhotosInput({
             )}
           </button>
         )}
+
+        {/* «TOMAR FOTO», PUT BACK ON 2026-11-15 AT THE OWNER'S REQUEST. The single-photo
+            input this component replaced in v0.6.0 (`product-photo-input.tsx`) had it,
+            and the replacement dropped it without anyone deciding to: «Se eliminó la
+            opción de tomar foto del producto, al crear un producto, se debe volver a
+            incluir». It is also what led to his rule that nothing existing is removed
+            unless he asks.
+
+            A TILE NEXT TO «AGREGAR», labelled «Foto» with a camera: owner's request of
+            2026-11-15, the same day, with a capture of the first version (a full-width
+            outline button under the thumbnails) and an arrow pointing beside «Agregar».
+            With four photos the row holds six tiles (404px) and the last one wraps to a
+            second row on a 375px phone; accepted, because hiding it there would remove
+            the camera for the fifth photo.
+
+            A SECOND INPUT, NOT THE ONE BELOW, because `multiple` is what hides the
+            camera: Android's picker drops «Cámara» from the list when several files may
+            be chosen. `capture="environment"` opens the rear camera straight away, and a
+            capture returns exactly one image, so this input has no `multiple`.
+
+            PHONES ONLY, as before: a desktop browser ignores `capture` and would open the
+            same file dialog as «Agregar», which reads as a broken button. */}
+        {isMobile && !lleno ? (
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => cameraInputRef.current?.click()}
+            className={TILE}
+          >
+            {uploading ? (
+              <Loader2 className="size-5 animate-spin" />
+            ) : (
+              <>
+                <Camera className="size-5" />
+                <span className="text-[10px]">Foto</span>
+              </>
+            )}
+          </button>
+        ) : null}
       </div>
 
       <input
@@ -143,6 +190,16 @@ export function ProductPhotosInput({
         className="sr-only"
         onChange={(e) => handleFiles(e.target.files)}
       />
+      {isMobile && !lleno ? (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         {lleno

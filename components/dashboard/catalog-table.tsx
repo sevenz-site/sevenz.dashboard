@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
 import { setProductPublished } from "@/app/(app)/productos/actions";
 import { formatPriceAmount } from "@/lib/products/price";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
 import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
@@ -353,7 +353,7 @@ function ProductCard({
         <div className="relative aspect-square w-full bg-muted">
           {product.photo_path ? (
             <Image
-              src={getPublicProductPhotoUrl(product.photo_path)}
+              src={getProductThumbnailUrl(product.photo_path)}
               alt=""
               fill
               unoptimized

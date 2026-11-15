@@ -45,7 +45,29 @@ export type RateRefresh =
   | { status: "refreshed"; usd: number; eur: number; rateDate: string | null }
   | { status: "unconfirmed" };
 
-export async function refreshBcvRateIfStale(fetchedAt: string | null): Promise<RateRefresh> {
+// HOW LONG THE CALLER IS WILLING TO WAIT, added 2026-11-15.
+//
+//   "deadline"    the original behaviour, still the default: wait up to
+//                 DEADLINE_MS for the provider. Kept for every path that
+//                 STAMPS a rate on money (resolveMovementRateSnapshot, the
+//                 sale actions, the flows that end in one), where the rate on
+//                 screen and the one recorded should be the same fetch.
+//   "background"  for screens that only SHOW the rate: answer at once with the
+//                 stored row and let the same fetch run behind the response.
+//                 On a phone on a weak connection, up to 2,5 s of a blank
+//                 screen on every load past the 20-minute mark was the cost.
+//                 The next load gets the fresh rate. Reported as "unconfirmed",
+//                 because nothing has confirmed it yet: on a weekend that first
+//                 stale load shows «Última actualización» instead of the
+//                 «El BCV no publica…» note, and the next one shows the note.
+//                 Claiming confirmation here would be the failure rate-status.ts
+//                 warns about: hiding a broken fetch behind the weekend note.
+export type RefreshWait = "deadline" | "background";
+
+export async function refreshBcvRateIfStale(
+  fetchedAt: string | null,
+  wait: RefreshWait = "deadline",
+): Promise<RateRefresh> {
   if (fetchedAt && Date.now() - new Date(fetchedAt).getTime() < MAX_AGE_MS) {
     return { status: "fresh" };
   }
@@ -54,6 +76,27 @@ export async function refreshBcvRateIfStale(fetchedAt: string | null): Promise<R
   try {
     work = startFetch();
   } catch {
+    return { status: "unconfirmed" };
+  }
+
+  if (wait === "background") {
+    // The fetch is already running (started above, so it overlaps with the
+    // rest of the render); after() only keeps the function alive until it
+    // ends. Same fetch, same dedupe, same anomaly guard as the deadline path.
+    const logged = work.catch((error) => {
+      console.error(
+        "[bcv] no pudimos refrescar la tasa:",
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    });
+    try {
+      after(async () => {
+        await logged;
+      });
+    } catch {
+      // after() outside a request scope: nothing to keep alive.
+    }
     return { status: "unconfirmed" };
   }
 

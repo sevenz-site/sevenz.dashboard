@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { BusinessSettingsForm } from "@/components/dashboard/business-settings-form";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
@@ -8,10 +8,8 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { mySecondFactor } from "@/lib/security/second-factor";
 
 export default async function ProfilePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [{ data: owner }, { data: paymentMethods }, secondFactor] = await Promise.all([
     supabase.from("owners").select("*").eq("id", user!.id).single(),

@@ -5,7 +5,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { OrderLineEditForm } from "@/components/dashboard/order-line-edit-form";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { StockBadge } from "@/components/stock-badge";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import type { PriceCurrency } from "@/lib/products/price";
@@ -39,10 +39,8 @@ export default async function EditarLineaPage({
   params: Promise<{ id: string; itemId: string }>;
 }) {
   const { id, itemId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const { data: order, error } = await supabase
     .from("catalog_orders")

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { redirect, notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
@@ -70,10 +70,8 @@ export default async function ConfirmarFiadoPage({
   const { movementId } = await params;
   const { reparto } = await searchParams;
   const enReparto = reparto === "1";
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // EL MOVIMIENTO, Y LA PROPIEDAD COMPROBADA A TRAVÉS DEL CLIENTE. `movements`

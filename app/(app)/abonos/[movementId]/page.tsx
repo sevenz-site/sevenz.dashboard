@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { CheckCircle2, User } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import type { LedgerCurrency } from "@/lib/types";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
@@ -43,10 +43,8 @@ export default async function AbonoRegistradoPage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { movementId } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const { data: abono } = await supabase
