@@ -122,8 +122,8 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   check("4h. con algo por cobrar manda negocio_resumen aunque haya vendido", conDeuda.template === "negocio_resumen", conDeuda.template);
 
   const estado = mondayPlan(fam({ clients_count: 12, products_count: 30 }));
-  check("4i. sin ventas ni cobros pero con clientes y productos: negocio_estado",
-    estado.template === "negocio_estado" && nombres(estado) === "owner_name,clients_count,products_count"
+  check("4i. sin ventas ni cobros pero con clientes y productos: negocio_estado, como lo aprobó Meta",
+    estado.template === "negocio_estado" && nombresEnOrden(estado)
       && param(estado, "clients_count") === "12" && param(estado, "products_count") === "30",
     `${estado.template} · ${nombres(estado)}`);
   check("4j. negocio_estado se detiene tras tres lunes seguidos",
@@ -134,7 +134,7 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
 
   const nueva = mondayPlan(fam({ account_age_days: 6, first_week_sent: false, ledgers: { USD: libro(40) }, sales: { USD: { count: 1, amount: 9 } } }));
   check("4m. primera semana (6 días, registró algo): primera_semana sustituye al lunes, aunque deba",
-    nueva.template === "primera_semana" && nombres(nueva) === "owner_name,sales_summary,amount_due"
+    nueva.template === "primera_semana" && nombresEnOrden(nueva)
       && param(nueva, "amount_due") === "$40,00" && param(nueva, "sales_summary") === "1 venta por $9,00",
     `${nueva.template} · ${nombres(nueva)}`);
   check("4n. con 4 días todavía no", mondayPlan(fam({ account_age_days: 4, first_week_sent: false, clients_count: 1 })).template === "negocio_estado");
@@ -342,6 +342,28 @@ try {
     typeof r.account_age_days === "number" && typeof r.clients_count === "number" && typeof r.products_count === "number"
       && typeof r.has_records === "boolean" && typeof r.first_week_sent === "boolean" && typeof r.status_streak === "number",
     JSON.stringify({ edad: r.account_age_days, clientes: r.clients_count, productos: r.products_count, registros: r.has_records, primera: r.first_week_sent, racha: r.status_streak }));
+
+  // THE TWO MEMORIES OF 207, read from real rows. On B, so A's slot checks below are untouched.
+  {
+    const hace = (d) => new Date(Date.now() - d * 86400000).toISOString();
+    await admin.from("whatsapp_sends").insert({ owner_id: B, template: "primera_semana", period_key: "QA-PS-1", ok: false });
+    const fallida = await filaDe(B);
+    await admin.from("whatsapp_sends").insert({ owner_id: B, template: "primera_semana", period_key: "QA-PS-2", ok: true });
+    const enviada = await filaDe(B);
+    check("17d. primera_semana: un envío fallido no la gasta; uno entregado sí",
+      fallida.first_week_sent === false && enviada.first_week_sent === true, `${fallida.first_week_sent} · ${enviada.first_week_sent}`);
+    await admin.from("whatsapp_sends").insert([
+      { owner_id: B, template: "negocio_estado", period_key: "QA-NE-1", ok: true, sent_at: hace(25) },
+      { owner_id: B, template: "negocio_estado", period_key: "QA-NE-2", ok: true, sent_at: hace(14) },
+      { owner_id: B, template: "negocio_estado", period_key: "QA-NE-3", ok: true, sent_at: hace(7) },
+    ]);
+    const dos = await filaDe(B);
+    await admin.from("whatsapp_sends").insert({ owner_id: B, template: "negocio_estado", period_key: "QA-NE-4", ok: true, sent_at: hace(1) });
+    const tres = await filaDe(B);
+    check("17e. la racha de negocio_estado cuenta solo los últimos 22 días: 2 y luego 3 (el de hace 25 no entra)",
+      Number(dos.status_streak) === 2 && Number(tres.status_streak) === 3, `${dos.status_streak} · ${tres.status_streak}`);
+    await admin.from("whatsapp_sends").delete().eq("owner_id", B).like("period_key", "QA-%");
+  }
 
   // SLOTS AND THE PHONE CAP. A and B share one number.
   await admin.from("whatsapp_sends").insert({ owner_id: A, template: "negocio_resumen", period_key: periodo, ok: false });
