@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { track } from "@/lib/mixpanel";
 import { useSearchEvent } from "@/lib/analytics/use-search-event";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
 import {
@@ -16,7 +15,7 @@ import {
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { StockBadge } from "@/components/stock-badge";
 import { formatCantidad } from "@/lib/products/cantidad";
@@ -346,7 +345,7 @@ function FilaDeProducto({
   /** `owners.low_stock_threshold`: what «running low» means for this shop. */
   umbral: number;
 }) {
-  const foto = p.fotoPath ? getProductThumbnailUrl(p.fotoPath) : null;
+  const foto = p.fotoPath || null;
   // LOS ESTADOS SE DECIDEN EN `StockBadge` desde el 2026-10-29, y con ellos se
   // fue de aquí la razón que los separaba — que sigue siendo cierta y está
   // escrita en `lib/products/availability.ts`: «Sin cantidad anotada» es gris y
@@ -363,7 +362,7 @@ function FilaDeProducto({
           `reportes-aviso-sheet.tsx`. */}
       <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
         {foto ? (
-          <Image src={foto} alt="" width={48} height={48} unoptimized className="size-12 object-cover" />
+          <ProductThumbnail path={foto} alt="" width={48} height={48} className="size-12 object-cover" />
         ) : (
           <ImageOff className="size-5 text-muted-foreground" aria-hidden />
         )}

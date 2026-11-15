@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { runStorageCleanup } from "@/lib/storage-cleanup";
+import { runThumbnailPass, type ThumbnailResult } from "@/lib/product-thumbnails";
 
 export const runtime = "nodejs";
+// The thumbnail pass downloads, resizes and uploads photos one by one. It stops itself
+// well before this, on its own clock (see `THUMBNAIL_BUDGET_MS`).
+export const maxDuration = 60;
+
+// How long after the request arrives the thumbnail pass may still START a photo. The
+// rest of the minute is for the photos already in flight and for the answer.
+const THUMBNAIL_BUDGET_MS = 40_000;
 
 // Nightly, from `vercel.json`, at 09:00 UTC (05:00 in Venezuela, 04:00 in
 // Colombia): the hour with the fewest products being saved, which is when a
@@ -16,6 +24,13 @@ export const runtime = "nodejs";
 // Same `Authorization: Bearer $CRON_SECRET` as the other cron routes. Behind
 // that secret it may return the real error text (CLAUDE.md, «Mask raw errors
 // on unauthenticated endpoints»): nobody without the secret gets past line one.
+//
+// TWO JOBS SINCE 2026-11-15, IN THIS ORDER: the cleanup, then the thumbnails that are
+// missing (`lib/product-thumbnails.ts`, owner's option B). One route and not two because
+// both are the same nightly housekeeping of the same bucket, and the cleanup has to see
+// the bucket before new files land in it. THEY FAIL APART: a thumbnail pass that throws
+// is reported under `thumbnails.error` and the cleanup's result still goes out; a cleanup
+// that throws answers 502 as before, and the thumbnails wait for tomorrow.
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization");
@@ -23,10 +38,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   }
 
+  const started = Date.now();
   try {
     const result = await runStorageCleanup();
-    console.log("[storage-cleanup]", JSON.stringify(result));
-    return NextResponse.json(result);
+    let thumbnails: ThumbnailResult | { error: string };
+    try {
+      thumbnails = await runThumbnailPass(started + THUMBNAIL_BUDGET_MS);
+    } catch (error) {
+      thumbnails = { error: error instanceof Error ? error.message : "Error desconocido." };
+      console.error("[storage-cleanup] thumbnails:", thumbnails.error);
+    }
+    console.log("[storage-cleanup]", JSON.stringify({ ...result, thumbnails }));
+    return NextResponse.json({ ...result, thumbnails });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido.";
     console.error("[storage-cleanup]", message);

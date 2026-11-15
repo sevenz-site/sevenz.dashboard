@@ -2,7 +2,6 @@
 
 import { track } from "@/lib/mixpanel";
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
 import {
@@ -12,7 +11,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { ProductoEnAviso } from "@/lib/reports/inventario";
 
@@ -104,7 +103,7 @@ export function ReportesAvisoSheet({
               veinte productos el título tiene que quedarse a la vista. */}
           <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
             {productos.map((p) => {
-              const foto = p.fotoPath ? getProductThumbnailUrl(p.fotoPath) : null;
+              const foto = p.fotoPath || null;
               return (
                 <li key={p.id}>
                   <Fila id={p.id} conFicha={conFicha}>
@@ -124,12 +123,11 @@ export function ReportesAvisoSheet({
                         // (`order-product-card.tsx`, `catalog-table.tsx`,
                         // `product-detail.tsx`). Si algún día se configura el
                         // dominio, se quitan las once a la vez o ninguna.
-                        <Image
-                          src={foto}
+                        <ProductThumbnail
+                          path={foto}
                           alt=""
                           width={48}
                           height={48}
-                          unoptimized
                           className="size-12 object-cover"
                         />
                       ) : (

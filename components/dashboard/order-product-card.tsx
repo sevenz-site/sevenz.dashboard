@@ -1,11 +1,10 @@
-import Image from "next/image";
 import Link from "next/link";
 import { forwardRef } from "react";
 import { ChevronRight, ImageOff, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import {
   formatPriceAmount,
   priceIn,
@@ -160,7 +159,7 @@ export const OrderProductRowButton = forwardRef<
     fotoPath: string | null;
   }
 >(function OrderProductRowButton({ nombre, fotoPath, ...props }, ref) {
-  const fotoUrl = fotoPath ? getProductThumbnailUrl(fotoPath) : null;
+  const fotoUrl = fotoPath || null;
 
   return (
     <button
@@ -170,12 +169,11 @@ export const OrderProductRowButton = forwardRef<
       className="flex w-full items-center gap-2 text-left"
     >
       {fotoUrl ? (
-        <Image
-          src={fotoUrl}
+        <ProductThumbnail
+          path={fotoUrl}
           alt=""
           width={80}
           height={80}
-          unoptimized
           className="size-10 shrink-0 rounded border object-cover"
         />
       ) : (

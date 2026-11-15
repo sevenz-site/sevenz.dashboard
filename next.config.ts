@@ -59,8 +59,18 @@ const nextConfig: NextConfig = {
       // bare, from links. Crawl stays allowed so the noindex is seen.
       // It applies to dev.sevenz.site and every Vercel preview too, which run
       // this same config. Link previews (WhatsApp, Facebook) ignore it.
+      //
+      // THE ICON FILES ARE LEFT OUT TOO (owner's go-ahead of 2026-11-15, «Sí,
+      // en dev»). Google shows a favicon next to the /signup and /login
+      // results, and it was never verified whether a noindex on the icon file
+      // itself stops it from using that file. Rather than find out in the
+      // results page, the icons carry no noindex. `icon-[^/]*\.png` and not
+      // the exact name, because the app icon is renamed on every redesign
+      // (`-v2` today, see app/layout.tsx) and a new name must not fall back
+      // under the rule unnoticed.
       {
-        source: "/((?!login$|signup$).*)",
+        source:
+          "/((?!login$|signup$|favicon\\.ico$|icon-[^/]*\\.png$|apple-touch-icon\\.png$).*)",
         headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
       },
     ];

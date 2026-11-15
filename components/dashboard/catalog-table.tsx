@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageOff, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -11,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useCatalogFilters } from "@/components/dashboard/catalog-filters";
 import { setProductPublished } from "@/app/(app)/productos/actions";
 import { formatPriceAmount } from "@/lib/products/price";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ListPagination, PAGE_SIZE } from "@/components/dashboard/list-pagination";
 import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
@@ -352,11 +351,10 @@ function ProductCard({
             distintas y la rejilla deja de leerse como una rejilla. */}
         <div className="relative aspect-square w-full bg-muted">
           {product.photo_path ? (
-            <Image
-              src={getProductThumbnailUrl(product.photo_path)}
+            <ProductThumbnail
+              path={product.photo_path}
               alt=""
               fill
-              unoptimized
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
               className="object-cover"
             />

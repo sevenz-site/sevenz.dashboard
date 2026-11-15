@@ -9,7 +9,12 @@ import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { parseAmount } from "@/lib/products/price";
 import { MAX_DESCRIPTION_LENGTH } from "@/lib/products/description";
-import { MAX_PRODUCT_PHOTOS } from "@/lib/products/photos";
+import {
+  LEGACY_MAX_PRODUCT_PHOTOS,
+  MAX_PRODUCT_PHOTOS,
+  photoRowsToRemove,
+  photosWithinCap,
+} from "@/lib/products/photos";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
 import { storageFileExists } from "@/lib/storage-file-exists";
@@ -90,8 +95,13 @@ function ownPhotoPath(photoPath: string | null | undefined, userId: string): str
 
 // THE EXTRA PHOTOS, CLEANED THE SAME WAY AS THE COVER. Each path goes through
 // `ownPhotoPath` (a path is an id from the browser, CLAUDE.md's ownership rule); empty,
-// repeated or cover-equal paths are dropped, and at most four are kept -- the cover is the
-// fifth. `undefined` stays `undefined`: see `ProductInput.extraPhotoPaths`.
+// repeated or cover-equal paths are dropped. `undefined` stays `undefined`: see
+// `ProductInput.extraPhotoPaths`.
+//
+// THIS ONLY CLEANS; THE CAP IS `photosWithinCap`, CHECKED BY EACH ACTION. The slice here
+// is the most the table ever held (a product from before the cap of two may keep up to
+// four extras). Slicing to the new cap instead would silently drop photos 3 to 5 of such
+// a product on its next save, which is the one thing lowering the cap must not do.
 function cleanExtraPhotos(
   extras: string[] | undefined,
   cover: string | null,
@@ -103,8 +113,14 @@ function cleanExtraPhotos(
     const path = ownPhotoPath(raw, userId);
     if (path && path !== cover && !out.includes(path)) out.push(path);
   }
-  return out.slice(0, MAX_PRODUCT_PHOTOS - 1);
+  return out.slice(0, LEGACY_MAX_PRODUCT_PHOTOS - 1);
 }
+
+// What a save answers when it carries more photos than the cap. Refused, not cut, same as
+// the description over 500 characters: cutting would save a product without the photos
+// the shopkeeper believes he attached. What reaches this is a tab still holding the
+// bundle from when the cap was five, or a request written by hand.
+const TOO_MANY_PHOTOS = `Un producto puede llevar hasta ${MAX_PRODUCT_PHOTOS} fotos. Quita las que sobran y guarda de nuevo.`;
 
 // What a save answers when the photo it points at no longer exists: a draft
 // older than the nightly cleanup's 7 days (`DM-12`, migration 182). See
@@ -455,11 +471,45 @@ async function writeSatellites(
     }
   }
 
-  // PHOTOS 2 TO 5 (CT-171), rewritten whole like the two tables above, and only when the
-  // caller manages them. If the insert fails after the delete, the extra photos are gone
-  // from the product but their files stay in Storage for a week (the nightly cleanup's
-  // `min_age`), so saving again restores them; the message says exactly that much.
+  // THE EXTRA PHOTOS (CT-171), and only when the caller manages them.
+  //
+  // WITHIN THE CAP OF TWO (2026-11-15) there is at most one extra, and it is rewritten
+  // whole like the two tables above: delete, then insert at position 1. If the insert
+  // fails after the delete, the extra photo is gone from the product but its file stays in
+  // Storage for a week (the nightly cleanup's `min_age`), so saving again restores it; the
+  // message says exactly that much.
+  //
+  // OVER THE CAP -- a product that kept three to five photos from before -- NOTHING IS
+  // REWRITTEN. Migration 208 only lets new rows in at position 1, so re-inserting rows 2
+  // to 4 would be refused AFTER the delete had already taken them: every extra photo lost
+  // on a save that only changed a price. So only the rows the shopkeeper removed are
+  // deleted, and the ones he kept are never touched. `photosWithinCap` has already made
+  // sure each kept extra is a row that exists.
   if (extras !== undefined) {
+    if (extras.length > MAX_PRODUCT_PHOTOS - 1) {
+      const { data: rows, error: eRows } = await supabase
+        .from("product_photos")
+        .select("path, position")
+        .eq("product_id", productId);
+      if (eRows) {
+        console.error("[writeSatellites] read photos:", eRows.message);
+        return "Guardamos el producto, pero no pudimos actualizar sus fotos.";
+      }
+      const removed = photoRowsToRemove((rows ?? []) as { path: string; position: number }[], extras);
+      if (removed.length > 0) {
+        const { error: eDelPh } = await supabase
+          .from("product_photos")
+          .delete()
+          .eq("product_id", productId)
+          .in("position", removed);
+        if (eDelPh) {
+          console.error("[writeSatellites] delete removed photos:", eDelPh.message);
+          return "Guardamos el producto, pero no pudimos actualizar sus fotos.";
+        }
+      }
+      return null;
+    }
+
     const { error: eDelPh } = await supabase.from("product_photos").delete().eq("product_id", productId);
     if (eDelPh) {
       console.error("[writeSatellites] delete photos:", eDelPh.message);
@@ -526,6 +576,11 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
   const photo = ownPhotoPath(input.photoPath, user.id);
   if (photo && !(await storageFileExists("product-photos", photo))) return rechazar("photo_gone", PHOTO_GONE);
   const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
+  // THE CAP, ON THE SERVER (2026-11-15). A new product has nothing saved, so it can never
+  // carry more than `MAX_PRODUCT_PHOTOS`. Checked before Storage: no point asking whether
+  // five files exist to then refuse them.
+  const todas = [photo, ...(extras ?? [])].filter((p): p is string => Boolean(p));
+  if (!photosWithinCap(todas, [])) return rechazar("validation", TOO_MANY_PHOTOS);
   for (const path of extras ?? []) {
     if (!(await storageFileExists("product-photos", path))) return rechazar("photo_gone", PHOTO_GONE);
   }
@@ -617,12 +672,25 @@ export async function updateProduct(
     return { error: PHOTO_GONE };
   }
   const extras = cleanExtraPhotos(input.extraPhotoPaths, photo, user.id);
-  if (extras?.length) {
-    const { data: guardadas } = await supabase
+  if (extras !== undefined) {
+    const { data: guardadas, error: eGuardadas } = await supabase
       .from("product_photos")
-      .select("path")
-      .eq("product_id", productId);
-    const ya = new Set([savedPhoto, ...(guardadas ?? []).map((r) => r.path as string)]);
+      .select("path, position")
+      .eq("product_id", productId)
+      .order("position");
+    // A FAILED READ REFUSES THE SAVE. Carrying on with an empty list would make a product
+    // that kept five photos look like one adding three new ones -- or, worse, let the
+    // save through and have the photo rows rewritten from a wrong picture of them.
+    if (eGuardadas) {
+      console.error("[updateProduct] read photos:", eGuardadas.message);
+      return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
+    }
+    const guardadasEnOrden = [savedPhoto, ...(guardadas ?? []).map((r) => r.path as string)];
+    // THE CAP, ON THE SERVER (2026-11-15): up to two, or what the product already had
+    // with nothing new. See `photosWithinCap`.
+    const todas = [photo, ...extras].filter((p): p is string => Boolean(p));
+    if (!photosWithinCap(todas, guardadasEnOrden)) return { error: TOO_MANY_PHOTOS };
+    const ya = new Set(guardadasEnOrden);
     for (const path of extras) {
       if (!ya.has(path) && !(await storageFileExists("product-photos", path))) return { error: PHOTO_GONE };
     }

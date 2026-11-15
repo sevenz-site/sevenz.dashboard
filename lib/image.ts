@@ -51,13 +51,49 @@ export async function fileToResizedDataUrlForOcr(file: File): Promise<string> {
   return fileToResizedDataUrl(file, { maxDimension: OCR_MAX_DIMENSION, quality: OCR_JPEG_QUALITY });
 }
 
-export async function fileToResizedBlob(file: File): Promise<Blob> {
-  const canvas = await loadResizedCanvas(file, MAX_DIMENSION);
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("No pudimos comprimir la imagen."))),
       "image/jpeg",
-      JPEG_QUALITY,
+      quality,
     );
   });
+}
+
+export async function fileToResizedBlob(file: File): Promise<Blob> {
+  const canvas = await loadResizedCanvas(file, MAX_DIMENSION);
+  return canvasToJpeg(canvas, JPEG_QUALITY);
+}
+
+// A PHOTO AND ITS THUMBNAIL FROM ONE DECODE. The photo is exactly what
+// `fileToResizedBlob` returns; the thumbnail is drawn from that same canvas, `width`
+// pixels wide with the proportion kept, and never enlarged.
+//
+// JPEG AND NOT WEBP, although WebP is smaller: Safari on iPhone cannot encode WebP from a
+// canvas and hands back a PNG instead, without an error -- several times the size, and
+// under a name and a content type that say something else.
+//
+// THE THUMBNAIL MAY COME BACK `null` and that is not a failure of the upload: a phone
+// short on memory can refuse the second canvas. The caller uploads the photo anyway; the
+// screens fall back to the photo, and the nightly pass makes the thumbnail later.
+export async function fileToPhotoAndThumbnail(
+  file: File,
+  thumbnail: { width: number; quality: number },
+): Promise<{ photo: Blob; thumbnail: Blob | null }> {
+  const canvas = await loadResizedCanvas(file, MAX_DIMENSION);
+  const photo = await canvasToJpeg(canvas, JPEG_QUALITY);
+  try {
+    const scale = Math.min(1, thumbnail.width / canvas.width);
+    const small = document.createElement("canvas");
+    small.width = Math.max(1, Math.round(canvas.width * scale));
+    small.height = Math.max(1, Math.round(canvas.height * scale));
+    const ctx = small.getContext("2d");
+    if (!ctx) return { photo, thumbnail: null };
+    ctx.drawImage(canvas, 0, 0, small.width, small.height);
+    return { photo, thumbnail: await canvasToJpeg(small, thumbnail.quality / 100) };
+  } catch (error) {
+    console.error("[image] thumbnail:", error);
+    return { photo, thumbnail: null };
+  }
 }
