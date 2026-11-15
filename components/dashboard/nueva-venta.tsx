@@ -60,8 +60,10 @@ import {
 } from "@/lib/whatsapp-opt-in";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { toast } from "sonner";
 import {
   buscarProductosParaVenta,
+  productoParaVentaPorId,
   registrarVenta,
   resolverMostrador,
   datosDelCliente,
@@ -807,18 +809,12 @@ function PasoProducto({
   // `/c/<token>/<id>` —que es donde vive ese detalle para el cliente— lo
   // perdería entero.
   const [detalle, setDetalle] = useState<ProductoParaVenta | null>(null);
-  // El producto que la hoja acaba de crear y que entra al carrito en cuanto la
-  // cuadrícula vuelva con él (ver `onCreado`).
-  //
-  // UNA REF Y NO ESTADO: nadie lo pinta, así que guardarlo en `useState`
-  // provocaría un render de más por cada producto creado y encima obligaría a
-  // leerlo desde dentro de su propio actualizador para no quedarse con el
-  // valor del render anterior.
-  const pendiente = useRef<{ productId: string; cantidad: number } | null>(null);
   // Se incrementa al guardar un producto nuevo, y el efecto de abajo lo mira:
   // es lo que hace que la cuadrícula se vuelva a pedir sin tocar `query`, para
   // que el recién creado aparezca donde el tendero lo está esperando.
   const [recarga, setRecarga] = useState(0);
+  // The last product search failed to reach the server.
+  const [sinConexion, setSinConexion] = useState(false);
 
   // SE BUSCA AL ESCRIBIR, con el mismo retardo que el resto de los buscadores
   // de la app. La primera carga trae los doce primeros por orden alfabético
@@ -838,44 +834,20 @@ function PasoProducto({
     let vivo = true;
     const t = setTimeout(async () => {
       setCargando(true);
-      const r = await buscarProductosParaVenta(query);
-      if (!vivo) return;
-      onCatalogo(r);
-      setCargando(false);
-      setBuscado(true);
-
-      // EL PRODUCTO RECIÉN CREADO ENTRA AL CARRITO AQUÍ, cuando la lista ya
-      // trae su ficha completa.
-      //
-      // PUEDE NO VENIR, y por eso se comprueba: la búsqueda devuelve doce por
-      // orden alfabético, así que un producto nuevo que caiga más allá del
-      // doce no está en esta respuesta. En ese caso se deja como está —el
-      // tendero lo busca por su nombre— en vez de meter al carrito una línea
-      // armada a mano que se comportaría distinto de las demás.
-      const p = pendiente.current;
-      // SE LIMPIA SIEMPRE, entre o no entre: dejarlo puesto haría que la
-      // siguiente búsqueda —una letra más en el buscador— volviera a meterlo.
-      pendiente.current = null;
-      if (p) {
-        const nuevo = r.productos.find((x) => x.id === p.productId);
-        const minimo = nuevo ? cantidadMinima(nuevo.producto) : 0;
-        const cantidad = Math.max(p.cantidad, minimo);
-        const escalon = nuevo ? escalonParaCantidad(nuevo.producto, cantidad) : null;
-        const bloque = escalon === "wholesale" ? nuevo!.producto.wholesale : nuevo?.producto.retail;
-        const moneda = monedasDelBloque(bloque ?? null, r.rates).filter((c) =>
-          r.monedasDelLibro.includes(c),
-        )[0];
-        if (nuevo && moneda) {
-          onAgregar({
-            productId: nuevo.id,
-            name: nuevo.name,
-            unit: nuevo.unit,
-            photoPath: nuevo.photoPath,
-            producto: nuevo.producto,
-            quantity: cantidad,
-            currency: moneda,
-          }, "quick_create");
-        }
+      setSinConexion(false);
+      try {
+        const r = await buscarProductosParaVenta(query);
+        if (!vivo) return;
+        onCatalogo(r);
+        setBuscado(true);
+      } catch (e) {
+        // A DROPPED REQUEST ON A WEAK SIGNAL used to leave this promise rejected
+        // with nobody catching it: «cargando» stayed on and the grid stayed empty
+        // with no way out but reloading the page, which throws away the cart.
+        console.error("[PasoProducto] search:", e);
+        if (vivo) setSinConexion(true);
+      } finally {
+        if (vivo) setCargando(false);
       }
     }, 250);
     return () => {
@@ -900,11 +872,29 @@ function PasoProducto({
           carrito: el asistente guarda sus líneas en memoria, así que salir de
           la pantalla pierde todo lo que el tendero llevara metido. Es el mismo
           diálogo del catálogo, montado aquí. */}
-      <Button type="button" variant="outline" className="h-10 w-full" onClick={() => setCreando(true)}>
+      {/* DISABLED UNTIL THE CATALOGUE HAS LOADED: the sheet takes the business's
+          currencies from it, and opened before that (a fast tap on a slow signal)
+          it offered an empty currency list and saved the product in dollars. */}
+      <Button
+        type="button"
+        variant="outline"
+        className="h-10 w-full"
+        disabled={!catalogo}
+        onClick={() => setCreando(true)}
+      >
         <Plus className="size-5" aria-hidden="true" />
         Agregar producto
       </Button>
       </div>
+
+      {sinConexion ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm">
+          <span className="text-muted-foreground">No pudimos cargar tus productos. Revisa tu conexión.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setRecarga((n) => n + 1)}>
+            Reintentar
+          </Button>
+        </div>
+      ) : null}
 
       {catalogo && catalogo.productos.length === 0 && buscado && !cargando ? (
         <EmptyState
@@ -994,16 +984,64 @@ function PasoProducto({
           onOpenChange={(next: boolean) => !next && setCreando(false)}
           ownerId={ownerId}
           monedas={catalogo?.monedasDelLibro ?? []}
-          onCreado={(productId, cantidad) => {
+          onCreado={async (productId, cantidad) => {
             setCreando(false);
+            // The grid is refreshed so the new product shows up where it sorts.
+            setRecarga((n) => n + 1);
             // SE PIDE EL PRODUCTO RECIÉN CREADO ANTES DE METERLO AL CARRITO, y
             // no se arma aquí con lo que se acaba de teclear: el carrito
             // necesita la ficha ENTERA —escalones, monedas activas, precios
             // fijados— para recalcular el precio al cambiar de moneda o al
             // cruzar el mínimo de mayoreo. Montarla a mano daría una línea que
             // se comporta distinto de las demás hasta recargar la pantalla.
-            pendiente.current = { productId, cantidad };
-            setRecarga((n) => n + 1);
+            //
+            // IT IS FETCHED BY ITS ID, NOT PICKED OUT OF THE GRID'S SEARCH. Until
+            // 2026-11-15 the line was taken from the grid's reload, which returns
+            // the first twelve products in alphabetical order: a new product that
+            // sorted past the twelfth (any owner with more than twelve products
+            // creating «Zapato», say) was saved to the catalogue and silently left
+            // out of the cart, so «Ver carrito» never appeared. Reported by the
+            // owner on 2026-11-15 and reproduced in dev with a fast connection, so
+            // it was never a connectivity problem. One retry covers a dropped
+            // request on a weak signal; after that the shopkeeper is told, because
+            // a product that vanishes between «Agregar» and the cart is the
+            // failure he saw.
+            const lineaNueva = (r: ProductosParaVenta) => {
+              const nuevo = r.productos.find((x) => x.id === productId);
+              if (!nuevo) return null;
+              const unidades = Math.max(cantidad, cantidadMinima(nuevo.producto));
+              const escalon = escalonParaCantidad(nuevo.producto, unidades);
+              const bloque = escalon === "wholesale" ? nuevo.producto.wholesale : nuevo.producto.retail;
+              const moneda = monedasDelBloque(bloque ?? null, r.rates).filter((c) =>
+                r.monedasDelLibro.includes(c),
+              )[0];
+              if (!moneda) return null;
+              return {
+                productId: nuevo.id,
+                name: nuevo.name,
+                unit: nuevo.unit,
+                photoPath: nuevo.photoPath,
+                producto: nuevo.producto,
+                quantity: unidades,
+                currency: moneda,
+              } satisfies LineaVenta;
+            };
+            for (let intento = 0; intento < 2; intento++) {
+              try {
+                const linea = lineaNueva(await productoParaVentaPorId(productId));
+                if (linea) {
+                  onAgregar(linea, "quick_create");
+                  return;
+                }
+                break;
+              } catch (e) {
+                console.error("[PasoProducto] new product:", e);
+                if (intento === 0) await new Promise((ok) => setTimeout(ok, 1500));
+              }
+            }
+            toast.error(
+              "Guardamos el producto, pero no pudimos agregarlo a la venta. Búscalo por su nombre y agrégalo.",
+            );
           }}
         />
       ) : null}

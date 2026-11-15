@@ -2,8 +2,10 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Loader2, Plus, X } from "lucide-react";
+import { Camera, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { createClient } from "@/lib/supabase/client";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 import { fileToResizedBlob } from "@/lib/image";
@@ -34,6 +36,8 @@ export function ProductPhotosInput({
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
   const [uploading, setUploading] = useState(false);
   const lleno = value.length >= MAX_PRODUCT_PHOTOS;
 
@@ -71,6 +75,7 @@ export function ProductPhotosInput({
       if (subidas.length) onChange([...value, ...subidas].slice(0, MAX_PRODUCT_PHOTOS));
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
   }
 
@@ -143,6 +148,50 @@ export function ProductPhotosInput({
         className="sr-only"
         onChange={(e) => handleFiles(e.target.files)}
       />
+
+      {/* «TOMAR FOTO», PUT BACK ON 2026-11-15 AT THE OWNER'S REQUEST. The single-photo
+          input this component replaced in v0.6.0 (`product-photo-input.tsx`) had it,
+          and the replacement dropped it without anyone deciding to: «Se eliminó la
+          opción de tomar foto del producto, al crear un producto, se debe volver a
+          incluir». It is also what led to his rule that nothing existing is removed
+          unless he asks.
+
+          A SECOND INPUT, NOT THE ONE ABOVE, because `multiple` is what hides the
+          camera: Android's picker drops «Cámara» from the list when several files may
+          be chosen. `capture="environment"` opens the rear camera straight away, and a
+          capture returns exactly one image, so this input has no `multiple`.
+
+          PHONES ONLY, as before: a desktop browser ignores `capture` and would open the
+          same file dialog as «Agregar», which reads as a broken button. */}
+      {isMobile && !lleno ? (
+        <>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-start text-muted-foreground"
+            disabled={disabled || uploading}
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Subiendo...
+              </>
+            ) : (
+              <>
+                <Camera className="size-4" /> Tomar foto
+              </>
+            )}
+          </Button>
+        </>
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         {lleno
