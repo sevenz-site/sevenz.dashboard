@@ -37,6 +37,32 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
+      // EVERYTHING EXCEPT /login AND /signup STAYS OUT OF SEARCH ENGINES (SEO
+      // pass of 2026-11-15). The public site is sevenz.site; the rest of this
+      // host is a private app and the client links (/s, /c), which also carry
+      // a noindex of their own because they show a real person's balance.
+      //
+      // /login and /signup stay indexable by the owner's decision of
+      // 2026-11-15 («Dejar registro y entrada»), so someone who already knows
+      // Sevenz and searches for how to sign in or sign up lands on the form.
+      // It was first written as a noindex on the whole host; what that
+      // displaced: those two pages compete with sevenz.site for «sevenz», and
+      // the landing explains the product where the form does not. Each one
+      // now has its own title and description (their `layout.tsx`) instead of
+      // the app's tagline.
+      //
+      // `$` makes the exclusion exact: /login/codigo (second factor) and any
+      // other subpath still get the noindex.
+      //
+      // A header and not a robots.txt `Disallow`: a blocked URL is never
+      // fetched, so Google never reads the noindex and can still list it
+      // bare, from links. Crawl stays allowed so the noindex is seen.
+      // It applies to dev.sevenz.site and every Vercel preview too, which run
+      // this same config. Link previews (WhatsApp, Facebook) ignore it.
+      {
+        source: "/((?!login$|signup$).*)",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
     ];
   },
 };

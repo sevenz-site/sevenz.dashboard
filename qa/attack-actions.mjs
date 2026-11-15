@@ -263,6 +263,10 @@ try {
     // just started the row came out «SIN PROBAR» twice in the v0.6.0 checklist; it had only
     // ever passed because someone had opened that screen earlier in the same server run.
     ["/login/codigo", null],
+    // Same gap, found in the v0.7.1 checklist (2026-11-15): `quitarLineaDelPedido` is only
+    // imported by the stepper on this step, and `/registrar` alone does not compile it. On a
+    // fresh server the row came out «SIN PROBAR» twice in a row, with the server already warm.
+    [`/productos/ordenes/${ctx.oA}/registrar/confirmar`, A.cookie],
   ];
   for (const [ruta, cookie] of rutas) await fetch(BASE + ruta, { headers: cookie ? { cookie } : {} }).catch(() => null);
   await dormir(1500);
