@@ -14,6 +14,7 @@
 // settings back at the end, whatever happens.
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 import { cookieDeDueno, idDeLaAccion, llamarAccion } from "./server-action.mjs";
 
 const env = Object.fromEntries(
@@ -47,8 +48,8 @@ async function dueno(tag) {
   await svc.from("owners").update({ onboarding_completed_at: new Date().toISOString() }).eq("id", data.user.id);
   return data.user.id;
 }
-async function subir(bucket, path) {
-  const { error } = await svc.storage.from(bucket).upload(path, JPG, { contentType: "image/jpeg", upsert: true });
+async function subir(bucket, path, body = JPG) {
+  const { error } = await svc.storage.from(bucket).upload(path, body, { contentType: "image/jpeg", upsert: true });
   if (error) throw new Error(`upload ${bucket}/${path}: ${error.message}`);
   subidos.push([bucket, path]);
 }
@@ -143,6 +144,82 @@ try {
   const otra = await conClave();
   check("9e. una segunda noche no encuentra nada más que borrar", otra.body?.found === 0 && otra.body?.deleted === 0, JSON.stringify(otra.body));
   await ajustes({ enforce: original.enforce, min_age: original.min_age, scope_owner: original.scope_owner });
+
+  // T1-T8. THUMBNAILS (migration 209, owner's option B of 2026-11-15). A product photo
+  // has a stored thumbnail, `<photo>.thumb.jpg`, that no row names. Two things can go
+  // wrong and neither shows: the cleanup deleting thumbnails of photos in use (the
+  // screens fall back to the photo, at full weight), and the nightly pass not making the
+  // ones that are missing. Its own owner and its own try: a database without 209 fails
+  // these rows and still runs 10 to 14.
+  try {
+    const C = await dueno("c");
+    const real = await sharp({ create: { width: 1200, height: 900, channels: 3, background: "#b03a2e" } }).jpeg().toBuffer();
+    const T = {
+      usada: `${C}/usada-${stamp}.jpg`,
+      conMini: `${C}/con-mini-${stamp}.jpg`,
+      huerfana: `${C}/huerfana-${stamp}.jpg`,
+      rota: `${C}/rota-${stamp}.jpg`,
+    };
+    const mini = (p) => `${p}.thumb.jpg`;
+    await subir("product-photos", T.usada, real);
+    await subir("product-photos", T.conMini, real);
+    await subir("product-photos", mini(T.conMini));
+    await subir("product-photos", T.huerfana);
+    await subir("product-photos", mini(T.huerfana));
+    await subir("product-photos", T.rota); // 14 bytes that are not an image
+    subidos.push(["product-photos", mini(T.usada)]); // made by the route; removed at the end
+    for (const [name, photo] of [["ZZ mini usada", T.usada], ["ZZ mini con", T.conMini], ["ZZ mini rota", T.rota]]) {
+      const { error } = await svc.from("products").insert({ owner_id: C, name, base_currency: "USD", price_retail: 1, photo_path: photo });
+      if (error) throw new Error(`producto ${name}: ${error.message}`);
+    }
+    const FALTA_209 = "¿corrió la migración 209 en esta base?";
+
+    const { data: candT, error: eCandT } = await svc.rpc("storage_orphan_candidates", { p_min_age: "0 seconds", p_limit: 1000, p_scope_owner: C });
+    const nombresT = new Set((candT ?? []).map((c) => c.name));
+    check("T1. la miniatura de una foto EN USO no sale como abandonada", !eCandT && !nombresT.has(mini(T.conMini)), eCandT?.message ?? (nombresT.has(mini(T.conMini)) ? `SALE: ${FALTA_209}` : ""));
+    check("T1b. la de una foto abandonada sí, junto con su foto, y nada más", nombresT.has(T.huerfana) && nombresT.has(mini(T.huerfana)) && nombresT.size === 2, [...nombresT].map((n) => n.split("/")[1]).join(", "));
+    const { data: rcT } = await svc.rpc("storage_orphan_recheck", { p_bucket: "product-photos", p_names: [mini(T.conMini), mini(T.huerfana)] });
+    check("T2. la comprobación de última hora también conoce las miniaturas", JSON.stringify(rcT) === JSON.stringify([mini(T.huerfana)]), JSON.stringify((rcT ?? []).map((n) => n.split("/")[1])));
+
+    const { data: faltan, error: eFaltan } = await svc.rpc("product_photos_missing_thumbnail", { p_limit: 50, p_scope_owner: C });
+    const faltanSet = new Set((faltan ?? []).map((r) => (typeof r === "string" ? r : Object.values(r)[0])));
+    check("T3. faltan las miniaturas de las fotos en uso que no la tienen, y solo esas", !eFaltan && faltanSet.size === 2 && faltanSet.has(T.usada) && faltanSet.has(T.rota), eFaltan ? `${eFaltan.message} — ${FALTA_209}` : [...faltanSet].map((n) => n.split("/")[1]).join(", "));
+    const { error: eFaltanAnon } = await anon().rpc("product_photos_missing_thumbnail", { p_limit: 5 });
+    check("T3b. un anónimo no puede preguntar qué fotos no tienen miniatura", eFaltanAnon?.code === "42501", eFaltanAnon?.code ?? "LO DEJÓ");
+
+    await ajustes({ enforce: false, min_age: "0 seconds", scope_owner: C });
+    const obsT = await conClave();
+    const th = obsT.body?.thumbnails;
+    check("T4. la tarea nocturna hace la miniatura que falta y cuenta la que no se puede hacer", obsT.status === 200 && th?.missing === 2 && th?.made === 1 && th?.failed === 1, JSON.stringify(th));
+    check("T4b. y observando no borra nada", obsT.body?.mode === "observe" && obsT.body?.deleted === 0, JSON.stringify({ mode: obsT.body?.mode, deleted: obsT.body?.deleted }));
+    const { data: hecha } = await svc.storage.from("product-photos").download(mini(T.usada));
+    const meta = hecha ? await sharp(Buffer.from(await hecha.arrayBuffer())).metadata().catch(() => null) : null;
+    check("T5. la miniatura hecha es un JPEG de 400 de ancho, con la proporción de la foto", meta?.format === "jpeg" && meta.width === 400 && meta.height === 300, meta ? `${meta.format} ${meta.width}x${meta.height}` : "no existe");
+    const otraT = await conClave();
+    check("T6. la noche siguiente solo queda la que no se puede hacer", otraT.body?.thumbnails?.missing === 1 && otraT.body?.thumbnails?.made === 0, JSON.stringify(otraT.body?.thumbnails));
+
+    await ajustes({ enforce: true });
+    const actT = await conClave();
+    check("T7. ACTIVADA: borra la foto abandonada y su miniatura, y nada más", actT.body?.mode === "enforce" && actT.body?.deleted === 2, JSON.stringify({ mode: actT.body?.mode, deleted: actT.body?.deleted }));
+    const vivosT = await Promise.all([
+      existe("product-photos", T.usada), existe("product-photos", mini(T.usada)),
+      existe("product-photos", T.conMini), existe("product-photos", mini(T.conMini)),
+    ]);
+    const idosT = await Promise.all([existe("product-photos", T.huerfana), existe("product-photos", mini(T.huerfana))]);
+    check("T7b. siguen las fotos en uso con sus miniaturas; se fueron la abandonada y la suya", vivosT.every(Boolean) && idosT.every((x) => !x), JSON.stringify({ vivos: vivosT, idos: idosT }));
+
+    const { data: antesT } = await svc.from("storage_cleanup_settings").select("thumbnails_per_run").eq("id", true).single();
+    // One photo is still missing its thumbnail (the one that cannot be made), so a pass
+    // that ignored the switch would report `missing: 1` here.
+    await ajustes({ enforce: false, thumbnails_per_run: 0 });
+    const apagada = await conClave();
+    check("T8. con thumbnails_per_run en 0 la tarea ni las busca", apagada.body?.thumbnails?.missing === 0 && apagada.body?.thumbnails?.made === 0, JSON.stringify(apagada.body?.thumbnails));
+    if (antesT) await ajustes({ thumbnails_per_run: antesT.thumbnails_per_run });
+  } catch (e) {
+    check("T. las miniaturas: el bloque se detuvo", false, e instanceof Error ? e.message : String(e));
+  } finally {
+    await ajustes({ enforce: original.enforce, min_age: original.min_age, scope_owner: original.scope_owner });
+  }
 
   // 10-12. The brake on save: a NEW path whose file is gone is refused.
   const accionCrear = await idDeLaAccion(BASE, "/productos/nuevo", "createProduct", cookieA);

@@ -37,7 +37,7 @@ import {
   type CatalogStripProduct,
 } from "@/components/public/catalog-strip";
 import { useTokenDelSaldo } from "@/components/public/back-to-balance";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -300,11 +300,10 @@ export function CartScreen({
                   >
                     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {p?.photo_path ? (
-                        <Image
-                          src={getProductThumbnailUrl(p.photo_path)}
+                        <ProductThumbnail
+                          path={p.photo_path}
                           alt=""
                           fill
-                          unoptimized
                           sizes="64px"
                           className="object-cover"
                         />

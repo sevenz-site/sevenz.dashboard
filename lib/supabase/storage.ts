@@ -19,22 +19,45 @@ export function getPublicProductPhotoUrl(path: string): string {
 // A PRODUCT PHOTO FOR A GRID OR A LIST, 400px wide, for performance on weak signals:
 // owner's go-ahead of 2026-11-15 («Implementa todas las soluciones propuestas de
 // rendimiento»). The original is up to 1600px and 267-374 KB (see below); the grids
-// draw it at 48-320 CSS px, so a page of ten cards was 3-4 MB of photo. Measured in dev on
-// 2026-11-15 with the browser's Accept header (Supabase answers WebP): originals of 210, 335
-// and 374 KB came back at 16, 70 and 50 KB at 400px and quality 60; 480px at quality 70 was
-// 21-90 KB for no visible gain on a phone tile.
+// draw it at 48-320 CSS px, so a page of ten cards was 3-4 MB of photo.
 //
-// WIDTH ONLY, no height and no crop: Supabase keeps the proportion, and each screen
-// already crops with `object-cover`, so a tall photo and a wide one both fill their tile
-// exactly as before.
+// A STORED FILE, NOT A TRANSFORMATION, since the same day. v0.7.0 shipped this as a URL of
+// Supabase's `/render/image/`, which bills every distinct photo served that way, once per
+// billing cycle: 100 are included, and the counter went from 37 to 121 within hours of the
+// release, because every cover in every grid became one. Owner's decision of 2026-11-15:
+// «Aprobado B con las soluciones para peores escenarios» -- B being "save the thumbnail
+// when the photo is uploaded and serve it as it is".
 //
-// IT DEPENDS ON THE PAID IMAGE TRANSFORMATIONS, the same dependency as the link preview
-// below: if they were ever turned off, these URLs would fail and the grids would show
-// their «no photo» placeholder. Galleries and detail sheets keep the original, because
-// there the photo is the point and is drawn large.
+// So the thumbnail is its own object, next to the photo and named after it:
+//
+//     <owner>/<uuid>.jpg            the photo, up to 1600px
+//     <owner>/<uuid>.jpg.thumb.jpg  its thumbnail, 400px wide
+//
+// THE SUFFIX IS APPENDED TO THE WHOLE NAME, extension included, so the photo is always
+// the thumbnail's name minus the suffix, whatever the photo is called. Three places rely
+// on that and must change together: this file, `lib/products/upload-photo.ts` (which
+// writes it from the browser), and migration 209 (the nightly cleanup, which must know a
+// thumbnail belongs to its photo or it deletes it a week after upload; and the nightly
+// pass that makes the ones that are missing).
+//
+// WIDTH ONLY, no height and no crop: the proportion is kept, and each screen already crops
+// with `object-cover`, so a tall photo and a wide one both fill their tile exactly as before.
+//
+// A PHOTO MAY HAVE NO THUMBNAIL: every photo uploaded before this, and any whose thumbnail
+// failed to upload on a weak phone. NEVER PUT THIS URL IN AN `<img>` DIRECTLY. Draw it
+// with `ProductThumbnail` (`components/product-thumbnail.tsx`), which falls back to the
+// photo itself when the thumbnail is not there; a bare `<img>` would show a broken image.
+export const PRODUCT_THUMBNAIL_SUFFIX = ".thumb.jpg";
+export const PRODUCT_THUMBNAIL_WIDTH = 400;
+// 0-100. The browser's canvas takes it as 0.7 and the server's `sharp` as 70.
+export const PRODUCT_THUMBNAIL_QUALITY = 70;
+
+export function productThumbnailPath(path: string): string {
+  return `${path}${PRODUCT_THUMBNAIL_SUFFIX}`;
+}
+
 export function getProductThumbnailUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/, "");
-  return `${base}/storage/v1/render/image/public/product-photos/${path}?width=400&quality=60`;
+  return getPublicProductPhotoUrl(productThumbnailPath(path));
 }
 
 // ═══════════════════════════════════════════════════════════════════════

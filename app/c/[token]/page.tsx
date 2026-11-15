@@ -8,10 +8,8 @@ import { ImageOff } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import {
-  getPublicLogoUrl,
-  getProductThumbnailUrl,
-} from "@/lib/supabase/storage";
+import { getPublicLogoUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
@@ -447,11 +445,10 @@ export default async function CatalogoPublicoPage({
                     >
                       <div className="relative aspect-square w-full bg-muted">
                         {p.photo_path ? (
-                          <Image
-                            src={getProductThumbnailUrl(p.photo_path)}
+                          <ProductThumbnail
+                            path={p.photo_path}
                             alt=""
                             fill
-                            unoptimized
                             sizes="(min-width: 640px) 33vw, 50vw"
                             className="object-cover"
                           />

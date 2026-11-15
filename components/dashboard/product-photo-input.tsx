@@ -1,13 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image";
 import { Camera, ImagePlus, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
-import { fileToResizedBlob } from "@/lib/image";
+import { ProductThumbnail } from "@/components/product-thumbnail";
+import { uploadProductPhoto } from "@/lib/products/upload-photo";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // THE PRODUCT'S PHOTO.
@@ -54,16 +53,9 @@ export function ProductPhotoInput({
     if (!file) return;
     setUploading(true);
     try {
-      const blob = await fileToResizedBlob(file);
-      // The owner's own folder, which is what the storage policy checks and
-      // what `ownPhotoPath` on the server re-checks before writing the column.
-      const path = `${ownerId}/${crypto.randomUUID()}.jpg`;
-      const supabase = createClient();
-      const { error } = await supabase.storage.from("product-photos").upload(path, blob, {
-        contentType: "image/jpeg",
-      });
-      if (error) throw error;
-      onChange(path);
+      // The photo and its 400px thumbnail, into the owner's own folder: the same
+      // function the wizard's input uses, so neither door can skip the thumbnail.
+      onChange(await uploadProductPhoto(createClient(), ownerId, file));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos subir la foto.");
     } finally {
@@ -80,12 +72,11 @@ export function ProductPhotoInput({
             call `/s/[token]` makes for a logo. Next's optimizer would need the
             host in `images.remotePatterns`, and a product photo is already
             resized on the device before it is uploaded. */}
-        <Image
-          src={getProductThumbnailUrl(value)}
+        <ProductThumbnail
+          path={value}
           alt="Foto del producto"
           width={64}
           height={64}
-          unoptimized
           className="size-16 shrink-0 rounded-lg border object-cover"
         />
         <Button

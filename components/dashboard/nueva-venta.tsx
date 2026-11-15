@@ -12,7 +12,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -59,7 +58,7 @@ import {
   textoPermisoDeclarado,
 } from "@/lib/whatsapp-opt-in";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { toast } from "sonner";
 import { CategoryChips, type CategoriaConProductos } from "@/components/category-chips";
 import { NumberedPagination } from "@/components/numbered-pagination";
@@ -1183,7 +1182,7 @@ function TarjetaDeProducto({
   const monedas = monedasDelBloque(bloque, rates).filter((c) => monedasDelLibro.includes(c));
   const moneda = monedas[0] ?? null;
   const precio = moneda ? precioEnMoneda(bloque, moneda, rates) : null;
-  const foto = producto.photoPath ? getProductThumbnailUrl(producto.photoPath) : null;
+  const foto = producto.photoPath || null;
   const sinPrecio = precio == null || moneda == null;
 
   return (
@@ -1203,11 +1202,10 @@ function TarjetaDeProducto({
             desalinean entre sí. */}
         <span className="relative block h-[127px] w-full overflow-hidden bg-muted">
           {foto ? (
-            <Image
-              src={foto}
+            <ProductThumbnail
+              path={foto}
               alt=""
               fill
-              unoptimized
               sizes="(max-width: 448px) 50vw, 161px"
               className="object-cover"
             />
@@ -1349,7 +1347,7 @@ function TarjetaDeLinea({
   const escalon = escalonParaCantidad(linea.producto, linea.quantity);
   const bloque = escalon === "wholesale" ? linea.producto.wholesale : linea.producto.retail;
   const minimo = cantidadMinima(linea.producto);
-  const foto = linea.photoPath ? getProductThumbnailUrl(linea.photoPath) : null;
+  const foto = linea.photoPath || null;
 
   // ── LA CANTIDAD SE PUEDE ESCRIBIR, NO SOLO PULSAR ────────────────────
   //
@@ -1396,7 +1394,7 @@ function TarjetaDeLinea({
       <div className="flex items-center gap-2">
         <span className="relative size-12 shrink-0 overflow-hidden bg-muted">
           {foto ? (
-            <Image src={foto} alt="" fill unoptimized sizes="48px" className="object-cover" />
+            <ProductThumbnail path={foto} alt="" fill sizes="48px" className="object-cover" />
           ) : (
             <span className="flex h-full items-center justify-center">
               <ImageOff className="size-4 text-muted-foreground" aria-hidden="true" />

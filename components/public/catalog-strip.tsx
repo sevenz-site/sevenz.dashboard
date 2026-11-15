@@ -1,10 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { getProductThumbnailUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CLAVE_VOLVER_AL_SALDO } from "@/components/public/back-to-balance";
 
@@ -159,7 +158,7 @@ export function CatalogStrip({
         }`}
       >
         {products.map((p) => {
-          const foto = p.photo_path ? getProductThumbnailUrl(p.photo_path) : null;
+          const foto = p.photo_path || null;
           return (
             <Link
               key={p.id}
@@ -170,11 +169,10 @@ export function CatalogStrip({
             >
               {foto ? (
                 <>
-                  <Image
-                    src={foto}
+                  <ProductThumbnail
+                    path={foto}
                     alt=""
                     fill
-                    unoptimized
                     sizes="120px"
                     className="absolute inset-0 object-cover"
                   />
