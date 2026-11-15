@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { readAllPages } from "@/lib/supabase/read-all";
 import { OwnerUnavailableDialog } from "@/components/owner-unavailable-dialog";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
@@ -94,10 +94,8 @@ export default async function ReportesPage({
   const apartado = apartadoDe(tab);
   const periodoTexto = textoDelRango(rango);
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [clients, { data: owner }, ownerRate] = await Promise.all([
     // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
@@ -117,8 +115,9 @@ export default async function ReportesPage({
       console.error("[reportes] clients:", e instanceof Error ? e.message : e);
       return [];
     }),
-    supabase.from("owners").select("country").eq("id", user!.id).single(),
-    getOwnerRateContext(supabase, user!.id),
+    getOwnerShellRow(supabase, user!.id),
+    // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+    getOwnerRateContext(supabase, user!.id, { refresh: "background" }),
   ]);
 
   // La misma guarda que Inicio, y por la misma razón: no saber el país no es

@@ -10,7 +10,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import {
   getPublicLogoUrl,
-  getPublicProductPhotoUrl,
+  getProductThumbnailUrl,
 } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
@@ -448,7 +448,7 @@ export default async function CatalogoPublicoPage({
                       <div className="relative aspect-square w-full bg-muted">
                         {p.photo_path ? (
                           <Image
-                            src={getPublicProductPhotoUrl(p.photo_path)}
+                            src={getProductThumbnailUrl(p.photo_path)}
                             alt=""
                             fill
                             unoptimized

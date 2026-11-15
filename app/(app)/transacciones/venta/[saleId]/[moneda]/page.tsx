@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { redirect, notFound } from "next/navigation";
 import { Check } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
@@ -66,10 +66,8 @@ export default async function VentaDeContadoPage({
   if (!(segmento in DEL_SEGMENTO)) notFound();
   const moneda = DEL_SEGMENTO[segmento];
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // LA PROPIEDAD, EN CÓDIGO Y NO SOLO POR RLS. Es la regla de `CLAUDE.md` para
@@ -144,7 +142,8 @@ export default async function VentaDeContadoPage({
     tecleadoEnBs != null ? tecleadoEnBs : tasaSellada != null ? total * Number(tasaSellada) : null;
 
   // El libro, solo para formatear. Un negocio colombiano no lo necesita.
-  const resultado = await getOwnerRateContextResult(supabase, user.id);
+  // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+  const resultado = await getOwnerRateContextResult(supabase, user.id, { refresh: "background" });
   const ledger: LedgerDisplay | null =
     resultado.kind === "ve" ? { rate: resultado.context.effectiveRate } : null;
   const formatear = (n: number) => formatLedgerAmount(n, moneda, ledger).primary;

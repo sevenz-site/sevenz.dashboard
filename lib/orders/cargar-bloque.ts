@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import { getBolivarRates } from "@/lib/products/catalog";
 import {
@@ -61,10 +61,10 @@ export async function cargarBloque(
   pedidoId: string,
   moneda: string | undefined,
 ): Promise<BloqueCargado> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Called while rendering the order flow's pages: shares the request's single
+  // Auth call with the layout (lib/supabase/current-user.ts).
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // `.eq("owner_id", user.id)` EXPLICITLY. The id arrives from the URL, so

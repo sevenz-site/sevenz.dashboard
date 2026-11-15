@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -30,10 +31,10 @@ export async function puedeEscribir(
 // signed-in owner blocked? With no session it answers false and lets the page
 // do what it already does without one -- this is a sign, not a gate.
 export async function sesionPausada(): Promise<boolean> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Render-time only (the flow layouts), so it shares the request's single
+  // Auth call with the app layout and the page. See lib/supabase/current-user.ts.
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) return false;
   return !(await puedeEscribir(supabase, user.id));
 }

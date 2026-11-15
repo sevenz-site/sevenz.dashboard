@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NewClientForm } from "@/components/dashboard/new-client-form";
@@ -24,21 +24,15 @@ export const metadata = { title: "Nuevo cliente — Sevenz" };
 export default async function NuevoClientePage() {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // EL PAÍS DEL NEGOCIO decide qué letras ofrece el selector de documento:
   // V/E/J en Venezuela, CC/CE/NIT en Colombia (migración 125). Si no se sabe,
   // `DocumentIdInput` no pinta selector — elegir a ciegas guardaría una «V» en
   // la cédula de un colombiano.
-  const { data: owner } = await supabase
-    .from("owners")
-    .select("country")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data: owner } = await getOwnerShellRow(supabase, user.id);
 
   // LA TASA YA NO HACE FALTA AQUÍ: la hoja de la cuenta duplicada se fue el
   // 2026-10-18 y en su lugar hay un enlace que navega a la ficha del cliente,

@@ -1,7 +1,7 @@
 import { CatalogOrderTrace } from "@/components/dashboard/catalog-order-trace";
 import { redirect, notFound } from "next/navigation";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import Link from "next/link";
@@ -76,10 +76,8 @@ export default async function TransaccionPage({
   // sigue aceptando en la URL —hay enlaces compartidos con él— y se
   // ignora, que es lo que hace que no rompan.
   const { registrada } = await searchParams;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // LA PROPIEDAD SE COMPROBA A TRAVÉS DEL CLIENTE, en código y no solo por RLS.
@@ -97,7 +95,8 @@ export default async function TransaccionPage({
   const m = fila as unknown as Movement;
 
   // ── LA TASA DEL NEGOCIO ──────────────────────────────────────────────
-  const resultado = await getOwnerRateContextResult(supabase, user.id);
+  // Display only: never waits for the BCV fetch (RefreshWait in ensure-fresh.ts).
+  const resultado = await getOwnerRateContextResult(supabase, user.id, { refresh: "background" });
   const ledger: LedgerDisplay | null =
     resultado.kind === "ve" ? { rate: resultado.context.effectiveRate } : null;
 

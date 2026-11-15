@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, ImageOff } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CLAVE_VOLVER_AL_SALDO } from "@/components/public/back-to-balance";
 
@@ -159,7 +159,7 @@ export function CatalogStrip({
         }`}
       >
         {products.map((p) => {
-          const foto = p.photo_path ? getPublicProductPhotoUrl(p.photo_path) : null;
+          const foto = p.photo_path ? getProductThumbnailUrl(p.photo_path) : null;
           return (
             <Link
               key={p.id}

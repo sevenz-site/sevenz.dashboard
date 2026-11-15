@@ -13,6 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   Banknote,
@@ -41,7 +42,6 @@ import { Label } from "@/components/ui/label";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs } from "@/lib/exchange-rate/format";
-import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
 import { CartPillButton } from "@/components/cart-pill-button";
@@ -59,8 +59,11 @@ import {
   textoPermisoDeclarado,
 } from "@/lib/whatsapp-opt-in";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { toast } from "sonner";
+import { CategoryChips, type CategoriaConProductos } from "@/components/category-chips";
+import { NumberedPagination } from "@/components/numbered-pagination";
+import { pageCount } from "@/lib/products/pagination";
 import {
   buscarProductosParaVenta,
   productoParaVentaPorId,
@@ -100,7 +103,20 @@ import {
   clientCardShell,
 } from "@/components/dashboard/client-card";
 import { cn } from "@/lib/utils";
-import { ClientAccountSheet } from "@/components/dashboard/client-account-sheet";
+// TWO SHEETS LOADED ONLY WHEN OPENED, for performance on weak signals (owner's go-ahead
+// of 2026-11-15). The account sheet pulls in recharts through the credit-score chart, and
+// with the quick-create sheet they were ~300 KB the sale screen downloaded before it could
+// draw, for two sheets most sales never open. Both are already mounted only while in use,
+// so the first open now waits for its chunk; `loading` stays empty because each is a
+// sheet that slides in, not a box holding a place on the page.
+const ClientAccountSheet = dynamic(
+  () => import("@/components/dashboard/client-account-sheet").then((m) => m.ClientAccountSheet),
+  { ssr: false },
+);
+const QuickProductSheet = dynamic(
+  () => import("@/components/dashboard/quick-product-sheet").then((m) => m.QuickProductSheet),
+  { ssr: false },
+);
 import type { OwnerRateContext } from "@/lib/exchange-rate/owner-rate";
 import type { LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -815,10 +831,34 @@ function PasoProducto({
   const [recarga, setRecarga] = useState(0);
   // The last product search failed to reach the server.
   const [sinConexion, setSinConexion] = useState(false);
+  // PAGES OF TEN AND A CATEGORY FILTER (owner's request of 2026-11-15). Both reset the
+  // page to 1 when the search or the chip changes, in the handlers below and not in an
+  // effect, so a new filter never asks the server for page 4 of a shorter list.
+  const [pagina, setPagina] = useState(1);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [chips, setChips] = useState<{ categorias: CategoriaConProductos[]; total: number } | null>(null);
+  // The chips are asked for once per visit to this step: they do not change while typing.
+  const chipsPedidos = useRef(false);
+  const arribaDeLaLista = useRef<HTMLDivElement>(null);
+  const buscar = (texto: string) => {
+    setQuery(texto);
+    setPagina(1);
+  };
+  const filtrar = (id: string | null) => {
+    setCategoryId(id);
+    setPagina(1);
+  };
+  const irAPagina = (n: number) => {
+    setPagina(n);
+    // Back to the top of the grid: page 2 starts where page 1 started, not where the
+    // thumb was when it tapped «Siguiente» at the bottom.
+    arribaDeLaLista.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
 
   // SE BUSCA AL ESCRIBIR, con el mismo retardo que el resto de los buscadores
   // de la app. La primera carga trae los doce primeros por orden alfabético
   // para que la pantalla no empiece vacía: el tendero suele vender lo mismo.
+  // (Since 2026-11-15 it is pages of ten with numbered pages, see `pagina`.)
   //
   // `useEffect` Y NO `useMemo`. La primera versión de esto usaba `useMemo`
   // devolviendo una función de limpieza, y `useMemo` NO LAS EJECUTA: cada
@@ -836,9 +876,16 @@ function PasoProducto({
       setCargando(true);
       setSinConexion(false);
       try {
-        const r = await buscarProductosParaVenta(query);
+        const withCategories = !chipsPedidos.current;
+        const r = await buscarProductosParaVenta(query, { page: pagina, categoryId, withCategories });
         if (!vivo) return;
         onCatalogo(r);
+        if (withCategories && r.categorias) {
+          chipsPedidos.current = true;
+          setChips({ categorias: r.categorias, total: r.totalProductos ?? 0 });
+        }
+        // The server may have served an earlier page (the list shrank under this one).
+        if (r.page && r.page !== pagina) setPagina(r.page);
         setBuscado(true);
       } catch (e) {
         // A DROPPED REQUEST ON A WEAK SIGNAL used to leave this promise rejected
@@ -855,9 +902,10 @@ function PasoProducto({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, recarga]);
+  }, [query, recarga, pagina, categoryId]);
 
   const enElCarrito = lineas.reduce((n, l) => n + l.quantity, 0);
+  const paginas = pageCount(catalogo?.total ?? 0);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -865,7 +913,7 @@ function PasoProducto({
           frame forman un bloque —buscar o crear— frente a la cuadrícula de
           abajo, y esa distinta separación es lo que los agrupa. */}
       <div className="flex flex-col gap-2">
-        <SearchField value={query} onChange={setQuery} placeholder="Buscar producto" />
+        <SearchField value={query} onChange={buscar} placeholder="Buscar producto" />
 
       {/* «AGREGAR PRODUCTO» ABRE EL DIÁLOGO AQUÍ MISMO, no lleva al catálogo.
           Irse a `/productos?nuevo=1` habría sido una línea, y habría tirado el
@@ -896,12 +944,32 @@ function PasoProducto({
         </div>
       ) : null}
 
+      {/* THE SAME CHIPS AS BOTH CATALOGUES (`CategoryChips`), under the same title as
+          the customer's. Only categories with products: see `categoriasConProductos`. */}
+      {chips && chips.categorias.length > 0 ? (
+        <section aria-labelledby="venta-categorias" className="flex flex-col gap-1">
+          <h2 id="venta-categorias" className="text-sm leading-5">
+            Categorías
+          </h2>
+          <CategoryChips
+            categorias={chips.categorias}
+            total={chips.total}
+            value={categoryId}
+            onChange={filtrar}
+          />
+        </section>
+      ) : null}
+
+      <div ref={arribaDeLaLista} className="scroll-mt-4" aria-hidden="true" />
+
       {catalogo && catalogo.productos.length === 0 && buscado && !cargando ? (
         <EmptyState
           title={
-            query.trim() === ""
-              ? "Todavía no tienes productos en tu catálogo"
-              : `No encontramos nada con «${query.trim()}»`
+            query.trim() !== ""
+              ? `No encontramos nada con «${query.trim()}»`
+              : categoryId
+                ? "No hay productos en esta categoría"
+                : "Todavía no tienes productos en tu catálogo"
           }
         />
       ) : null}
@@ -924,6 +992,8 @@ function PasoProducto({
           />
         ))}
       </ul>
+
+      <NumberedPagination page={pagina} pages={paginas} onChange={irAPagina} />
 
       {/* LA MISMA PÍLDORA FLOTANTE QUE EL CATÁLOGO DEL CLIENTE, a petición del
           dueño el 2026-10-18: «exactamente el mismo» componente.
@@ -1102,7 +1172,7 @@ function TarjetaDeProducto({
   const monedas = monedasDelBloque(bloque, rates).filter((c) => monedasDelLibro.includes(c));
   const moneda = monedas[0] ?? null;
   const precio = moneda ? precioEnMoneda(bloque, moneda, rates) : null;
-  const foto = producto.photoPath ? getPublicProductPhotoUrl(producto.photoPath) : null;
+  const foto = producto.photoPath ? getProductThumbnailUrl(producto.photoPath) : null;
   const sinPrecio = precio == null || moneda == null;
 
   return (
@@ -1268,7 +1338,7 @@ function TarjetaDeLinea({
   const escalon = escalonParaCantidad(linea.producto, linea.quantity);
   const bloque = escalon === "wholesale" ? linea.producto.wholesale : linea.producto.retail;
   const minimo = cantidadMinima(linea.producto);
-  const foto = linea.photoPath ? getPublicProductPhotoUrl(linea.photoPath) : null;
+  const foto = linea.photoPath ? getProductThumbnailUrl(linea.photoPath) : null;
 
   // ── LA CANTIDAD SE PUEDE ESCRIBIR, NO SOLO PULSAR ────────────────────
   //

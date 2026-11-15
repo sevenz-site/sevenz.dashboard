@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
@@ -36,10 +36,8 @@ export default async function NuevoAbonoPage({
   const { cliente: clienteId, desde } = await searchParams;
   if (!clienteId) notFound();
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   // LA COMPROBACIÓN DE PROPIEDAD, EXPLÍCITA Y NO SOLO POR RLS. `clienteId`

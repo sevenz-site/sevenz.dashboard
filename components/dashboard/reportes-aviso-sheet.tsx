@@ -12,7 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import type { ProductoEnAviso } from "@/lib/reports/inventario";
 
@@ -104,7 +104,7 @@ export function ReportesAvisoSheet({
               veinte productos el título tiene que quedarse a la vista. */}
           <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
             {productos.map((p) => {
-              const foto = p.fotoPath ? getPublicProductPhotoUrl(p.fotoPath) : null;
+              const foto = p.fotoPath ? getProductThumbnailUrl(p.fotoPath) : null;
               return (
                 <li key={p.id}>
                   <Fila id={p.id} conFicha={conFicha}>

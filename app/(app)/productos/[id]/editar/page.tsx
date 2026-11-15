@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { ProductoFlujo } from "@/components/dashboard/producto-flujo";
@@ -23,10 +23,8 @@ export default async function EditarProductoPage({
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const [datos, delProducto] = await Promise.all([

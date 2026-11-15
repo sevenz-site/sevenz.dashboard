@@ -1,6 +1,5 @@
 import { ZonaDelNegocioProvider } from "@/components/fecha";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import Image from "next/image";
@@ -23,8 +22,11 @@ import { CuentaPausadaProvider } from "@/components/dashboard/cuenta-pausada";
 import { motivoDeBloqueo } from "@/lib/cuenta-pausada-server";
 import { mustResetPassword } from "@/lib/security/new-device";
 import { ResetRequired } from "@/components/reset-required";
-import { getUnreadNotificationCount } from "@/app/(app)/actions";
+import { cookies } from "next/headers";
+import { countUnreadNotifications } from "@/lib/notifications/unread-count";
 import { refreshStockAlerts } from "@/lib/stock-alerts";
+import { STOCK_ALERTS_DAY_COOKIE, stockAlertsDayValue } from "@/lib/stock-alerts-day";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { getImportUsageForOwner } from "@/lib/import-usage";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -32,21 +34,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return <SetupNotice />;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
   }
 
+  // The proxy already ran today's refresh on the first page visit of the day
+  // and left this cookie; see lib/stock-alerts-day.ts for when it did not.
+  const stockAlertsDue =
+    (await cookies()).get(STOCK_ALERTS_DAY_COOKIE)?.value !== stockAlertsDayValue(user.id);
+
   const [{ data: owner }, unreadCount, importUsage, motivo, mustReset] = await Promise.all([
-    supabase.from("owners").select("business_name, onboarding_completed_at, plan, country").eq("id", user.id).single(),
+    // Shared with the page and the rate helpers through React cache(): one
+    // `owners` read per request instead of one per caller.
+    getOwnerShellRow(supabase, user.id),
     // Today's inventory notices (CT-162) before counting, so a product still
     // low since yesterday puts its notice in the badge on the first load of
     // the day. Chained, not parallel: the count has to see the new row.
-    refreshStockAlerts(supabase).then(() => getUnreadNotificationCount()),
+    // Since 2026-11-15 only when the day's refresh has not happened yet, and
+    // the count takes the user already validated above instead of asking Auth
+    // again through the server action.
+    (stockAlertsDue ? refreshStockAlerts(supabase) : Promise.resolve()).then(() =>
+      countUnreadNotifications(supabase, user.id),
+    ),
     getImportUsageForOwner(supabase, user.id),
     // Si la cuenta esta pausada. Va en el layout y no en la cartera porque
     // el aviso tiene que salir se entre por donde se entre, y porque desde

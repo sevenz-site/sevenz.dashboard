@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
@@ -55,10 +55,8 @@ export default async function MontoDelAbonoPage({
   // por la ficha del cliente, para que la flecha de la 1/2 sepa volver allí al
   // regresar de aquí. Ver `desde` en `abono-reparto.tsx`.
   const sufijoDelOrigen = desde === "cliente" ? "&desde=cliente" : "";
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
 
   const { data: fiado } = await supabase

@@ -6,6 +6,11 @@ import {
   isPageVisit,
   rememberSessionDevice,
 } from "@/lib/security/session-device";
+import {
+  STOCK_ALERTS_DAY_COOKIE,
+  stockAlertsDayCookieOptions,
+  stockAlertsDayValue,
+} from "@/lib/stock-alerts-day";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -125,6 +130,33 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
+  }
+
+  // Today's inventory notices, once per Venezuelan day instead of on every layout render.
+  // The reasons, and why it is here and not in the layout, are in lib/stock-alerts-day.ts.
+  // Before the device branch on purpose: this call uses `supabase`, whose setAll would
+  // replace supabaseResponse, and a cookie set on the old response would be lost. Never
+  // throws, and on failure leaves no cookie, so the layout runs the RPC itself.
+  if (
+    user &&
+    isPageVisit(request) &&
+    !request.nextUrl.pathname.startsWith("/admin") &&
+    request.cookies.get(STOCK_ALERTS_DAY_COOKIE)?.value !== stockAlertsDayValue(user.id)
+  ) {
+    try {
+      const { error } = await supabase.rpc("refresh_stock_alerts");
+      if (error) {
+        console.error("proxy: refresh_stock_alerts failed", error);
+      } else {
+        supabaseResponse.cookies.set(
+          STOCK_ALERTS_DAY_COOKIE,
+          stockAlertsDayValue(user.id),
+          stockAlertsDayCookieOptions(request.nextUrl.protocol === "https:"),
+        );
+      }
+    } catch (error) {
+      console.error("proxy: refresh_stock_alerts threw", error);
+    }
   }
 
   // A session that was already open when the device list shipped never went through the

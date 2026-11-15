@@ -37,7 +37,7 @@ import {
   type CatalogStripProduct,
 } from "@/components/public/catalog-strip";
 import { useTokenDelSaldo } from "@/components/public/back-to-balance";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { getProductThumbnailUrl } from "@/lib/supabase/storage";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -301,7 +301,7 @@ export function CartScreen({
                     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {p?.photo_path ? (
                         <Image
-                          src={getPublicProductPhotoUrl(p.photo_path)}
+                          src={getProductThumbnailUrl(p.photo_path)}
                           alt=""
                           fill
                           unoptimized

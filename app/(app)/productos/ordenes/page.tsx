@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { readAllPages } from "@/lib/supabase/read-all";
 import { ScreenHeader } from "@/components/dashboard/screen-header";
 import { OrdersEmpty } from "@/components/dashboard/orders-empty";
@@ -39,10 +39,8 @@ import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 // ===========================================================================
 
 export default async function OrdenesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const supabase = await getRequestClient();
+  const user = await getCurrentUser();
 
   const [
     { data: orders, error: errorOrders },
@@ -93,7 +91,7 @@ export default async function OrdenesPage() {
     // EL ENLACE VIENE SERVIDO, no se crea al pulsar: `navigator.share` tiene
     // que salir del gesto del dedo, y un `await` entre el toque y la hoja es
     // lo que iOS Safari rechaza. Misma razón escrita en `productos/page.tsx`.
-    supabase.from("owners").select("business_name").eq("id", user!.id).maybeSingle(),
+    getOwnerShellRow(supabase, user!.id),
     supabase.from("catalog_share_links").select("token").eq("owner_id", user!.id).maybeSingle(),
     // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
     readAllPages<{ published_retail: boolean; published_wholesale: boolean }>((from, to) =>
