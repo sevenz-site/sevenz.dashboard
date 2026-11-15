@@ -2235,7 +2235,11 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
   confirms it is done** — even if the session already looks like Fable 5.2, since
   the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
   Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
-  confirme que ya cambié el modelo a Fable 5.1»*. Then
+  confirme que ya cambié el modelo a Fable 5.1»*. **Once the checklist is
+  done, ask the owner to switch the session back to Opus 5.5**
+  (`/model claude-opus-5-5`), in the final report — owner's rule of 2026-11-15:
+  *«una vez termines el QA checklist debes pedirme cambiar el modelo de fable 5.2
+  a opus 5.5»*. A request, not a stop: it does not hold the launch. Then
   wait for the user's explicit confirmation before actually launching. An
   interface with no Figma, no Drive document, or missing from the release's
   Trello ticket blocks the launch (section 4g).
