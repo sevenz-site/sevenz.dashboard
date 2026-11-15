@@ -335,6 +335,10 @@ export const MANIFEST = {
     // CRON_SECRET calls them; a session gets 42501.
     storage_orphan_candidates: "service",
     storage_orphan_recheck: "service",
+    // Migration 209: which product photos in use have no stored thumbnail. Same
+    // caller and same closing as the two above; `qa:storage-cleanup` T3b checks
+    // that an anonymous caller gets 42501.
+    product_photos_missing_thumbnail: "service",
     // 180: the insert guard runs as the caller and asks whether the rules are
     // on, so any owner may execute it. It returns a boolean and nothing else.
     // Revoking it from `authenticated` refused every direct fiado and abono
