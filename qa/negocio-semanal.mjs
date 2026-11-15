@@ -103,6 +103,51 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   const sinNombre = mondayPlan(base({ first_name: null, business_name: null, ledgers: { USD: libro(5) } }));
   check("4f. sin nombre ni negocio, «hola» y no un saludo vacío", param(sinNombre, "owner_name") === "hola", param(sinNombre, "owner_name"));
 }
+// THE THREE MONDAY TEMPLATES APPROVED ON 2026-11-15 (migration 207). `fam` is a row as 207
+// returns it: an old account (40 days), first week already sent, nothing streaking.
+{
+  const fam = (o = {}) => base({
+    account_age_days: 40, clients_count: 0, products_count: 0, has_records: true,
+    first_week_sent: true, status_streak: 0, ...o,
+  });
+  const nombres = (p) => (p.params ?? []).map((x) => x.nombre).join(",");
+
+  const ventas = mondayPlan(fam({ sales: { USD: { count: 5, amount: 340 }, EUR: { count: 3, amount: 50 } } }));
+  check("4g. nada por cobrar y vendió: ventas_resumen con owner_name y sales_summary",
+    ventas.template === "ventas_resumen" && nombres(ventas) === "owner_name,sales_summary"
+      && param(ventas, "sales_summary") === "5 ventas por $340,00 y 3 ventas por €50,00",
+    `${ventas.template} · ${nombres(ventas)} · ${param(ventas, "sales_summary")}`);
+
+  const conDeuda = mondayPlan(fam({ ledgers: { USD: libro(80) }, sales: { USD: { count: 2, amount: 20 } } }));
+  check("4h. con algo por cobrar manda negocio_resumen aunque haya vendido", conDeuda.template === "negocio_resumen", conDeuda.template);
+
+  const estado = mondayPlan(fam({ clients_count: 12, products_count: 30 }));
+  check("4i. sin ventas ni cobros pero con clientes y productos: negocio_estado",
+    estado.template === "negocio_estado" && nombres(estado) === "owner_name,clients_count,products_count"
+      && param(estado, "clients_count") === "12" && param(estado, "products_count") === "30",
+    `${estado.template} · ${nombres(estado)}`);
+  check("4j. negocio_estado se detiene tras tres lunes seguidos",
+    mondayPlan(fam({ clients_count: 12, status_streak: 3 })).skip === "estado_detenido");
+  check("4k. con dos seguidos, el tercero sí sale",
+    mondayPlan(fam({ clients_count: 12, status_streak: 2 })).template === "negocio_estado");
+  check("4l. una cuenta vacía no recibe nada el lunes", mondayPlan(fam()).skip === "cuenta_vacia");
+
+  const nueva = mondayPlan(fam({ account_age_days: 6, first_week_sent: false, ledgers: { USD: libro(40) }, sales: { USD: { count: 1, amount: 9 } } }));
+  check("4m. primera semana (6 días, registró algo): primera_semana sustituye al lunes, aunque deba",
+    nueva.template === "primera_semana" && nombres(nueva) === "owner_name,sales_summary,amount_due"
+      && param(nueva, "amount_due") === "$40,00" && param(nueva, "sales_summary") === "1 venta por $9,00",
+    `${nueva.template} · ${nombres(nueva)}`);
+  check("4n. con 4 días todavía no", mondayPlan(fam({ account_age_days: 4, first_week_sent: false, clients_count: 1 })).template === "negocio_estado");
+  check("4o. con 12 días ya no: pasó su primer lunes", mondayPlan(fam({ account_age_days: 12, first_week_sent: false, clients_count: 1 })).template === "negocio_estado");
+  check("4p. una sola vez en la vida de la cuenta", mondayPlan(fam({ account_age_days: 6, first_week_sent: true, clients_count: 1 })).template === "negocio_estado");
+  check("4q. si no registró nada, no hay primera semana", mondayPlan(fam({ account_age_days: 6, first_week_sent: false, has_records: false })).skip === "cuenta_vacia");
+  check("4r. el pausado sigue recibiendo cartera_pausada, aunque sea su primera semana",
+    mondayPlan(fam({ paused: true, account_age_days: 6, first_week_sent: false })).template === "cartera_pausada");
+  check("4s. una cuenta de prueba sigue con cartera_summary_v2",
+    mondayPlan(fam({ is_test: true, clients_count: 5 })).template === "cartera_summary_v2");
+  const co = mondayPlan(fam({ country: "CO", sales: { COP: { count: 2, amount: 90000 } } }));
+  check("4t. Colombia: ventas_resumen en pesos", co.template === "ventas_resumen" && param(co, "sales_summary").startsWith("2 ventas por"), param(co, "sales_summary"));
+}
 {
   const t = base({ ledgers: { USD: libro(100, 1, 100) } });
   check("5a. cita del lunes ya usada: no sale otra plantilla", mondayPlan({ ...t, monday_used: true }).skip === "cita_usada");
@@ -289,6 +334,14 @@ try {
   check("17b. jueves: atencion_negocio (hay agotados y un pedido), por vencer «1 cliente por $50,00»",
     jueves.template === "atencion_negocio" && param(jueves, "due_summary") === "1 cliente por $50,00" && param(jueves, "open_orders") === "1",
     `${jueves.template} · ${param(jueves, "due_summary")}`);
+
+  // MIGRATION 207: the six figures the three Monday templates of 2026-11-15 need. Without
+  // them the code silently keeps the old Monday template, so this is the only check that
+  // tells whether the new ones can go out at all.
+  check("17c. la 207 trae los seis datos del lunes (antigüedad, clientes, productos, registros, primera semana, racha)",
+    typeof r.account_age_days === "number" && typeof r.clients_count === "number" && typeof r.products_count === "number"
+      && typeof r.has_records === "boolean" && typeof r.first_week_sent === "boolean" && typeof r.status_streak === "number",
+    JSON.stringify({ edad: r.account_age_days, clientes: r.clients_count, productos: r.products_count, registros: r.has_records, primera: r.first_week_sent, racha: r.status_streak }));
 
   // SLOTS AND THE PHONE CAP. A and B share one number.
   await admin.from("whatsapp_sends").insert({ owner_id: A, template: "negocio_resumen", period_key: periodo, ok: false });
