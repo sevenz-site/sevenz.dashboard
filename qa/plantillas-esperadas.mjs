@@ -188,8 +188,12 @@ export const PLANTILLAS_ESPERADAS = {
   // COMPARED ON 2026-11-15 against Kapso's curl, pasted by the owner the day Meta approved
   // them: named parameters in this order, language `es`, the owners' number, and no button
   // component («los botones tienen URL fija y no requieren parámetros»). Both match what
-  // `mondayPlan` sends. `ventas_resumen` was approved the same day and is NOT here yet: its
-  // curl had not been compared, and a row nobody checked would vouch for it.
+  // `mondayPlan` sends. `ventas_resumen` was approved the same day; its curl came a message
+  // later and was compared the same way, with the same result.
+  ventas_resumen: {
+    cuerpo: ["owner_name", "sales_summary"],
+    boton: "sin_parametros",
+  },
   negocio_estado: {
     cuerpo: ["owner_name", "clients_count", "products_count"],
     boton: "sin_parametros",

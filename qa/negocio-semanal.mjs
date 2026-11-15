@@ -113,8 +113,8 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   const nombres = (p) => (p.params ?? []).map((x) => x.nombre).join(",");
 
   const ventas = mondayPlan(fam({ sales: { USD: { count: 5, amount: 340 }, EUR: { count: 3, amount: 50 } } }));
-  check("4g. nada por cobrar y vendió: ventas_resumen con owner_name y sales_summary",
-    ventas.template === "ventas_resumen" && nombres(ventas) === "owner_name,sales_summary"
+  check("4g. nada por cobrar y vendió: ventas_resumen, como lo aprobó Meta",
+    ventas.template === "ventas_resumen" && nombresEnOrden(ventas)
       && param(ventas, "sales_summary") === "5 ventas por $340,00 y 3 ventas por €50,00",
     `${ventas.template} · ${nombres(ventas)} · ${param(ventas, "sales_summary")}`);
 
