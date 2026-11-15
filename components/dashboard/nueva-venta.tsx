@@ -816,7 +816,10 @@ function PasoProducto({
   umbralDeStock: number;
 }) {
   const [query, setQuery] = useState("");
-  useSearchEvent("sale_products", query, catalogo?.productos.length ?? 0);
+  // `total`, not the page's length: since the list pages by ten (2026-11-15) the rows on
+  // screen are at most ten, and the search event asks how many products MATCHED. Until
+  // that day the figure was capped at twelve, the old page size; the series changes there.
+  useSearchEvent("sale_products", query, catalogo?.total ?? catalogo?.productos.length ?? 0);
   const [cargando, setCargando] = useState(false);
   const [buscado, setBuscado] = useState(false);
   const [creando, setCreando] = useState(false);
@@ -845,6 +848,14 @@ function PasoProducto({
     setPagina(1);
   };
   const filtrar = (id: string | null) => {
+    // DOES THE SHOPKEEPER USE THE CATEGORIES AT THE COUNTER, OR DOES HE SEARCH? The owner
+    // added them «para facilitar la búsqueda del producto» (2026-11-15). If nobody taps
+    // them here, they take a row of a screen used with a customer waiting and should go;
+    // if they are tapped more than the search box, the search is what is not working.
+    // Compared with `Search Performed` on the same `screen`. The same event the owner's
+    // catalogue sends for its chips, with this screen's name; no category name travels.
+    // A gesture sent from the browser, so a floor, filed under the owner.
+    track("List Filtered", { screen: "sale_products", filter: "category" });
     setCategoryId(id);
     setPagina(1);
   };

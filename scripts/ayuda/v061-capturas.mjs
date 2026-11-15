@@ -3,6 +3,7 @@
 //   MSYS_NO_PATHCONV=1 node v061-capturas.mjs [phone|web]
 // Phone (375) is the default; `web` expects the daemon started with AYUDA_W=1280 AYUDA_H=800.
 // Shots that need a broken network fake it inside the page (window.fetch), never on the server.
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { FIND } from "./c.mjs";
 
@@ -10,7 +11,8 @@ const MODE = process.argv[2] ?? "phone";
 // Resume from a section: 1 sale, 9 product photos, 11 loading screens.
 const FROM = Number(process.argv[3] ?? 1);
 const OUT = fileURLToPath(new URL("./raw/v061/", import.meta.url));
-const TOKEN = "eb5868b924086aed1429795ec88b53c9";
+// The demo catalogue link, from the manifest seed-demo.mjs writes: never typed here.
+const TOKEN = JSON.parse(readFileSync(new URL("./demo-manifest.json", import.meta.url), "utf8")).catalogToken;
 
 const call = async (q) => {
   const r = await (await fetch("http://127.0.0.1:9555", { method: "POST", body: JSON.stringify(q) })).json();
