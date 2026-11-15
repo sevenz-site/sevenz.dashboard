@@ -1,4 +1,3 @@
-import sharp from "sharp";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   PRODUCT_THUMBNAIL_QUALITY,
@@ -25,6 +24,14 @@ import {
 // `package.json` (Next uses it for its own image optimizer); this is the first file that
 // imports it, so the first deploy has to confirm it loads on Vercel. If it does not, the
 // pass fails, says so in its result, and nothing else is affected.
+//
+// THAT LAST SENTENCE IS ONLY TRUE BECAUSE `sharp` IS IMPORTED INSIDE THE PASS, not at the
+// top of this file. A static import is resolved when the route's module loads: a native
+// binary missing on Vercel would then take the whole route down, the cleanup with it,
+// every night and with nothing in the response to say why. It was a static import until
+// 2026-11-15, caught before release: the preview's cron secret is not the local one, so
+// this pass could not be run on Vercel ahead of production, and the first real run is the
+// production night. Do not hoist the import back.
 //
 // IT DELETES NOTHING AND OVERWRITES NOTHING: `upsert: false`, so a thumbnail the
 // shopkeeper's phone uploaded a second earlier wins and this one is counted as present.
@@ -89,6 +96,10 @@ export async function makeMissingThumbnails(options: {
     typeof row === "string" ? row : String(Object.values(row as Record<string, unknown>)[0]),
   );
   result.missing = names.length;
+  if (names.length === 0) return result;
+
+  // Loaded here and not at the top of the file: see the header.
+  const { default: sharp } = await import("sharp");
 
   const bucket = db.storage.from("product-photos");
   const queue = [...names];
