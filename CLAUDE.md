@@ -1711,8 +1711,10 @@ tanto mensaje»*.
 1. **Dos citas fijas, y nada más.** Lunes, el resumen. Jueves, lo que requiere atención.
    Una plantilla por cita, y el código elige cuál según el estado de la cuenta.
 2. **El tercero es extraordinario, no un cupo mensual.** Solo sale si la cuenta puede
-   perder algo por no saberlo. Hoy eso es uno: `prueba_por_vencer`. Antes de declarar otro
-   se le pregunta al dueño.
+   perder algo por no saberlo. Hoy son dos: `prueba_por_vencer`, y `cierre_mensual` cuando
+   ningún jueves antes del día 15 salió callado. El segundo lo declaró el dueño el 2026-11-16
+   (*«Sale como tercer mensaje»*), para que el cierre no le quite al dueño su aviso de cobros.
+   Antes de declarar otro se le pregunta al dueño.
 3. **Lo que no es extraordinario ocupa una cita o espera.** `cierre_mensual` toma un jueves
    que iba a salir callado, y `primera_semana` sustituye a su lunes.
 4. **El tope se cuenta por TELÉFONO, no por negocio.** Nada impide que dos negocios

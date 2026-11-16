@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { esMonedaConocida, formatDinero } from "@/lib/reports/ganancia";
 import { guardarUmbralDeStock } from "@/app/(app)/reportes/actions";
 import type { Inventario } from "@/lib/reports/inventario";
+import type { CierreDelMes } from "@/lib/reports/cierre-del-mes";
+import { ReportesCierreDelMes } from "@/components/dashboard/reportes-cierre-del-mes";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LA PESTAÑA «INVENTARIO» — frame `1667:19321`
@@ -447,11 +449,16 @@ export function ReportesInventario({
   datos,
   periodoTexto,
   tasas,
+  cierre = null,
+  country = null,
 }: {
   datos: Inventario;
   periodoTexto: string;
   /** Bs por dólar y por euro, para la línea pequeña de las hojas. */
   tasas: { usd: number; eur: number } | null;
+  /** Last closed month (`lib/reports/cierre-del-mes.ts`). Null when it could not be read. */
+  cierre?: CierreDelMes | null;
+  country?: string | null;
 }) {
   const sinProductos = datos.totalProductos === 0;
 
@@ -733,6 +740,13 @@ export function ReportesInventario({
           ) : null
         }
       />
+      {/* «Cierre de …», where the `cierre_mensual` button lands (`?seccion=margen`): right
+          under this title, so the anchor puts it on screen. Frame 2170:19145. */}
+      {cierre ? (
+        <div className="pb-4">
+          <ReportesCierreDelMes cierre={cierre} country={country} />
+        </div>
+      ) : null}
       <GraficoDeProductos
         filas={datos.margen.map((m) => ({
           id: m.id,

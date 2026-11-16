@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { templateSafe } from "@/lib/security/device-text";
+import type { CierreDelMes } from "@/lib/reports/cierre-del-mes";
 
 // WHAT THE MONDAY AND THURSDAY MESSAGES SAY, AND WHICH ONE GOES. Pure: no database, no
 // network, so `qa:negocio-semanal` can feed it every edge without sending anything.
@@ -73,6 +74,9 @@ export type SkipReason =
   | "pausado"
   | "cuenta_de_prueba"
   | "sin_cobros"
+  // No debts, and products or orders to attend, but none of them new since last Thursday:
+  // «Solo productos y pedidos esperan a que haya novedad» (owner, 2026-11-06).
+  | "sin_novedad"
   // `negocio_estado` already went out three Mondays in a row: it stops (207).
   | "estado_detenido"
   // Nothing owed, nothing sold, no clients and no products: a message would be all zeros.
@@ -95,6 +99,8 @@ export const TEMPLATES = {
   paused: "cartera_pausada",
   attentionDebts: "atencion_cobros",
   attentionBusiness: "atencion_negocio",
+  attentionProducts: "atencion_productos",
+  monthlyClose: "cierre_mensual",
 } as const;
 
 /** The books a business keeps, in the order they are written: dollars before euros. */
@@ -317,14 +323,36 @@ export function thursdayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
 
   const books = ledgersOf(t.country).map((l) => t.ledgers[l]);
   const debts = books.some((f) => f && (Number(f.overdue_count) > 0 || Number(f.soon_count) > 0));
-  // «Con deudores, el jueves sale siempre» (owner, 2026-11-06). Without them, products and
-  // orders alone would need `atencion_productos`. Meta approved it (owner, 2026-11-16), but its
-  // send is not built yet: nothing goes out.
-  if (!debts) return { skip: "sin_cobros" };
+  const items = t.out_of_stock + t.low_stock + t.open_orders > 0;
+  // PRODUCTS AND ORDERS ONLY WHEN SOMETHING IS NEW. Owner's decision of 2026-11-14 («Solo lo
+  // que cambió», «Bloque solo si hay algo nuevo»): a product ran out or started running low,
+  // or an order arrived, since last Thursday.
+  const somethingNew = items && Number(t.new_attention_items ?? 0) > 0;
+
+  // «Con deudores, el jueves sale siempre» (owner, 2026-11-06). Without them, only something
+  // new about products or orders sends a message: `atencion_productos`, below.
+  if (!debts && !somethingNew) return { skip: items ? "sin_novedad" : "sin_cobros" };
 
   if (t.phone_slots_used + sentOnPhone >= PHONE_WEEKLY_CAP) return { skip: "tope_telefono" };
 
   const name = ownerName(t) || "hola";
+
+  // NO DEBTS, SOMETHING NEW ABOUT PRODUCTS OR ORDERS: `atencion_productos`, approved by Meta on
+  // 2026-11-16. «Debts» here are the two lines the Thursday reports, overdue and due within 7
+  // days: an owner who is owed only on fiados WITHOUT a deadline gets it too, owner's decision
+  // of 2026-11-16 («Sí, que salga»). The message speaks of products and orders only, so it is
+  // true whatever is owed. The three figures are today's totals, as in `atencion_negocio`.
+  if (!debts) {
+    return {
+      template: TEMPLATES.attentionProducts,
+      params: [
+        { nombre: "owner_name", texto: name },
+        { nombre: "out_of_stock", texto: String(t.out_of_stock) },
+        { nombre: "low_stock", texto: String(t.low_stock) },
+        { nombre: "open_orders", texto: String(t.open_orders) },
+      ],
+    };
+  }
 
   const common = [
     { nombre: "owner_name", texto: name },
@@ -332,12 +360,11 @@ export function thursdayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
     { nombre: "due_summary", texto: dueSoonSummary(t) },
   ];
 
-  // PRODUCTS AND ORDERS ONLY WHEN SOMETHING IS NEW. Owner's decision of 2026-11-14 («Solo lo
-  // que cambió», «Bloque solo si hay algo nuevo»): the three lines come back only if, since
-  // last Thursday, a product ran out, one started running low, or an order arrived. When they
-  // do, they carry TODAY'S TOTALS, the figures Reportes shows; a count of only the new ones
-  // would say «1 agotado» with 4 out in the app. With nothing new, `atencion_cobros`.
-  if (t.out_of_stock + t.low_stock + t.open_orders > 0 && Number(t.new_attention_items ?? 0) > 0) {
+  // With debts, the products and orders lines come back only when something is new (see
+  // `somethingNew`). When they do, they carry TODAY'S TOTALS, the figures Reportes shows; a
+  // count of only the new ones would say «1 agotado» with 4 out in the app. With nothing new,
+  // `atencion_cobros`.
+  if (somethingNew) {
     return {
       template: TEMPLATES.attentionBusiness,
       params: [
@@ -349,4 +376,114 @@ export function thursdayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
     };
   }
   return { template: TEMPLATES.attentionDebts, params: common };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `cierre_mensual`: THE CLOSE OF LAST MONTH, ON A THURSDAY BEFORE THE 15TH
+//
+// Approved by Meta on 2026-11-16. The figures come from `lib/reports/cierre-del-mes.ts`, the
+// same computation the «Cierre de …» card in Reportes draws, so the button lands on the
+// figure the message said.
+//
+// WHICH THURSDAY, from the spec and the owner's answer of 2026-11-16:
+//   - «Toma un jueves que iba a salir callado»: a Thursday with nothing else to say takes it,
+//     inside the Thursday slot and under the phone cap.
+//   - Only the Thursdays from the 1st to the 14th («si no hay ninguno antes del día 15»).
+//     Every month has exactly two of them.
+//   - If neither was quiet, the second one sends it AS A THIRD MESSAGE, next to the debts
+//     notice and outside the cap: «Sale como tercer mensaje». The owner declared it
+//     extraordinary that day so the close never costs him his debts notice («el jueves nunca
+//     se calla si hay deudores»). Written in CLAUDE.md, «Un tendero recibe dos mensajes».
+//   - Once per month: a close that went out (or is on its way) is not sent again.
+//   - Never with less than 80 % of the lines carrying a frozen cost (spec), never with no
+//     sales in the month (it would say «0 ventas»), never to a paused or test account.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type MonthlyCloseContext = {
+  /** Day of the month of this week's Thursday, at the business. */
+  thursdayDay: number;
+  /** A `cierre_mensual` already went out, or is on its way, since this month started. */
+  alreadySent: boolean;
+  /** The month's close; null when it was not loaded because nothing could be sent. */
+  cierre: CierreDelMes | null;
+};
+
+export type MonthlyCloseSkip =
+  | "pausado"
+  | "cuenta_de_prueba"
+  | "fuera_de_ventana"
+  | "cierre_enviado"
+  | "sin_ventas_mes"
+  | "costos_incompletos"
+  | "esperando_jueves_callado";
+
+export type MonthlyClosePlan =
+  | { template: string; params: Parametro[]; extraordinary: boolean }
+  | { skip: MonthlyCloseSkip };
+
+// The Thursday plan's reasons for staying quiet: nothing to tell him that week.
+const QUIET: readonly SkipReason[] = ["sin_cobros", "sin_novedad"];
+
+/**
+ * «$120,00 y €15,00». A loss keeps its sign: «-$12,50». A book with no sales is not written,
+ * and neither is one with no line carrying a cost: its profit is unknown, and «€0,00» would
+ * invent it (`LibroDelCierre.conCosto`). The 80 % rule guarantees at least one book is left.
+ */
+export function profitSummary(t: WeeklyTarget, c: CierreDelMes): string {
+  const parts = ledgersOf(t.country)
+    .filter((l) => Number(c.libros[l]?.ventas ?? 0) > 0 && Number(c.libros[l]?.conCosto ?? 0) > 0)
+    .map((l) => money(c.libros[l]!.ganancia, l));
+  return parts.length ? parts.join(" y ") : money(0, ledgersOf(t.country)[0]);
+}
+
+/** «5 ventas por $340,00 y 3 ventas por €50,00», net of the month's returns. */
+export function monthlySalesSummary(t: WeeklyTarget, c: CierreDelMes): string {
+  return perLedger(
+    t,
+    (l) => {
+      const b = c.libros[l];
+      return b ? { count: b.ventas, amount: b.vendido } : null;
+    },
+    "venta",
+    "ventas",
+  );
+}
+
+/**
+ * Whether the close goes this run, and how. `thursday` is what `thursdayPlan` decided for the
+ * same owner; `sentOnPhone` what this run already sent to that number.
+ */
+export function monthlyClosePlan(
+  t: WeeklyTarget,
+  thursday: Plan,
+  ctx: MonthlyCloseContext,
+  sentOnPhone = 0,
+): MonthlyClosePlan {
+  if (t.paused) return { skip: "pausado" };
+  if (t.is_test) return { skip: "cuenta_de_prueba" };
+  if (ctx.thursdayDay > 14) return { skip: "fuera_de_ventana" };
+  if (ctx.alreadySent) return { skip: "cierre_enviado" };
+  const c = ctx.cierre;
+  if (!c || c.lineas === 0) return { skip: "sin_ventas_mes" };
+  if (!c.completo) return { skip: "costos_incompletos" };
+
+  const quiet = "skip" in thursday && QUIET.includes(thursday.skip);
+  const capFree = t.phone_slots_used + sentOnPhone < PHONE_WEEKLY_CAP;
+  const secondThursday = ctx.thursdayDay >= 8;
+  let extraordinary: boolean;
+  if (quiet && capFree) extraordinary = false;
+  else if (secondThursday) extraordinary = true;
+  else return { skip: "esperando_jueves_callado" };
+
+  return {
+    template: TEMPLATES.monthlyClose,
+    extraordinary,
+    params: [
+      { nombre: "owner_name", texto: ownerName(t) || "hola" },
+      { nombre: "month_name", texto: c.mes.monthName },
+      { nombre: "sales_summary", texto: monthlySalesSummary(t, c) },
+      { nombre: "profit_summary", texto: profitSummary(t, c) },
+      { nombre: "lines_without_cost", texto: String(c.lineasSinCosto) },
+    ],
+  };
 }

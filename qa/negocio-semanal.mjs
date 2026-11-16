@@ -165,8 +165,26 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   check("6d. solo por vencer, sin vencidos: sale igual, con «0 clientes» en vencidos",
     param(negocio, "overdue_summary") === "0 clientes" && param(negocio, "out_of_stock") === "2" && param(negocio, "low_stock") === "0",
     `${param(negocio, "overdue_summary")} · ${param(negocio, "out_of_stock")} · ${param(negocio, "low_stock")}`);
-  check("6e. sin deudores pero con productos: no sale (atencion_productos aprobada, sin envío construido)",
-    thursdayPlan(base({ ledgers: { USD: libro(50) }, out_of_stock: 3 })).skip === "sin_cobros");
+  // `atencion_productos`, approved by Meta on 2026-11-16 and sent from then on.
+  const productosSolos = thursdayPlan(base({ out_of_stock: 3, low_stock: 1, open_orders: 2, new_attention_items: 1 }));
+  check("6e. sin deudores y con algo nuevo en productos o pedidos: atencion_productos, cuatro parámetros en orden",
+    productosSolos.template === "atencion_productos" && nombresEnOrden(productosSolos) && problemaDelBoton("atencion_productos", undefined) === null,
+    productosSolos.template ?? productosSolos.skip);
+  check("6i. con los totales de hoy, no solo lo nuevo",
+    param(productosSolos, "out_of_stock") === "3" && param(productosSolos, "low_stock") === "1" && param(productosSolos, "open_orders") === "2",
+    `${param(productosSolos, "out_of_stock")} · ${param(productosSolos, "low_stock")} · ${param(productosSolos, "open_orders")}`);
+  check("6j. sin deudores, con productos pero nada nuevo desde el jueves: no sale (sin_novedad)",
+    thursdayPlan(base({ out_of_stock: 3, new_attention_items: 0 })).skip === "sin_novedad");
+  // Owner's decision of 2026-11-16 («Sí, que salga»): owed only on fiados without a deadline.
+  const sinPlazo = thursdayPlan(base({ ledgers: { USD: libro(50) }, out_of_stock: 1, new_attention_items: 1 }));
+  check("6k. debe solo en fiados sin plazo y hay algo nuevo: atencion_productos igual",
+    sinPlazo.template === "atencion_productos", sinPlazo.template ?? sinPlazo.skip);
+  check("6l. el tope por teléfono también la frena",
+    thursdayPlan(base({ out_of_stock: 1, new_attention_items: 1, phone_slots_used: 2 })).skip === "tope_telefono");
+  check("6m. cita del jueves ya usada: no sale", thursdayPlan(base({ out_of_stock: 1, new_attention_items: 1, thursday_used: true })).skip === "cita_usada");
+  check("6n. cuenta pausada o de prueba: no sale",
+    thursdayPlan(base({ out_of_stock: 1, new_attention_items: 1, paused: true })).skip === "pausado"
+      && thursdayPlan(base({ out_of_stock: 1, new_attention_items: 1, is_test: true })).skip === "cuenta_de_prueba");
   check("6f. un saldo a favor o cero no es un deudor", thursdayPlan(base()).skip === "sin_cobros");
   // Migration 206, owner's decision of 2026-11-14: products and orders only when something is new.
   const sinNada = thursdayPlan(base({ ledgers: { USD: libro(50, 1, 50) }, out_of_stock: 3, low_stock: 1, open_orders: 2, new_attention_items: 0 }));
@@ -425,6 +443,15 @@ try {
     `${pedido.new_attention_items} · pedidos ${param(thursdayPlan(pedido), "open_orders")}`);
   const { count: itemsMemoria } = await admin.from("whatsapp_attention_item_memory").select("item_id", { count: "exact", head: true }).eq("owner_id", A).eq("period_key", periodo);
   check("21e. la memoria guardó los 3 de esa semana (agotado, por agotarse, pedido)", itemsMemoria === 3, String(itemsMemoria));
+
+  // MIGRATION 212: A WEEK WHOSE THURSDAY WAS `atencion_productos` IS A BASELINE TOO. Without it
+  // the next week would count every product as new and repeat the same message.
+  const tercera = claveSemanal(new Date(Date.now() + 14 * 86400000));
+  await admin.from("whatsapp_sends").insert({ owner_id: A, template: "atencion_productos", period_key: siguiente, ok: true });
+  await admin.rpc("whatsapp_attention_remember", { p_owner_id: A, p_period: siguiente });
+  const trasProductos = await filaDe(A, tercera, siguiente);
+  check("21f. la semana después de un atencion_productos, con lo mismo: 0 nuevos (necesita la 212)",
+    Number(trasProductos.new_attention_items) === 0, String(trasProductos.new_attention_items));
 
   // NOTHING OF THIS IS REACHABLE WITHOUT THE SERVER'S KEY.
   const intentos = await Promise.all([
