@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAllByIds } from "@/lib/supabase/read-all";
 
 // CATALOGUE ORDERS, READ SIDE. Deliverable D of the inventory plan.
 //
@@ -288,19 +289,38 @@ export async function readOrderProducts(
     return new Map();
   }
 
-  // The typed prices of the same products, in one more query. A failed read leaves them
+  // The typed prices of the same products, in one more read. A failed read leaves them
   // out and the sheet falls back to converting, which is what it did before: logged, never
   // a broken dialog.
-  const { data: pinned, error: pinnedError } = await supabase
-    .from("product_price_overrides")
-    .select("product_id, tier, currency, amount")
-    .in("product_id", ids);
-  if (pinnedError) console.error("[orders] readOrderProducts overrides:", pinnedError.message);
+  //
+  // PAGED BY IDS (PL-34), like the same read in `app/(app)/productos/page.tsx`: up to eight
+  // rows per product, so a long order passes 1,000 before its products do, and the API cuts
+  // there without saying so. Found by `qa:lecturas-sin-tope` in the v0.8.0 checklist, on the
+  // release branch, before it shipped. Only the products that passed the owner filter above
+  // are asked for.
+  const owned = (data ?? []).map((p) => p.id as string);
+  const pinned = owned.length
+    ? await readAllByIds<{ product_id: string; tier: string; currency: string; amount: number }>(
+        owned,
+        (batch, from, to) =>
+          supabase
+            .from("product_price_overrides")
+            .select("product_id, tier, currency, amount", { count: "exact" })
+            .in("product_id", batch)
+            .order("product_id")
+            .order("tier")
+            .order("currency")
+            .range(from, to),
+      ).catch((e: Error) => {
+        console.error("[orders] readOrderProducts overrides:", e.message);
+        return [];
+      })
+    : [];
 
   return new Map(
     (data ?? []).map((p) => {
       const overrides: Record<"retail" | "wholesale", Partial<Record<string, number>>> = { retail: {}, wholesale: {} };
-      for (const o of pinned ?? []) {
+      for (const o of pinned) {
         if (o.product_id !== p.id || (o.tier !== "retail" && o.tier !== "wholesale")) continue;
         overrides[o.tier as "retail" | "wholesale"][o.currency as string] = Number(o.amount);
       }
