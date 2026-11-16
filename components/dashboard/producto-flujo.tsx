@@ -1981,7 +1981,7 @@ function PriceRow({
               ref={refPrecio}
               onChange={alTeclearPrecio}
               placeholder="00.00"
-              className={`h-10 w-32 text-right tabular-nums ${link ? "pr-9" : ""} ${
+              className={`h-10 w-32 text-right tabular-nums ${link ? "pl-9" : ""} ${
                 readOnly ? "bg-muted/50" : ""
               }`}
             />
@@ -1995,7 +1995,11 @@ function PriceRow({
                     ? `Desvincular el precio en ${currency} y escribirlo a mano`
                     : `Volver a calcular el precio en ${currency}`
                 }
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                // ON THE LEFT OF THE FIELD, owner's request of 2026-11-16: on the right it sat a
+                // few pixels from the delete button outside the field, and a thumb meant for the
+                // chain could remove the currency instead. The figure stays right-aligned, so
+                // the icon on the left never covers it.
+                className="absolute top-1/2 left-2 -translate-y-1/2 rounded p-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
               >
                 {/* CADENA ROTA, NO CADENA TACHADA. Pedido por el dueño el
                     2026-10-14 con el icono delante: `Unlink` dibuja los dos

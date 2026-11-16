@@ -82,11 +82,15 @@ export function ProductDetail({
   lowStockThreshold,
   extraPhotos = [],
   overrides = { retail: {}, wholesale: {} },
+  currencies,
 }: {
   product: ProductRow;
   // The prices the owner typed in each currency, per tier: they win over the conversion
   // (owner's rule of 2026-11-15). See `BloqueDePrecios`.
   overrides?: Record<"retail" | "wholesale", Partial<Record<PriceCurrency, number>>>;
+  // The currencies the owner enabled per tier, base first: only those are listed
+  // (owner's report of 2026-11-16, see `BloqueDePrecios`).
+  currencies?: Record<"retail" | "wholesale", PriceCurrency[]>;
   // Photos 2 to 5 (CT-171). The cover is `product.photo_path`.
   extraPhotos?: string[];
   // null en un negocio colombiano: no hay equivalencias que calcular.
@@ -243,6 +247,7 @@ export function ProductDetail({
           base={baseDetal}
           rates={rates}
           overrides={overrides.retail}
+          monedas={currencies?.retail}
           enTarjeta
         />
         {/* «Margen al mayor», y el frame dice «Margen al detal» en los dos
@@ -259,6 +264,7 @@ export function ProductDetail({
           base={baseMayor}
           rates={rates}
           overrides={overrides.wholesale}
+          monedas={currencies?.wholesale}
           enTarjeta
         />
 

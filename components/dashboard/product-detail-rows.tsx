@@ -11,6 +11,7 @@ import {
   type BolivarRates,
   type PriceCurrency,
 } from "@/lib/products/price";
+import { monedasDelBloque, precioEnMoneda } from "@/lib/products/public-pricing";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LAS FILAS DE UNA FICHA DE PRODUCTO, EN UN SOLO SITIO
@@ -66,6 +67,7 @@ export function BloqueDePrecios({
   base,
   rates,
   overrides,
+  monedas,
   enTarjeta = false,
 }: {
   titulo: string;
@@ -80,6 +82,14 @@ export function BloqueDePrecios({
   // page -- the euro converted -- while the customer's catalogue, which passed them, said
   // $10,00. Same function, two answers, and the owner saw both.
   overrides?: Partial<Record<PriceCurrency, number>>;
+  // THE CURRENCIES THE OWNER ENABLED for this tier (`product_currencies`, base first). With
+  // them the block lists only those, through `monedasDelBloque` and `precioEnMoneda`: the
+  // same pair the client's product page and the sale's cart use, so the three screens offer
+  // the same currencies at the same price. Owner's report of 2026-11-16: a product created
+  // with a price in dollars only showed «Precio en euros €0,90» on his product page,
+  // because `allPrices` lists every currency the business can sell in. Without the list
+  // (the order sheet, which does not load it) the block keeps listing them all.
+  monedas?: PriceCurrency[];
   // La ficha del dueño dibuja cada escalón DENTRO de su propia tarjeta
   // --frame `1730:14329`, nodos `1730:14463` y `1730:14477`-- y la hoja del
   // pedido los dibuja sueltos, uno detrás de otro. Es lo único que cambia.
@@ -89,9 +99,14 @@ export function BloqueDePrecios({
   // "todavía no lo has puesto", dice "algo se rompió".
   if (base == null) return null;
 
-  const precios = rates
-    ? allPrices(base, rates, overrides ?? {})
-    : [{ ...base, origin: "base" as const }];
+  const precios: { currency: PriceCurrency; amount: number | null }[] = monedas
+    ? (() => {
+        const bloque = { price: base.amount, pinned: overrides ?? {}, base: base.currency, currencies: monedas };
+        return monedasDelBloque(bloque, rates).map((c) => ({ currency: c, amount: precioEnMoneda(bloque, c, rates) }));
+      })()
+    : rates
+      ? allPrices(base, rates, overrides ?? {})
+      : [{ ...base }];
 
   return (
     <div
