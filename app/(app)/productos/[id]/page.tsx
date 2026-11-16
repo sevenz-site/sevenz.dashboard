@@ -25,11 +25,13 @@ export const metadata = { title: "Producto — Sevenz" };
 // toca por un id venido del navegador. Escribir aquí una segunda consulta sería
 // un segundo sitio donde olvidarse de ese `.eq`.
 //
-// LO QUE NO USA son los `overrides` ni las `initialCurrencies` que ese cargador
-// devuelve: los precios por moneda de esta ficha salen de `allPrices` con las
-// tasas, igual que el catálogo y que la hoja de un pedido. Se deja así --en vez
-// de partir el cargador en dos-- porque son tres consultas en paralelo y la que
-// sobra no cuesta un viaje extra.
+// LOS `overrides` SÍ SE USAN desde el 2026-11-15, y este comentario decía lo
+// contrario: los precios por moneda «salen de `allPrices` con las tasas, igual que
+// el catálogo». Igual que el catálogo no era: el catálogo del cliente sí pasa los
+// precios tecleados a `allPrices`, y esta ficha no, así que un producto puesto a
+// €10 y $10 a mano enseñaba aquí «$11,07» y al cliente $10,00. Lo encontró el
+// dueño con las dos capturas delante: *«el valor escrito a mano es el que manda,
+// el app no debe recalcularlo»*. Las `initialCurrencies` siguen sin usarse aquí.
 export default async function ProductoPage({ params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -72,6 +74,7 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
     <ProductDetail
       product={cargado.product}
       extraPhotos={cargado.extraPhotos}
+      overrides={cargado.overrides}
       rates={rates}
       // The price its «Compartir» message carries (owner's request of
       // 2026-11-09), from the same rows the screen already loaded.

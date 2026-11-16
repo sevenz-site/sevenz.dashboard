@@ -5,7 +5,6 @@ import { conHoy } from "@/lib/exchange-rate/format";
 import { newFlowId } from "@/lib/analytics/flow-client";
 import { useEffect, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
@@ -43,9 +42,11 @@ import { photosInOrder } from "@/lib/products/photos";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TarjetaDePublicacion } from "@/components/dashboard/product-detail-rows";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { PRODUCT_PHOTO_BOX, ProductPhoto } from "@/components/product-photo";
+import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   createProduct,
+  productNameTaken,
   updateProduct,
   type ProductInput,
 } from "@/app/(app)/productos/actions";
@@ -623,7 +624,28 @@ export function ProductoFlujo({
     description: description || null,
   };
 
+  // A REPEATED NAME IS WARNED ABOUT, NEVER REFUSED (owner's request of 2026-11-15): on
+  // «Crear producto» the name is checked against the catalogue, and if it is already there
+  // `DuplicateProductNameDialog` asks. «Crear igual» saves exactly what was typed. Only
+  // when creating: the owner asked for «cuando se crea un producto repetido».
+  const [repetido, setRepetido] = useState(false);
+
   function save() {
+    if (editing) {
+      guardar();
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      if (await productNameTaken(name)) {
+        setRepetido(true);
+        return;
+      }
+      guardar();
+    });
+  }
+
+  function guardar() {
     setError(null);
     startTransition(async () => {
       const conFlujo = { ...input, analitica: { flowId: flujo, source: "wizard" as const } };
@@ -1111,6 +1133,20 @@ export function ProductoFlujo({
           </>
         )}
       </StickyActions>
+
+      <DuplicateProductNameDialog
+        open={repetido}
+        name={name}
+        onCancel={() => {
+          setRepetido(false);
+          setPaso(1);
+        }}
+        nameInputId="producto_nombre"
+        onCreateAnyway={() => {
+          setRepetido(false);
+          guardar();
+        }}
+      />
     </div>
   );
 }
@@ -2241,16 +2277,13 @@ function Verifica({
         {photos.length ? (
           <div className="flex flex-col gap-2 pb-4">
             <FilaDeRepaso nombre={photos.length > 1 ? "Fotos" : "Foto"} valor="" />
-            <div className="relative">
-              {/* `unoptimized`: a Supabase public URL of a photo already resized on
-                  the device. */}
-              <Image
-                src={getPublicProductPhotoUrl(photos[0])}
+            <div className={`relative ${PRODUCT_PHOTO_BOX}`}>
+              <ProductPhoto
+                path={photos[0]}
                 alt="Portada del producto"
                 width={640}
-                height={480}
-                unoptimized
-                className="h-[120px] w-full rounded-[10px] border object-cover"
+                height={640}
+                className="size-full rounded-[10px] border"
               />
               {photos.length > 1 ? (
                 <span className="absolute bottom-2 left-2 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
@@ -2261,14 +2294,13 @@ function Verifica({
             {photos.length > 1 ? (
               <div className="flex gap-1.5">
                 {photos.slice(1).map((path, i) => (
-                  <Image
+                  <ProductPhoto
                     key={path}
-                    src={getPublicProductPhotoUrl(path)}
+                    path={path}
                     alt={`Foto ${i + 2} del producto`}
                     width={64}
                     height={64}
-                    unoptimized
-                    className="size-16 rounded-lg border object-cover"
+                    className="size-16 rounded-lg border"
                   />
                 ))}
               </div>

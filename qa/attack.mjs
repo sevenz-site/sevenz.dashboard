@@ -312,6 +312,15 @@ try {
     await svc.from("clients").update({ name: `<script>alert(3)</script>` }).eq("id", cB.id);
     const xss = await (await fetch(`${BASE}/s/${tokB}`)).text();
     rec("http · enlace", "XSS guardado en los nombres del negocio y del cliente", /<script>alert\(\d\)|<img src=x onerror/.test(xss) ? "VULN" : "BLOQUEADO");
+    // CT-170 (v0.8.0): the public catalogue shows two more texts an owner writes, the
+    // welcome and (when he ticks it) the address. Added in the v0.8.0 checklist. The page
+    // must carry the text escaped: if «alert(4)» is nowhere in it the texts never reached
+    // the page and the attack did not run, which is SIN PROBAR, not a pass.
+    await svc.from("owners").update({ catalog_welcome: `<script>alert(4)</script>`, address: `<img src=y onerror=alert(5)>`, catalog_show_address: true }).eq("id", B.id);
+    const xssCat = await (await fetch(`${BASE}/c/${linkB.token}`)).text();
+    rec("http · catálogo", "XSS guardado en la bienvenida y la dirección del catálogo",
+      /<script>alert\(\d\)|<img src=[xy] onerror/.test(xssCat) ? "VULN" : xssCat.includes("alert(4)") && xssCat.includes("alert(5)") ? "BLOQUEADO" : "SIN PROBAR",
+      xssCat.includes("alert(4)") ? "" : "la bienvenida no llegó a la página");
     const h = (await fetch(`${BASE}/login`)).headers;
     const faltan = [["content-security-policy", /frame-ancestors 'none'/], ["x-frame-options", /DENY/i], ["x-content-type-options", /nosniff/], ["referrer-policy", /./]].filter(([k, re]) => !re.test(h.get(k) ?? "")).map(([k]) => k);
     rec("http · cabeceras", "contra clickjacking y sniffing", faltan.length ? "VULN" : "BLOQUEADO", faltan.length ? `faltan ${faltan.join(", ")}` : "");

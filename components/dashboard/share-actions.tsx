@@ -9,6 +9,7 @@ import { getOrCreateShareLink } from "@/app/(app)/dashboard/actions";
 import { track } from "@/lib/mixpanel";
 import { PedirWhatsappDialog } from "@/components/dashboard/pedir-whatsapp-dialog";
 import type { OwnerCountry } from "@/lib/types";
+import { publicLinkBase } from "@/lib/public-link";
 
 export function ShareActions({
   clientId,
@@ -52,7 +53,7 @@ export function ShareActions({
           resolve(null);
           return;
         }
-        resolve(`${window.location.origin}/s/${result.token}`);
+        resolve(`${publicLinkBase()}/s/${result.token}`);
       });
     });
   }

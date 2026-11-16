@@ -28,6 +28,8 @@
 //      a stored file since 2026-11-15, drawn by one component and uploaded through one
 //      function. The thumbnails themselves -- the cleanup keeping them, the nightly pass
 //      making the missing ones -- are in `qa:storage-cleanup`, rows T1 to T8.
+//      And 8d: every product photo is drawn whole, never cropped, through the same two
+//      components (owner's decision of 2026-11-15).
 //
 // Writes only in dev and cleans up after itself.
 import { createClient } from "@supabase/supabase-js";
@@ -328,6 +330,25 @@ try {
       usanLaPuerta.includes("components/dashboard/product-photos-input.tsx") &&
       usanLaPuerta.includes("components/dashboard/product-photo-input.tsx"),
     subenSolas.length ? `suben por su cuenta: ${subenSolas.join(", ")}` : `la usan: ${usanLaPuerta.join(", ")}`,
+  );
+
+  // The whole product, never a crop (owner, 2026-11-15: «Sí, siempre el producto entero,
+  // también en web»). Twenty screens used to set their own fit, so one of them was always
+  // going to crop again. Now every product photo goes through `ProductPhoto` or
+  // `ProductThumbnail`, and both put `PRODUCT_PHOTO_FIT` last, where no caller can beat it.
+  const conUrlDeFoto = fuentes.filter(
+    (f) =>
+      !["lib/supabase/storage.ts", "components/product-thumbnail.tsx", "components/product-photo.tsx"].includes(f) &&
+      codigo(f).includes("getPublicProductPhotoUrl("),
+  );
+  const ajuste = codigo("components/product-photo.tsx").match(/PRODUCT_PHOTO_FIT = "([^"]*)"/)?.[1] ?? "";
+  const alFinal = ["components/product-photo.tsx", "components/product-thumbnail.tsx"].every((f) =>
+    codigo(f).replace(/\s+/g, "").includes("className={cn(className,PRODUCT_PHOTO_FIT)}"),
+  );
+  check(
+    "8d. toda foto de producto se ve entera: pasa por ProductPhoto o ProductThumbnail, con object-contain al final",
+    conUrlDeFoto.length === 0 && /\bobject-contain\b/.test(ajuste) && !/\bobject-cover\b/.test(ajuste) && alFinal,
+    conUrlDeFoto.length ? `la dibujan a mano: ${conUrlDeFoto.join(", ")}` : `ajuste «${ajuste}», al final: ${alFinal}`,
   );
 
   // ── 7. The cap, through the real server action ───────────────────────────

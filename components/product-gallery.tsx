@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image";
 import { ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { ProductPhoto } from "@/components/product-photo";
 
 // A PRODUCT'S PHOTOS, SWIPED. One component for the shopkeeper's product page and the
 // customer's (CT-171, frames `2119:21783`, `2119:21828` and `2119:21879`, approved by the
@@ -69,17 +68,15 @@ export function ProductGallery({
         >
           {paths.map((path, i) => (
             <div key={path} className="relative h-full w-full shrink-0 snap-center">
-              {/* `unoptimized`: a Supabase public URL of a photo already resized on the
-                  device. Only the first loads eagerly; the rest wait for the swipe. */}
-              <Image
-                src={getPublicProductPhotoUrl(path)}
+              {/* Only the first loads eagerly; the rest wait for the swipe. The whole
+                  product, never a crop: see `components/product-photo.tsx`. */}
+              <ProductPhoto
+                path={path}
                 alt={varias ? `${alt}, foto ${i + 1} de ${paths.length}` : alt}
                 fill
-                unoptimized
                 priority={i === 0}
                 loading={i === 0 ? undefined : "lazy"}
                 sizes={sizes}
-                className="object-cover"
               />
             </div>
           ))}

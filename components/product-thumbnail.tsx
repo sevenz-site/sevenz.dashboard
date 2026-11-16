@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image, { type ImageProps } from "next/image";
+import { cn } from "@/lib/utils";
 import { getProductThumbnailUrl, getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { PRODUCT_PHOTO_FIT } from "@/components/product-photo";
 
 // THE SMALL PHOTO OF A PRODUCT, IN EVERY GRID AND LIST, on both sides of the app: the
 // shopkeeper's catalogue, sale, orders and reports, and the customer's catalogue and cart.
@@ -29,12 +31,16 @@ import { getProductThumbnailUrl, getPublicProductPhotoUrl } from "@/lib/supabase
 // `unoptimized` IS NOT OPTIONAL: without it `next/image` demands the Supabase host in
 // `next.config.ts` and THROWS while rendering if it is missing -- not a broken image, the
 // whole screen. The callers used to pass it one by one; it lives here now.
+//
+// THE WHOLE PRODUCT, NEVER A CROP, since 2026-11-15: the fit is `PRODUCT_PHOTO_FIT`, the
+// same as the full photo's, and it is put last so no caller can override it. The reason
+// and the owner's words are in `components/product-photo.tsx`.
 type Props = Omit<ImageProps, "src" | "unoptimized" | "onError"> & {
   // The photo's path in the `product-photos` bucket, as saved on the product.
   path: string;
 };
 
-export function ProductThumbnail({ path, alt, ...props }: Props) {
+export function ProductThumbnail({ path, alt, className, ...props }: Props) {
   const ref = useRef<HTMLImageElement>(null);
   // Which path already fell back, rather than a boolean: a list that reuses this element
   // for another product must start that one from its thumbnail again.
@@ -52,6 +58,7 @@ export function ProductThumbnail({ path, alt, ...props }: Props) {
       ref={ref}
       alt={alt}
       unoptimized
+      className={cn(className, PRODUCT_PHOTO_FIT)}
       src={fellBack ? getPublicProductPhotoUrl(path) : getProductThumbnailUrl(path)}
       // Only the first failure switches. If the photo itself is gone too, the image
       // stays broken, exactly as a missing photo looked before thumbnails existed.

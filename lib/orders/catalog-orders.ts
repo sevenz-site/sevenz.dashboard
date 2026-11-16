@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAllByIds } from "@/lib/supabase/read-all";
 
 // CATALOGUE ORDERS, READ SIDE. Deliverable D of the inventory plan.
 //
@@ -245,6 +246,11 @@ export type OrderProductRow = {
   price_wholesale: number | null;
   base_currency_retail: string | null;
   base_currency_wholesale: string | null;
+  // The prices the owner TYPED in each currency, per tier (`product_price_overrides`). The
+  // order sheet shows today's catalogue prices, and a typed one wins over the conversion:
+  // owner's rule of 2026-11-15, «el valor escrito a mano es el que manda». Filled by
+  // `readOrderProducts`; absent means none.
+  overrides?: Record<"retail" | "wholesale", Partial<Record<string, number>>>;
 };
 
 export const ORDER_PRODUCT_COLUMNS =
@@ -283,5 +289,42 @@ export async function readOrderProducts(
     return new Map();
   }
 
-  return new Map((data ?? []).map((p) => [p.id, p as OrderProductRow]));
+  // The typed prices of the same products, in one more read. A failed read leaves them
+  // out and the sheet falls back to converting, which is what it did before: logged, never
+  // a broken dialog.
+  //
+  // PAGED BY IDS (PL-34), like the same read in `app/(app)/productos/page.tsx`: up to eight
+  // rows per product, so a long order passes 1,000 before its products do, and the API cuts
+  // there without saying so. Found by `qa:lecturas-sin-tope` in the v0.8.0 checklist, on the
+  // release branch, before it shipped. Only the products that passed the owner filter above
+  // are asked for.
+  const owned = (data ?? []).map((p) => p.id as string);
+  const pinned = owned.length
+    ? await readAllByIds<{ product_id: string; tier: string; currency: string; amount: number }>(
+        owned,
+        (batch, from, to) =>
+          supabase
+            .from("product_price_overrides")
+            .select("product_id, tier, currency, amount", { count: "exact" })
+            .in("product_id", batch)
+            .order("product_id")
+            .order("tier")
+            .order("currency")
+            .range(from, to),
+      ).catch((e: Error) => {
+        console.error("[orders] readOrderProducts overrides:", e.message);
+        return [];
+      })
+    : [];
+
+  return new Map(
+    (data ?? []).map((p) => {
+      const overrides: Record<"retail" | "wholesale", Partial<Record<string, number>>> = { retail: {}, wholesale: {} };
+      for (const o of pinned) {
+        if (o.product_id !== p.id || (o.tier !== "retail" && o.tier !== "wholesale")) continue;
+        overrides[o.tier as "retail" | "wholesale"][o.currency as string] = Number(o.amount);
+      }
+      return [p.id, { ...(p as OrderProductRow), overrides }];
+    }),
+  );
 }

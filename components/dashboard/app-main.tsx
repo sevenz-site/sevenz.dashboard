@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { isProductDetailRoute } from "@/lib/products/routes";
+import { isCatalogBrandingRoute, isProductDetailRoute } from "@/lib/products/routes";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 
 // Wraps <main> purely so the bottom padding can follow whether MobileNav
@@ -69,7 +69,9 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     /^\/productos\/[^/]+\/editar$/.test(pathname) ||
     // Y LA FICHA DEL PRODUCTO, desde el 2026-10-26: ni barra de abajo ni su
     // altura reservada. Su propia fila de botones termina la pantalla.
-    isProductDetailRoute(pathname);
+    isProductDetailRoute(pathname) ||
+    // «Personalizar catálogo» (CT-170), since 2026-11-15.
+    isCatalogBrandingRoute(pathname);
   // "/profile" since 2026-11-02: must match MobileNavBar, which stops drawing
   // the bar there (see `enMiNegocio` in mobile-nav.tsx).
   //
@@ -145,6 +147,9 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // pone 40px de aire bajo «Eliminar» (nodo `1730:14421`), los mismos que
     // trae esta fila. Sin esta línea `main` le suma sus 16 y quedan 56.
     isProductDetailRoute(pathname) ||
+    // «Personalizar catálogo» (CT-170), since 2026-11-15: its buttons are pinned at the
+    // bottom like the product form's.
+    isCatalogBrandingRoute(pathname) ||
     // EL DETALLE DE UNA TRANSACCIÓN, desde el 2026-10-21: sus botones
     // «Compartir» y «Pagar» pasaron a `StickyActions` por instrucción del
     // dueño —*«siempre visibles en la parte inferior»*— y esa barra trae sus

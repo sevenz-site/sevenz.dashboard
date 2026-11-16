@@ -2,7 +2,6 @@
 
 import { conHoy } from "@/lib/exchange-rate/format";
 import { forwardRef } from "react";
-import Image from "next/image";
 import { ChevronRight, ImageOff } from "lucide-react";
 import {
   Sheet,
@@ -15,7 +14,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 // LAS DOS FILAS VIVEN FUERA desde el 2026-10-26, porque la ficha del producto
 // del lado del dueno (frame 1730:14329) dibuja exactamente las mismas.
 import { BloqueDePrecios, Fila } from "@/components/dashboard/product-detail-rows";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { PRODUCT_PHOTO_BOX, ProductPhoto } from "@/components/product-photo";
 import {
   formatPriceAmount,
   type BolivarRates,
@@ -96,7 +95,7 @@ export function OrderProductSheet({
           : null;
   const enBolivares = bsPorUnidad == null ? null : totalLinea * bsPorUnidad;
 
-  const fotoUrl = producto?.photo_path ? getPublicProductPhotoUrl(producto.photo_path) : null;
+  const foto = producto?.photo_path || null;
 
   const baseDetal =
     producto?.price_retail != null && producto.base_currency_retail
@@ -153,20 +152,19 @@ export function OrderProductSheet({
             así -- y ésa es la fila que tiene que poder reconocer. */}
         <h2 className="text-2xl leading-8">{nombreEnElPedido}</h2>
 
-        {fotoUrl ? (
-          <Image
-            src={fotoUrl}
+        {foto ? (
+          <ProductPhoto
+            path={foto}
             alt={nombreEnElPedido}
             width={656}
-            height={400}
-            unoptimized
-            className="h-50 w-full rounded-[10px] border object-cover"
+            height={656}
+            className={`${PRODUCT_PHOTO_BOX} h-auto rounded-[10px] border`}
           />
         ) : (
           // El hueco dibujado en vez de nada, igual que en la ficha de un
           // movimiento sin foto: dice que aquí cabe una foto y este producto
           // no la tiene.
-          <div className="flex h-50 w-full flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed bg-muted/40 text-muted-foreground">
+          <div className={`flex ${PRODUCT_PHOTO_BOX} flex-col items-center justify-center gap-1.5 rounded-[10px] border border-dashed bg-muted/40 text-muted-foreground`}>
             <ImageOff className="size-5" aria-hidden />
             <span className="text-xs">Sin foto</span>
           </div>
@@ -253,6 +251,7 @@ export function OrderProductSheet({
               margen={producto.margin_retail_pct == null ? null : Number(producto.margin_retail_pct)}
               base={baseDetal}
               rates={rates}
+              overrides={producto.overrides?.retail as Partial<Record<PriceCurrency, number>> | undefined}
             />
             {/* «Margen al mayor», y el frame dice «Margen al detal» en los dos
                 bloques. Corregido a petición del dueño el 2026-10-17: repetir
@@ -266,6 +265,7 @@ export function OrderProductSheet({
               }
               base={baseMayor}
               rates={rates}
+              overrides={producto.overrides?.wholesale as Partial<Record<PriceCurrency, number>> | undefined}
             />
           </>
         )}
@@ -300,7 +300,6 @@ export const OrderProductRowButton = forwardRef<
   ref,
 ) {
   const total = Math.round(cantidad * precioUnitario * 100) / 100;
-  const fotoUrl = fotoPath ? getPublicProductPhotoUrl(fotoPath) : null;
 
   return (
     <button
@@ -310,14 +309,13 @@ export const OrderProductRowButton = forwardRef<
       className="flex w-full items-center justify-between gap-2 rounded-[10px] border p-2 text-left hover:bg-muted/40"
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
-        {fotoUrl ? (
-          <Image
-            src={fotoUrl}
+        {fotoPath ? (
+          <ProductPhoto
+            path={fotoPath}
             alt=""
             width={80}
             height={80}
-            unoptimized
-            className="size-10 shrink-0 rounded border object-cover"
+            className="size-10 shrink-0 rounded border"
           />
         ) : (
           <span className="flex size-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">

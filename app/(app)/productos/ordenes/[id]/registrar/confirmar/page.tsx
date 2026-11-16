@@ -19,7 +19,6 @@ import { StockBadge } from "@/components/stock-badge";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { OrderLineStepper } from "@/components/dashboard/order-line-stepper";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
 
 // STEP `2/4 Confirmar pedido` — frame `1652:12831`, read with the desktop
 // bridge on 2026-10-25.
@@ -278,11 +277,7 @@ export default async function ConfirmarBloquePage({
                   descripcion={edicion.p.description}
                   unidad={edicion.p.unit}
                   stock={edicion.p.stock}
-                  foto={
-                    edicion.p.photoPath
-                      ? getPublicProductPhotoUrl(edicion.p.photoPath)
-                      : null
-                  }
+                  foto={edicion.p.photoPath || null}
                   cantidad={linea.cantidad}
                   moneda={bloque.moneda}
                   rates={edicion.rates}

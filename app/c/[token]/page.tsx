@@ -12,6 +12,7 @@ import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
+import { CatalogBrandHeader, hasCatalogBranding } from "@/components/public/catalog-brand-header";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
@@ -103,6 +104,10 @@ type SharedProduct = {
   category_id?: string | null;
 };
 
+// The note about bolívares, shared by both headers (CT-170).
+const NOTA_DE_LA_TASA =
+  "Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar.";
+
 type SharedCatalog = {
   // Migration 184: the chips — only categories with a published product, the
   // owner's choice («Solo con productos publicados»). Absent before 184.
@@ -116,6 +121,14 @@ type SharedCatalog = {
   low_stock_threshold: number | null;
   business_name: string | null;
   owner_logo_path: string | null;
+  // Migration 210 (CT-170): the owner's branding. Optional for the same reason as
+  // `categories`: absent until 210 runs, and then the catalogue keeps its old header.
+  // `catalog_address` arrives only when the owner chose to show it; the decision is
+  // taken in SQL.
+  brand_color?: string | null;
+  catalog_cover_path?: string | null;
+  catalog_welcome?: string | null;
+  catalog_address?: string | null;
   // YA NO SE PINTA. Hasta el 2026-10-15 esta pagina tenia un boton
   // «Escribenos por WhatsApp» que abria `wa.me/<numero del dueno>`; el dueno
   // lo quito, y de paso cierra `CT-11` — ese enlace llevaba el numero del
@@ -286,7 +299,15 @@ export default async function CatalogoPublicoPage({
   const hayCalculadas = [...bolivares.values()].some((b) => !b.pinned);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
+    // ON THE WEB THE CATALOGUE USES THE FULL WIDTH, since 2026-11-15: frame `2115:21823`
+    // (CT-170) draws it so, with 48px at the sides and four products a row, and the owner
+    // chose it over the 672px column it had («Sí, como el frame»). For every catalogue,
+    // customised or not. The phone does not change.
+    //
+    // THE BRAND COLOUR IS NOT APPLIED, owner's decision of 2026-11-15 with frame `2163:955`:
+    // «se registra el color de la marca pero de momento no se aplica en ningún lugar». The
+    // header is white (CatalogBrandHeader) and every button and chip keeps its usual colour.
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col md:max-w-none">
       {/* The shopkeeper's own preview is not a visit. */}
       {esVistaPrevia ? null : <CatalogOpenedEvent token={token} />}
       {/* LA CABECERA DEL FRAME `1190:5748`.
@@ -311,6 +332,23 @@ export default async function CatalogoPublicoPage({
           unicas superficies que ve un desconocido, y la banda es lo que dice
           quien responde por ellas. Dos copias se separan sin que nadie lo
           note, porque nadie abre las dos pantallas en el mismo minuto. */}
+      {/* CT-170: THE BRANDED HEADER WHEN THE OWNER CUSTOMISED HIS CATALOGUE, and the one
+          below, unchanged, when he did not. The reasons are in
+          `components/public/catalog-brand-header.tsx`; both take the same back link, the
+          same `BackToBalance` and the same note about bolívares. */}
+      {hasCatalogBranding(shared) ? (
+        <CatalogBrandHeader
+          logoUrl={logoUrl}
+          logoIsRemote={Boolean(shared.owner_logo_path)}
+          title={shared.business_name || "Catálogo"}
+          coverUrl={shared.catalog_cover_path ? getPublicLogoUrl(shared.catalog_cover_path) : null}
+          welcome={shared.catalog_welcome}
+          address={shared.catalog_address}
+          back={esVistaPrevia ? { href: "/productos", label: "Volver al catálogo" } : undefined}
+          backSlot={<BackToBalance />}
+          note={hayCalculadas ? NOTA_DE_LA_TASA : undefined}
+        />
+      ) : (
       <PublicHeader
         logoUrl={logoUrl}
         logoIsRemote={Boolean(shared.owner_logo_path)}
@@ -349,14 +387,11 @@ export default async function CatalogoPublicoPage({
            venía del aviso que esto sustituye, al pie de la página, y casi se
            pierde al subirlo: la primera versión miraba solo si el negocio es
            venezolano, y el aviso salía arriba Y abajo a la vez. */
-        subtitle={
-          hayCalculadas
-            ? "Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar."
-            : undefined
-        }
+        subtitle={hayCalculadas ? NOTA_DE_LA_TASA : undefined}
       />
+      )}
 
-      <div className="flex flex-col gap-6 px-4 py-6">
+      <div className="flex flex-col gap-6 px-4 py-6 md:px-12">
         {shared.products.length === 0 ? (
           <EmptyState
             title="Todavía no hay productos publicados"
@@ -450,7 +485,6 @@ export default async function CatalogoPublicoPage({
                             alt=""
                             fill
                             sizes="(min-width: 640px) 33vw, 50vw"
-                            className="object-cover"
                           />
                         ) : (
                           <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">

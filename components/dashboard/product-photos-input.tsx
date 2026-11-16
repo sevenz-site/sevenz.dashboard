@@ -114,7 +114,7 @@ export function ProductPhotosInput({
               alt={i === 0 ? "Portada del producto" : `Foto ${i + 1} del producto`}
               width={64}
               height={64}
-              className="size-16 rounded-lg border object-cover"
+              className="size-16 rounded-lg border"
             />
             {i === 0 ? (
               <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">

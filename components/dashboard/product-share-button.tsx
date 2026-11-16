@@ -6,6 +6,7 @@ import { Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { getOrCreateCatalogLink } from "@/app/(app)/productos/actions";
 import { productShareMessage } from "@/lib/products/preview-price";
+import { publicLinkBase } from "@/lib/public-link";
 
 // COMPARTIR UN PRODUCTO SUELTO — frames `1175:5758` (la tarjeta) y
 // `1730:14329` (el detalle).
@@ -111,7 +112,7 @@ export function ProductShareButton({
     const t = await conseguirToken();
     if (!t) return;
 
-    const url = `${window.location.origin}/c/${t}/${productId}`;
+    const url = `${publicLinkBase()}/c/${t}/${productId}`;
     // NAME AND PRICE, since 2026-11-09 — the owner's request that day: the text
     // beside the link carries «Nombre + precio (puede tener precio en USD y/o
     // EUR)». It replaced «<producto> en <negocio>: <url>»; the business name

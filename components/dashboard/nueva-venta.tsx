@@ -1207,7 +1207,6 @@ function TarjetaDeProducto({
               alt=""
               fill
               sizes="(max-width: 448px) 50vw, 161px"
-              className="object-cover"
             />
           ) : (
             // EL ICONO DE FOTO TACHADA SE QUEDA, decisión del dueño el
@@ -1394,7 +1393,7 @@ function TarjetaDeLinea({
       <div className="flex items-center gap-2">
         <span className="relative size-12 shrink-0 overflow-hidden bg-muted">
           {foto ? (
-            <ProductThumbnail path={foto} alt="" fill sizes="48px" className="object-cover" />
+            <ProductThumbnail path={foto} alt="" fill sizes="48px" />
           ) : (
             <span className="flex h-full items-center justify-center">
               <ImageOff className="size-4 text-muted-foreground" aria-hidden="true" />

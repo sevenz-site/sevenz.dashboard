@@ -65,6 +65,7 @@ export function BloqueDePrecios({
   margen,
   base,
   rates,
+  overrides,
   enTarjeta = false,
 }: {
   titulo: string;
@@ -72,6 +73,13 @@ export function BloqueDePrecios({
   margen: number | null;
   base: { amount: number; currency: PriceCurrency } | null;
   rates: BolivarRates | null;
+  // THE PRICES THE OWNER TYPED IN EACH CURRENCY for this tier (`product_price_overrides`).
+  // They win over any conversion: owner's rule of 2026-11-15, «el valor escrito a mano es
+  // el que manda, el app no debe recalcularlo». Until that day this block left them out,
+  // so a product priced at €10 and $10 by hand read «$11,07» on the owner's own product
+  // page -- the euro converted -- while the customer's catalogue, which passed them, said
+  // $10,00. Same function, two answers, and the owner saw both.
+  overrides?: Partial<Record<PriceCurrency, number>>;
   // La ficha del dueño dibuja cada escalón DENTRO de su propia tarjeta
   // --frame `1730:14329`, nodos `1730:14463` y `1730:14477`-- y la hoja del
   // pedido los dibuja sueltos, uno detrás de otro. Es lo único que cambia.
@@ -81,7 +89,9 @@ export function BloqueDePrecios({
   // "todavía no lo has puesto", dice "algo se rompió".
   if (base == null) return null;
 
-  const precios = rates ? allPrices(base, rates) : [{ ...base, origin: "base" as const }];
+  const precios = rates
+    ? allPrices(base, rates, overrides ?? {})
+    : [{ ...base, origin: "base" as const }];
 
   return (
     <div

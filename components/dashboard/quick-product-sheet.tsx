@@ -17,7 +17,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
-import { createProduct } from "@/app/(app)/productos/actions";
+import { createProduct, productNameTaken } from "@/app/(app)/productos/actions";
+import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   currencyName,
   formatPriceAmount,
@@ -116,6 +117,22 @@ export function QuickProductSheet({
       const actual = Number(String(prev).replace(",", ".")) || 0;
       return String(Math.max(1, actual + delta));
     });
+
+  // A REPEATED NAME IS WARNED ABOUT, NEVER REFUSED (owner's request of 2026-11-15), the
+  // same dialog as the product wizard. Here it also catches the case the comment below
+  // describes: a save whose answer was lost, retried, would have made a second copy.
+  const [repetido, setRepetido] = useState(false);
+
+  function intentarGuardar() {
+    setError(null);
+    startTransition(async () => {
+      if (await productNameTaken(nombre)) {
+        setRepetido(true);
+        return;
+      }
+      guardar();
+    });
+  }
 
   function guardar() {
     setError(null);
@@ -336,11 +353,21 @@ export function QuickProductSheet({
           {/* EL TOTAL EN EL BOTÓN, como el frame. Dice lo que va a entrar en el
               carrito —precio por cantidad— y no solo «Agregar»: es la última
               cifra que el tendero ve antes de que la venta la dé por buena. */}
-          <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={guardar}>
+          <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={intentarGuardar}>
             {guardando ? "Guardando…" : `Agregar ${formatPriceAmount(total, moneda)}`}
           </Button>
         </div>
       </SheetContent>
+      <DuplicateProductNameDialog
+        open={repetido}
+        name={nombre}
+        onCancel={() => setRepetido(false)}
+        nameInputId="qp-nombre"
+        onCreateAnyway={() => {
+          setRepetido(false);
+          guardar();
+        }}
+      />
     </Sheet>
   );
 }

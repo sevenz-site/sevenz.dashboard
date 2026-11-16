@@ -29,6 +29,18 @@ pasó a Opus 5.5 a mitad y volvió a Fable 5.1 al final, y la única forma de sa
 fue leer el pie de los mensajes. Avisar después de empezar deja al dueño decidiendo si
 un resultado vale con una mezcla que no eligió.
 
+**Y al terminar, se le pide volver a Opus 5.5.** Regla del dueño del 2026-11-15, al
+cerrar el checklist de la v0.7.2: *«una vez termines el QA checklist debes pedirme
+cambiar el modelo de fable 5.2 a opus 5.5»*. Fable 5.2 es el modelo del checklist, no
+el de lo que viene después (el lanzamiento, los arreglos, el trabajo siguiente).
+
+- Se pide en una línea al entregar el informe final (sección 7), con el comando:
+  `/model claude-opus-5-5`.
+- **Es un pedido, no una parada** como la del principio: el dueño no pidió detener nada
+  hasta que lo cambie. Si algún día lo pide, se escribe aquí.
+- Se pide en **la sesión que corrió el checklist**. El modelo es de cada sesión: cambiarlo
+  en otra no cambia el de esta.
+
 This is a manual checklist, not an automated test suite — this codebase
 has no automated tests. Walk through each item below, actually verifying
 it (read the code, check the diff since the last production release, ask
@@ -1628,3 +1640,7 @@ with a **Recommendations** section for every row that wasn't a clean pass
 — the concrete next action, not just a restatement of the problem. Skip
 that section if every row passed cleanly. End with a direct question:
 does the user want to proceed with the launch, given these results.
+
+**And in that same report, ask the owner to switch the session back to Opus 5.5**
+(`/model claude-opus-5-5`) — his rule of 2026-11-15, written at the top of this
+file. One line; it does not hold the launch.

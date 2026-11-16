@@ -305,7 +305,6 @@ export function CartScreen({
                           alt=""
                           fill
                           sizes="64px"
-                          className="object-cover"
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-muted-foreground">

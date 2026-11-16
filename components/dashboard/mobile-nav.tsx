@@ -10,7 +10,7 @@ import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
-import { isProductDetailRoute } from "@/lib/products/routes";
+import { isCatalogBrandingRoute, isProductDetailRoute } from "@/lib/products/routes";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
@@ -308,7 +308,10 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
     // el flotante «Agregar» se monta encima de «Eliminar» -- el fallo que el
     // comentario de arriba midió en otra pantalla, donde el síntoma era «le di
     // y no hizo nada».
-    isProductDetailRoute(pathname);
+    isProductDetailRoute(pathname) ||
+    // «Personalizar catálogo» (CT-170), since 2026-11-15: «Guardar cambios» sits where
+    // this bar would be.
+    isCatalogBrandingRoute(pathname);
 
   // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
   // dueño: «en la pantalla final de transacción exitosa se debe ver el botón

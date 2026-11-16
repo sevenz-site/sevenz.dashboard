@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { ImageOff } from "lucide-react";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
@@ -9,7 +8,7 @@ import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
 import { StockBadge } from "@/components/stock-badge";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import type { PriceCurrency } from "@/lib/products/price";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { ProductPhoto } from "@/components/product-photo";
 import {
   estaDescartado,
   ORDER_COLUMNS,
@@ -100,7 +99,7 @@ export default async function EditarLineaPage({
   const producto = productos[0];
   if (!producto) notFound();
 
-  const foto = producto.photoPath ? getPublicProductPhotoUrl(producto.photoPath) : null;
+  const foto = producto.photoPath || null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -125,15 +124,16 @@ export default async function EditarLineaPage({
           `ProductSheet` already does with `p-0`. `AppMain` wraps every screen
           in a `p-4`, so it has to be cancelled with `-mx-4` — the same trick
           `ScreenBackRow` documents, and for the same reason. */}
-      <div className="-mx-4 h-[200px] w-[calc(100%+2rem)] bg-muted">
+      {/* The photo box of `PRODUCT_PHOTO_BOX`, written out here because of the bleed:
+          full width and square on a phone, capped at 400px and centred from `md`. */}
+      <div className="-mx-4 aspect-square w-[calc(100%+2rem)] bg-muted md:mx-auto md:w-full md:max-w-[400px]">
         {foto ? (
-          <Image
-            src={foto}
+          <ProductPhoto
+            path={foto}
             alt=""
             width={1200}
             height={800}
-            unoptimized
-            className="size-full object-cover"
+            className="size-full"
           />
         ) : (
           <div className="flex size-full items-center justify-center text-muted-foreground">

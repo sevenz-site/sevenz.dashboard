@@ -356,7 +356,6 @@ function ProductCard({
               alt=""
               fill
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-              className="object-cover"
             />
           ) : (
             // Un hueco dicho, no un hueco gris. Sin esto, una tarjeta sin

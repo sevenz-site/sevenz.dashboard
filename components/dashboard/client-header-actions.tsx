@@ -33,6 +33,7 @@ import { EditClientDialog } from "@/components/dashboard/edit-client-dialog";
 import type { Client, OwnerCountry } from "@/lib/types";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
+import { publicLinkBase } from "@/lib/public-link";
 
 // Which confirmation is on screen. One state rather than a boolean per dialog:
 // two AlertDialogs can never be open at once, and modelling it as two booleans
@@ -108,7 +109,7 @@ export function ClientHeaderActions({
           resolve(null);
           return;
         }
-        resolve(`${window.location.origin}/s/${result.token}`);
+        resolve(`${publicLinkBase()}/s/${result.token}`);
       });
     });
   }

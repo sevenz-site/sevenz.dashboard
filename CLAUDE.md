@@ -1123,6 +1123,34 @@ copy en horas, y el dueño corrigió dos cifras de sus frames y una palabra que 
 hacer perder dinero. Solo se vio porque estaban los casos uno al lado del otro. Sin
 ese documento, cada caso se revisa por separado y nadie compara los demás.
 
+### LOS FRAMES DE FIGMA SE CONSTRUYEN EDITABLES. NUNCA CON CAPTURAS
+
+**Regla del dueño, 2026-11-15**: *«En figma estás creando los frames con
+captures/screenshots, está mal, debe ser 100% editable para poder realizar ajustes
+manuales»*.
+
+**La regla**: cada frame que se deja en Figma se arma con capas de Figma. Los textos son
+nodos de texto, con el copy final; los botones, campos, tarjetas y chips son formas o
+componentes del propio archivo; los iconos, vectores. **Una imagen solo entra donde la
+pantalla enseña una imagen**: la foto de un producto, una portada, un logo. Un frame cuyo
+contenido es una sola captura con relleno de imagen no cuenta como frame, aunque se vea
+igual.
+
+**Dónde va cada cosa, entonces**:
+
+- **Figma** es donde el dueño ajusta a mano. Tiene que poder cambiar un rótulo, mover un
+  botón o probar otro color sin redibujar la pantalla.
+- **El PDF de Drive** es la foto fija de lo que salió, y ahí sí van las capturas reales de
+  la app. Son dos piezas distintas: una no sustituye a la otra.
+
+**Cómo se comprueba antes de entregar**: se recorre cada frame y se cuentan sus nodos de
+texto. Un frame sin texto, o cuyo único hijo tiene un relleno `IMAGE` del tamaño del frame,
+es una captura y se rehace.
+
+**Qué pasó.** Las secciones de la `v0.7.0` y la `v0.7.2` se entregaron así, como capturas
+de la app pegadas en frames vacíos, y la primera de la `v0.8.0` igual. Esas dos ya
+aprobadas se quedan como están; la de la `v0.8.0` se rehizo editable.
+
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
 **Un enlace a un frame de Figma es una instrucción de leerlo, no una
@@ -2235,7 +2263,11 @@ no despliega nada y por tanto sí puede ser privado. Ver `PL-3` en
   confirms it is done** — even if the session already looks like Fable 5.2, since
   the model can change mid-session unasked (it did on 2026-11-05, mid-checklist).
   Owner's words, 2026-11-05: *«detendrás el inicio del QA checklist hasta que te
-  confirme que ya cambié el modelo a Fable 5.1»*. Then
+  confirme que ya cambié el modelo a Fable 5.1»*. **Once the checklist is
+  done, ask the owner to switch the session back to Opus 5.5**
+  (`/model claude-opus-5-5`), in the final report — owner's rule of 2026-11-15:
+  *«una vez termines el QA checklist debes pedirme cambiar el modelo de fable 5.2
+  a opus 5.5»*. A request, not a stop: it does not hold the launch. Then
   wait for the user's explicit confirmation before actually launching. An
   interface with no Figma, no Drive document, or missing from the release's
   Trello ticket blocks the launch (section 4g).
