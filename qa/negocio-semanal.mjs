@@ -165,7 +165,7 @@ const libro = (due, oc = 0, oa = 0, sc = 0, sa = 0) =>
   check("6d. solo por vencer, sin vencidos: sale igual, con «0 clientes» en vencidos",
     param(negocio, "overdue_summary") === "0 clientes" && param(negocio, "out_of_stock") === "2" && param(negocio, "low_stock") === "0",
     `${param(negocio, "overdue_summary")} · ${param(negocio, "out_of_stock")} · ${param(negocio, "low_stock")}`);
-  check("6e. sin deudores pero con productos: no sale (atencion_productos no está aprobada)",
+  check("6e. sin deudores pero con productos: no sale (atencion_productos aprobada, sin envío construido)",
     thursdayPlan(base({ ledgers: { USD: libro(50) }, out_of_stock: 3 })).skip === "sin_cobros");
   check("6f. un saldo a favor o cero no es un deudor", thursdayPlan(base()).skip === "sin_cobros");
   // Migration 206, owner's decision of 2026-11-14: products and orders only when something is new.

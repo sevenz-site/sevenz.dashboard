@@ -318,7 +318,8 @@ export function thursdayPlan(t: WeeklyTarget, sentOnPhone = 0): Plan {
   const books = ledgersOf(t.country).map((l) => t.ledgers[l]);
   const debts = books.some((f) => f && (Number(f.overdue_count) > 0 || Number(f.soon_count) > 0));
   // «Con deudores, el jueves sale siempre» (owner, 2026-11-06). Without them, products and
-  // orders alone would need `atencion_productos`, which is not approved: nothing goes out.
+  // orders alone would need `atencion_productos`. Meta approved it (owner, 2026-11-16), but its
+  // send is not built yet: nothing goes out.
   if (!debts) return { skip: "sin_cobros" };
 
   if (t.phone_slots_used + sentOnPhone >= PHONE_WEEKLY_CAP) return { skip: "tope_telefono" };
