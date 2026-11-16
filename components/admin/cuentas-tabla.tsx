@@ -337,10 +337,21 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
                     // responde al ratón deja fuera a quien navega con teclado —
                     // y el anillo de foco que arreglamos ayer existe justo para
                     // que se vea dónde está.
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      router.push(`/admin/cuentas/${row.original.owner_id}`);
-                    }
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    // ONLY A KEY PRESSED ON THE ROW ITSELF. React bubbles events
+                    // from a portal through the component tree, so a key typed in
+                    // the dialogs of the «acciones» cell reaches this row even
+                    // though the dialog is not inside it in the page. Without this
+                    // line the first SPACE typed in «Por qué lo bloqueas» was
+                    // swallowed and opened the account's page, unmounting the
+                    // dialog: reported by the owner on 2026-11-16. Every text
+                    // field in those dialogs had it (Bloquear, Reactivar, Dar demo,
+                    // Cambiar plan, Registrar pago), and Enter too. The cell's
+                    // `stopPropagation` covers clicks only. Same guard as
+                    // `papelera-table.tsx`.
+                    if (e.target !== e.currentTarget) return;
+                    e.preventDefault();
+                    router.push(`/admin/cuentas/${row.original.owner_id}`);
                   }}
                 >
                   {row.getVisibleCells().map((cell) => (
