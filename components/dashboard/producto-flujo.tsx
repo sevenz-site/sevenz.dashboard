@@ -5,7 +5,7 @@ import { conHoy } from "@/lib/exchange-rate/format";
 import { newFlowId } from "@/lib/analytics/flow-client";
 import { useEffect, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Loader2, Minus, Plus, Trash2, Unlink } from "lucide-react";
+import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { Button } from "@/components/ui/button";
@@ -383,6 +383,13 @@ export function ProductoFlujo({
     product == null ? true : product.price_wholesale != null,
   );
 
+  // The currency whose price was typed last, per tier: the margin is read from it. See
+  // `precioDelMargen`.
+  const [ultimaTecleada, setUltimaTecleada] = useState<Record<PriceTier, PriceCurrency | null>>({
+    retail: null,
+    wholesale: null,
+  });
+
   const [fixed, setFixed] = useState<Record<PriceTier, Partial<Record<PriceCurrency, string>>>>({
     retail: Object.fromEntries(
       Object.entries(overrides.retail).map(([c, v]) => [c, formatAmountForInput(v, { miles: true })]),
@@ -430,10 +437,13 @@ export function ProductoFlujo({
   // EL MARGEN SE MIDE DENTRO DE UNA MONEDA, y por eso hay que decirle cuál.
   // Cada escalón tiene su propia base desde la `114`, así que el precio que
   // se le pasa está en la moneda de SU escalón y no en una común.
+  //
+  // Since 2026-11-16 the price is the last TYPED one of the tier, not always the base:
+  // `precioDelMargen`, the same rule step 2/4 shows.
   const marginOf = (price: string, tier: PriceTier): number | null => {
-    const p = toNum(price);
-    if (p == null) return null;
-    return marginFromPrice(costNumber, costCurrency, p, baseDe(tier), rates);
+    const del = precioDelMargen(ultimaTecleada[tier], currencies[tier], fixed[tier], toNum(price));
+    if (del == null) return null;
+    return marginFromPrice(costNumber, costCurrency, del.precio, del.moneda, rates);
   };
 
   // ELEGIR UN MARGEN SIN COSTO NO SE IGNORA: SE EXPLICA.
@@ -487,8 +497,10 @@ export function ProductoFlujo({
     // defecto, así que un producto al 20 % se queda al 20 % — eso es lo que
     // hace que esto sea aceptable y no una sorpresa.
     //
-    // Un escalón con precios fijados a mano por moneda se queda fuera: ahí el
-    // margen no manda, y su desplegable está apagado por lo mismo.
+    // Un escalón con precios fijados a mano por moneda se queda fuera.
+    // Since 2026-11-16 the margin select is no longer switched off for it, but this stays: a
+    // pinned price is a figure the owner typed, and a cost change must not rewrite the base
+    // under it while the pinned ones stay put.
     //
     // CADA ESCALÓN RECALCULA CON SU PROPIA BASE (114). Con una base compartida
     // esto funcionaba por casualidad; con dos, calcular el precio del mayor
@@ -954,6 +966,8 @@ export function ProductoFlujo({
               onMarginChange={setMarginRetail}
               fixed={fixed.retail}
               onFixedChange={(next) => setFixed((f) => ({ ...f, retail: next }))}
+              ultimaTecleada={ultimaTecleada.retail}
+              onTyped={(c) => setUltimaTecleada((u) => (u.retail === c ? u : { ...u, retail: c }))}
             />
 
             <TierSection
@@ -972,6 +986,10 @@ export function ProductoFlujo({
               onMarginChange={setMarginWholesale}
               fixed={fixed.wholesale}
               onFixedChange={(next) => setFixed((f) => ({ ...f, wholesale: next }))}
+              ultimaTecleada={ultimaTecleada.wholesale}
+              onTyped={(c) =>
+                setUltimaTecleada((u) => (u.wholesale === c ? u : { ...u, wholesale: c }))
+              }
               extra={
                 <Stepper
                   id="producto_min_mayor"
@@ -1466,6 +1484,8 @@ function TierSection({
   rates,
   fixed,
   onFixedChange,
+  ultimaTecleada,
+  onTyped,
   disabled,
   extra,
 }: {
@@ -1489,6 +1509,10 @@ function TierSection({
   rates: BolivarRates | null;
   fixed: Partial<Record<PriceCurrency, string>>;
   onFixedChange: (next: Partial<Record<PriceCurrency, string>>) => void;
+  // Held by the parent so the review and the save read the same currency after this step
+  // unmounts. `null` means none typed yet in this visit.
+  ultimaTecleada: PriceCurrency | null;
+  onTyped: (c: PriceCurrency) => void;
   disabled: boolean;
   extra?: React.ReactNode;
 }) {
@@ -1506,13 +1530,24 @@ function TierSection({
   // desplegable se quedaba donde estaba mientras el precio SÍ cambiaba --que
   // es justo lo que él vio--. La conversión vive dentro de `marginFromPrice`,
   // que desde entonces exige las monedas en su firma.
+  // THE MARGIN IS THE ONE OF THE LAST PRICE TYPED, owner's decision of 2026-11-16: «El precio
+  // por defecto de Dólar no tiene ícono de cadena, simplemente al tipear cambia el porcentaje
+  // del margen, aplíca ese comportamiento también para Euro», with «Cada moneda su precio».
+  //
+  // This DISPLACES «O HAY MARGEN, O HAY PRECIOS FIJOS POR MONEDA» (2026-10-20): one typed
+  // non-base price used to switch the margin off, and the way back was relinking it with the
+  // chain. The chain is gone, so every price is typed the same way and the margin simply reads
+  // whichever one was typed last. A currency that was never typed follows the rate, and the
+  // last typed one falls back to the base when it is emptied and relinked (or removed).
+  //
+  // The rule itself lives in `precioDelMargen`, shared with the review and the save.
+  const delMargen = precioDelMargen(ultimaTecleada, currencies, fixed, priceNumber);
+  const deLaUltima = delMargen?.moneda ?? base;
+  const precioDeLaUltima = delMargen?.precio ?? null;
   const derived =
-    priceNumber != null ? marginFromPrice(cost, costCurrency, priceNumber, base, rates) : null;
-
-  // O HAY MARGEN, O HAY PRECIOS FIJOS POR MONEDA. Basta con que UNA moneda que
-  // no sea la base lleve importe a mano para que el margen deje de mandar. La
-  // salida es volver a enlazarla, que es un gesto visible y no un callejón.
-  const hayFijos = currencies.some((c) => c !== base && estaDesvinculada(fixed, c));
+    precioDeLaUltima != null
+      ? marginFromPrice(cost, costCurrency, precioDeLaUltima, deLaUltima, rates)
+      : null;
 
   // EL DESPLEGABLE NO ENSEÑA UN PORCENTAJE SI DE AHI NO SALE NINGUN NUMERO.
   //
@@ -1543,10 +1578,10 @@ function TierSection({
   // con el que cada preajuste ESCRIBIRÍA, con la misma función y el mismo
   // redondeo, así que o cuadra al céntimo o no es ese.
   const presetQueCuadra =
-    priceNumber != null && costUsable && cost != null && rates != null
+    precioDeLaUltima != null && costUsable && cost != null && rates != null
       ? (MARGIN_PRESETS as readonly number[]).find((m) => {
-          const p = priceFromCost(cost, costCurrency, m, base, rates);
-          return p != null && Math.abs(p - priceNumber) < 0.005;
+          const p = priceFromCost(cost, costCurrency, m, deLaUltima, rates);
+          return p != null && Math.abs(p - precioDeLaUltima) < 0.005;
         })
       : undefined;
 
@@ -1581,10 +1616,12 @@ function TierSection({
         <Label htmlFor={`margen_${tier}`}>{label}</Label>
         <Select
           value={selectValue}
-          disabled={disabled || hayFijos}
+          disabled={disabled}
           onValueChange={(v) => {
             if (v === "otro") {
-              document.getElementById(`precio_${tier}`)?.focus();
+              document
+                .getElementById(deLaUltima === base ? `precio_${tier}` : `precio_${tier}_${deLaUltima}`)
+                ?.focus();
               return;
             }
             onMarginChange(v);
@@ -1608,8 +1645,13 @@ function TierSection({
               return;
             }
             if (!rates) return;
-            const siguiente = priceFromCost(cost, costCurrency, Number(v), base, rates);
-            if (siguiente != null) onPriceChange(formatAmountForInput(siguiente, { miles: true }));
+            // A PRESET WRITES THE PRICE THE MARGIN IS READ FROM: the last one typed. Writing the
+            // base instead would leave the margin on screen describing another figure.
+            const siguiente = priceFromCost(cost, costCurrency, Number(v), deLaUltima, rates);
+            if (siguiente == null) return;
+            const texto = formatAmountForInput(siguiente, { miles: true });
+            if (deLaUltima === base) onPriceChange(texto);
+            else onFixedChange({ ...fixed, [deLaUltima]: texto });
           }}
         >
           <SelectTrigger id={`margen_${tier}`} className="w-full">
@@ -1624,12 +1666,6 @@ function TierSection({
             <SelectItem value="otro">Otro (escribe el precio)</SelectItem>
           </SelectContent>
         </Select>
-        {hayFijos ? (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Tienes precios puestos a mano, así que el margen no manda. Vuelve a enlazarlos con su
-            cadena para que lo calculemos nosotros.
-          </p>
-        ) : null}
       </div>
 
       <PriceRows
@@ -1643,6 +1679,7 @@ function TierSection({
         rates={rates}
         fixed={fixed}
         onFixedChange={onFixedChange}
+        onTyped={onTyped}
         disabled={disabled}
       />
 
@@ -1667,6 +1704,46 @@ function TierSection({
       )}
     </div>
   );
+}
+
+// ── WHICH PRICE THE MARGIN IS READ FROM, IN ONE PLACE ──────────────────────
+//
+// Owner's rule of 2026-11-16: «solo el margen de lo tecleado, si una moneda queda sin
+// escribirse el precio de venta, no tiene por qué reportarse margen». So the margin comes
+// from a TYPED price only: the base, or a pinned currency. A currency following the rate
+// never gives one.
+//
+// Order: the currency typed last in this visit, then the base, then any pinned currency with
+// a figure (a product whose base price is empty but whose euro was typed). Three readers use
+// it, and they must agree or the review contradicts the step it re-reads: the margin of step
+// 2/4, the review of 4/4, and `margin_retail_pct` / `margin_wholesale_pct`, which Reportes
+// shows in «Margen por producto».
+//
+// Accepted edge: reopening a product starts from the base again, so re-saving it for another
+// reason stores the base's margin even if the euro was the last one typed months ago.
+function precioDelMargen(
+  ultima: PriceCurrency | null,
+  currencies: PriceCurrency[],
+  fijos: Partial<Record<PriceCurrency, string>>,
+  precioBase: number | null,
+): { moneda: PriceCurrency; precio: number } | null {
+  const base = currencies[0];
+  const tecleado = (c: PriceCurrency): number | null => {
+    if (c === base) return precioBase;
+    if (!estaDesvinculada(fijos, c)) return null;
+    const n = parseTypedAmount(fijos[c] ?? "");
+    return n != null && n > 0 ? n : null;
+  };
+  const orden = [
+    ...(ultima != null && currencies.includes(ultima) ? [ultima] : []),
+    base,
+    ...currencies.filter((c) => c !== base),
+  ];
+  for (const moneda of orden) {
+    const precio = tecleado(moneda);
+    if (precio != null) return { moneda, precio };
+  }
+  return null;
 }
 
 // ── WHAT A CURRENCY IS WORTH, IN ONE PLACE ─────────────────────────────────
@@ -1713,6 +1790,7 @@ function PriceRows({
   rates,
   fixed,
   onFixedChange,
+  onTyped,
   disabled,
 }: {
   tier: PriceTier;
@@ -1725,6 +1803,8 @@ function PriceRows({
   rates: BolivarRates | null;
   fixed: Partial<Record<PriceCurrency, string>>;
   onFixedChange: (next: Partial<Record<PriceCurrency, string>>) => void;
+  // Which currency was typed last, so the margin above can read its price.
+  onTyped: (c: PriceCurrency) => void;
   disabled: boolean;
 }) {
   const base = currencies[0];
@@ -1801,67 +1881,43 @@ function PriceRows({
             //
             // La moneda no se pierde al quitar el símbolo: la fila la nombra
             // en su rótulo («Precio Euro») y la repite su bandera.
+            //
+            // NO CHAIN SINCE 2026-11-16 (owner's request, quoted in TierSection): a row that
+            // follows the rate is an ordinary field showing the calculated figure, and typing in
+            // it pins it, exactly as the base is typed. The pinned state still lives in whether
+            // the KEY exists, so emptying the field to retype keeps it pinned (the 2026-10-14
+            // fix); only LEAVING it empty relinks it, and it shows the rate again.
             value={
               esBase
                 ? price
                 : manual
                   ? (fixed[currency] ?? "")
                   : calculado == null
-                    ? "—"
+                    ? ""
                     : formatAmountForInput(calculado, { miles: true })
             }
-            readOnly={!esBase && !manual}
             disabled={disabled}
             inputId={esBase ? `precio_${tier}` : `precio_${tier}_${currency}`}
-            onChange={(next) =>
-              esBase ? onPriceChange(next) : onFixedChange({ ...fixed, [currency]: next })
+            onChange={(next) => {
+              onTyped(currency);
+              if (esBase) onPriceChange(next);
+              else onFixedChange({ ...fixed, [currency]: next });
+            }}
+            onBlur={
+              esBase
+                ? undefined
+                : () => {
+                    if (!manual || (fixed[currency] ?? "").trim() !== "") return;
+                    const next = { ...fixed };
+                    delete next[currency];
+                    onFixedChange(next);
+                  }
             }
             // LA EQUIVALENCIA VA DEBAJO DE CADA MONEDA, del frame 1192:4185.
             // Antes era una fila suelta al final, que decía lo que vale el
             // precio base y nada de las demás. Así cada línea dice lo que de
             // verdad le van a pagar por ESA.
             bolivares={bs == null ? null : conHoy(formatPriceAmount(bs, "VES"))}
-            // LA FILA DE LA MONEDA BASE NO LLEVA VINCULO: es el precio, no una
-            // equivalencia de nada, y su vínculo con el costo es el margen.
-            // THE CHAIN OPENS EVEN WITH NOTHING TO COPY. Reported by the owner
-            // on 2026-10-20: *«cuando hay dos precios y ninguno tiene valor, no
-            // puedo desvincular el segundo para customizarlo, debería»*.
-            //
-            // It read `disabled: disabled || (!manual && calculado == null)`,
-            // and with no base price `calculado` is null for every non-base
-            // currency — so the one state where breaking the link is the
-            // ONLY way forward was the state that forbade it. Someone who
-            // wants to price the euro by hand and leave the dollar alone had
-            // to first type a dollar price they did not want, break the chain,
-            // and then go back and erase it.
-            //
-            // The unlinked state lives in whether the KEY exists in `fixed`,
-            // not in what it holds — that is the 2026-10-14 fix explained
-            // above. So an empty string is a perfectly good unlinked price:
-            // the field opens blank and waits. The server already drops
-            // non-positive amounts when it builds `product_price_overrides`,
-            // so nothing is written until a number is typed.
-            link={
-              esBase
-                ? null
-                : {
-                    linked: !manual,
-                    disabled,
-                    onToggle: () => {
-                      if (manual) {
-                        const next = { ...fixed };
-                        delete next[currency];
-                        onFixedChange(next);
-                      } else {
-                        onFixedChange({
-                          ...fixed,
-                          [currency]:
-                            calculado == null ? "" : formatAmountForInput(calculado, { miles: true }),
-                        });
-                      }
-                    },
-                  }
-            }
             onRemove={currencies.length <= 1 ? null : () => onRemoveCurrency(currency)}
           />
         );
@@ -1910,10 +1966,10 @@ function PriceRows({
           shows while the price IS linked, which is the only state in which
           someone would go looking for this instruction. Showing the other one
           would send them hunting for a control that is not on screen yet. */}
+      {/* FIRST SENTENCE ONLY since 2026-11-16, owner's choice: the second one told how to use
+          the chain, which no longer exists. */}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        Las tasas de Sevenz provienen de fuentes públicas. Selecciona{" "}
-        <Link2 className="inline-block size-3.5 align-text-bottom" aria-hidden="true" /> para
-        desvincular el precio de la tasa oficial.
+        Las tasas de Sevenz provienen de fuentes públicas.
       </p>
     </div>
   );
@@ -1927,7 +1983,7 @@ function PriceRow({
   readOnly,
   disabled,
   inputId,
-  link,
+  onBlur,
   onRemove,
   bolivares,
 }: {
@@ -1938,11 +1994,7 @@ function PriceRow({
   readOnly?: boolean;
   disabled: boolean;
   inputId: string;
-  link?: {
-    linked: boolean;
-    disabled: boolean;
-    onToggle: () => void;
-  } | null;
+  onBlur?: () => void;
   onRemove?: (() => void) | null;
   bolivares?: string | null;
 }) {
@@ -1971,49 +2023,18 @@ function PriceRow({
         </Label>
 
         <div className="flex shrink-0 items-center gap-1">
-          <div className="relative">
-            <Input
-              id={inputId}
-              inputMode="decimal"
-              value={value}
-              readOnly={readOnly}
-              disabled={disabled}
-              ref={refPrecio}
-              onChange={alTeclearPrecio}
-              placeholder="00.00"
-              className={`h-10 w-32 text-right tabular-nums ${link ? "pl-9" : ""} ${
-                readOnly ? "bg-muted/50" : ""
-              }`}
-            />
-            {link ? (
-              <button
-                type="button"
-                disabled={link.disabled}
-                onClick={link.onToggle}
-                aria-label={
-                  link.linked
-                    ? `Desvincular el precio en ${currency} y escribirlo a mano`
-                    : `Volver a calcular el precio en ${currency}`
-                }
-                // ON THE LEFT OF THE FIELD, owner's request of 2026-11-16: on the right it sat a
-                // few pixels from the delete button outside the field, and a thumb meant for the
-                // chain could remove the currency instead. The figure stays right-aligned, so
-                // the icon on the left never covers it.
-                className="absolute top-1/2 left-2 -translate-y-1/2 rounded p-1 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-              >
-                {/* CADENA ROTA, NO CADENA TACHADA. Pedido por el dueño el
-                    2026-10-14 con el icono delante: `Unlink` dibuja los dos
-                    eslabones separándose con sus destellos, y `Link2Off` —lo
-                    que había— es la misma cadena entera con una barra encima.
-
-                    La diferencia importa porque la barra es el signo de
-                    «prohibido» o «desactivado» en el resto de la interfaz, y
-                    aquí no hay nada prohibido: el precio está desvinculado y
-                    se puede escribir, que es justo lo contrario. */}
-                {link.linked ? <Link2 className="size-4" /> : <Unlink className="size-4" />}
-              </button>
-            ) : null}
-          </div>
+          <Input
+            id={inputId}
+            inputMode="decimal"
+            value={value}
+            readOnly={readOnly}
+            disabled={disabled}
+            ref={refPrecio}
+            onChange={alTeclearPrecio}
+            onBlur={onBlur}
+            placeholder="00.00"
+            className={`h-10 w-32 text-right tabular-nums ${readOnly ? "bg-muted/50" : ""}`}
+          />
 
           {onRemove ? (
             <button
