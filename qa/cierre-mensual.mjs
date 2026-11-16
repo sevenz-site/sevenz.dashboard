@@ -8,7 +8,8 @@
 // sends it as a third message, once a month, never after the 14th.
 //
 // Part 2 builds a throw-away business in dev with sales on both edges of last month, a deleted
-// sale and a return, reads its close with the service key (the Thursday batch) AND AS THE OWNER
+// sale and a return, reads its close through the server's function (the Thursday batch, migration
+// 213: in production the service key cannot read those tables) AND AS THE OWNER
 // (the Reportes card, under RLS): CLAUDE.md asks any suite over tables the owner reads to read
 // as him at least once, because the service key sees through a missing grant. Removed at the end.
 import { readFileSync } from "node:fs";
@@ -194,8 +195,11 @@ try {
   if (eD) throw new Error(`sale_returns: ${eD.message}`);
   devoluciones.push(dv.id);
 
-  const servicio = await C.cargarCierreDelMes(admin, owner, "VE", mes);
-  check("6a. con la llave del servidor: 1 venta en $ y 1 en € (la borrada y las de fuera del mes no cuentan)",
+  // THE SERVER'S PATH, the one the Thursday batch runs: `whatsapp_monthly_close_rows`. Before
+  // migration 213 this line read the tables with the service key, which passes in dev and is
+  // refused in production; the suite was green while the send could not have worked there.
+  const servicio = await C.cargarCierreDelMesServidor(admin, owner, "VE", mes);
+  check("6a. por la función del servidor (213): 1 venta en $ y 1 en € (la borrada y las de fuera del mes no cuentan)",
     servicio.libros.USD?.ventas === 1 && servicio.libros.EUR?.ventas === 1, JSON.stringify(servicio.libros));
   check("6b. $ vendido 20 + 5 − 10 = 15; ganancia 8 − 4 = 4", servicio.libros.USD?.vendido === 15 && servicio.libros.USD?.ganancia === 4,
     `${servicio.libros.USD?.vendido} · ${servicio.libros.USD?.ganancia}`);
@@ -209,6 +213,27 @@ try {
 
   const otro = await C.cargarCierreDelMes(dueno, "00000000-0000-0000-0000-000000000000", "VE", mes);
   check("6e. y como el dueño, el negocio de otro no le devuelve nada", otro.lineas === 0 && Object.keys(otro.libros).length === 0);
+
+  // 213 IS FOR THE SERVER ONLY. An owner calling it could read any business's sales by id.
+  const robo = await dueno.rpc("whatsapp_monthly_close_rows", { p_owner_id: owner, p_from: mes.desdeUtc, p_to: mes.hastaExclusivoUtc });
+  check("6f. el dueño NO puede llamar a la función del servidor", robo.error != null && robo.data == null, robo.error?.code ?? "sin error");
+  const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const sinSesion = await anon.rpc("whatsapp_monthly_closes_sent", { p_since: mes.desdeUtc });
+  check("6g. ni un visitante sin cuenta, la de cierres enviados", sinSesion.error != null && sinSesion.data == null, sinSesion.error?.code ?? "sin error");
+
+  // THE «ALREADY SENT» READ, same function the batch uses: a send on its way counts, a failed
+  // one does not (the next run retries it).
+  const { data: envio, error: eW } = await admin.from("whatsapp_sends")
+    .insert({ owner_id: owner, template: "cierre_mensual", period_key: "qa-213", ok: null }).select("id").single();
+  if (eW) throw new Error(`whatsapp_sends: ${eW.message}`);
+  const haceUnaHora = new Date(Date.now() - 3600_000).toISOString();
+  const enviados = await admin.rpc("whatsapp_monthly_closes_sent", { p_since: haceUnaHora });
+  check("6h. un cierre en camino cuenta como enviado",
+    !enviados.error && (enviados.data ?? []).some((r) => r.owner_id === owner), enviados.error?.message ?? "");
+  await admin.from("whatsapp_sends").update({ ok: false }).eq("id", envio.id);
+  const trasFallar = await admin.rpc("whatsapp_monthly_closes_sent", { p_since: haceUnaHora });
+  check("6i. uno fallido no cuenta: el siguiente jueves lo reintenta",
+    !trasFallar.error && !(trasFallar.data ?? []).some((r) => r.owner_id === owner), trasFallar.error?.message ?? "");
 } catch (e) {
   check("la prueba corrió entera", false, e instanceof Error ? e.message : String(e));
 } finally {

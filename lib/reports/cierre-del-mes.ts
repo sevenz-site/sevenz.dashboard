@@ -213,9 +213,11 @@ export function calcularCierre(
 }
 
 /**
- * Reads the month and computes its close. Works with the owner's client (Reportes, under RLS)
- * and with the service client (the Thursday batch): both filter by `owner_id` explicitly.
- * Every row, not the first 1,000 (PL-34).
+ * Reads the month and computes its close WITH THE OWNER'S CLIENT (Reportes, under RLS), with
+ * `owner_id` filtered explicitly as well. Every row, not the first 1,000 (PL-34).
+ *
+ * NOT FOR THE SERVICE ROLE: production revokes its SELECT on these tables, so the Thursday
+ * batch reads through `cargarCierreDelMesServidor` below. Both end in `calcularCierre`.
  */
 export async function cargarCierreDelMes(
   supabase: SupabaseClient,
@@ -260,27 +262,75 @@ export async function cargarCierreDelMes(
       .range(from, to),
   );
 
-  const lineas: LineaDelCierre[] = filas.map((l) => ({
+  const lineas = filas.map(lineaDesdeFila);
+  const devoluciones = devueltas.map((d) => {
+    // PostgREST hands the embedded line back as an object or a one-row list.
+    const linea = (Array.isArray(d.sale_lines) ? d.sale_lines[0] : d.sale_lines) as
+      | { unit_cost: number | string | null }
+      | null;
+    return devolucionDesdeFila(d, linea?.unit_cost ?? null);
+  });
+
+  return calcularCierre(mes, country, lineas, devoluciones);
+}
+
+/**
+ * The same close FOR THE SERVER (the Thursday batch, as the service role), through
+ * `whatsapp_monthly_close_rows` (migration 213): a SECURITY DEFINER function, because in
+ * production the service role has no SELECT on `sales`, `sale_lines` or `sale_returns`.
+ *
+ * The function returns the month's raw rows and nothing computed, so the arithmetic is still
+ * `calcularCierre` and the message cannot say something the Reportes card does not.
+ * `qa:cierre-mensual` reads one business both ways and compares the two closes.
+ */
+export async function cargarCierreDelMesServidor(
+  service: SupabaseClient,
+  ownerId: string,
+  country: string | null,
+  mes: MesCerrado,
+): Promise<CierreDelMes> {
+  const { data, error } = await service.rpc("whatsapp_monthly_close_rows", {
+    p_owner_id: ownerId,
+    p_from: mes.desdeUtc,
+    p_to: mes.hastaExclusivoUtc,
+  });
+  if (error) throw new Error(`whatsapp_monthly_close_rows: ${error.message}`);
+  const filas = (data ?? {}) as {
+    lineas?: Record<string, unknown>[];
+    devoluciones?: Record<string, unknown>[];
+  };
+  return calcularCierre(
+    mes,
+    country,
+    (filas.lineas ?? []).map(lineaDesdeFila),
+    (filas.devoluciones ?? []).map((d) =>
+      devolucionDesdeFila(d, (d.unit_cost as number | string | null | undefined) ?? null),
+    ),
+  );
+}
+
+// One reader per row shape, shared by both loaders above, so the two cannot map a column
+// differently.
+function lineaDesdeFila(l: Record<string, unknown>): LineaDelCierre {
+  return {
     saleId: l.sale_id as string,
     currency: l.currency as string,
     quantity: Number(l.quantity),
     unitPrice: Number(l.unit_price),
     unitCost: l.unit_cost == null ? null : Number(l.unit_cost),
-  }));
-  const devoluciones: DevolucionDelCierre[] = devueltas.map((d) => {
-    // PostgREST hands the embedded line back as an object or a one-row list.
-    const linea = (Array.isArray(d.sale_lines) ? d.sale_lines[0] : d.sale_lines) as
-      | { unit_cost: number | string | null }
-      | null;
-    return {
-      // `sale_returns` spells a Colombian book NULL; `sale_lines` spells it 'COP'.
-      currency: (d.currency as string | null) ?? "COP",
-      quantity: Number(d.quantity),
-      unitPrice: Number(d.unit_price),
-      amount: Number(d.amount),
-      unitCost: linea?.unit_cost == null ? null : Number(linea.unit_cost),
-    };
-  });
+  };
+}
 
-  return calcularCierre(mes, country, lineas, devoluciones);
+function devolucionDesdeFila(
+  d: Record<string, unknown>,
+  costoDeSuLinea: number | string | null,
+): DevolucionDelCierre {
+  return {
+    // `sale_returns` spells a Colombian book NULL; `sale_lines` spells it 'COP'.
+    currency: (d.currency as string | null) ?? "COP",
+    quantity: Number(d.quantity),
+    unitPrice: Number(d.unit_price),
+    amount: Number(d.amount),
+    unitCost: costoDeSuLinea == null ? null : Number(costoDeSuLinea),
+  };
 }

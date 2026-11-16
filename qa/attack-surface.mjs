@@ -272,6 +272,10 @@ export const MANIFEST = {
     whatsapp_attention_remember: "service",
     // 206: today's products and orders that need attention, read by the two above.
     whatsapp_attention_items: "service",
+    // 213: the month's sale lines and returns of one business, and who already got
+    // `cierre_mensual`. Cron only: an owner calling the first could read any business by id.
+    whatsapp_monthly_close_rows: "service",
+    whatsapp_monthly_closes_sent: "service",
     create_not_me_token: "service",
     peek_not_me_token: "service",
     consume_not_me_token: "service",

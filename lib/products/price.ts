@@ -208,14 +208,20 @@ export function marginFromPrice(
   // del margen porque es la moneda en la que el dueño está haciendo la inversión». So the PRICE
   // is converted to the cost's currency, never the cost to the price's. Until that day it went
   // the other way: bought at $5 and sold at €7, the $5 became euros and the margin was read in
-  // euros. With one exact rate both directions give the same ratio, but each conversion rounds
-  // to cents on its own side, so the two could differ by a few hundredths of a point.
-  const enLaMonedaDelCosto =
-    costCurrency === priceCurrency
-      ? price
-      : rates == null
-        ? null
-        : priceIn(costCurrency, { amount: price, currency: priceCurrency }, rates).amount;
+  // euros.
+  //
+  // THE CONVERTED PRICE IS NOT ROUNDED TO CENTS. It is an intermediate figure nobody sees, and
+  // rounding it moved the answer: $10 at 30 % writes €11,56, and reading that back through a
+  // price rounded to $13,01 said 30,1 % where the preset that wrote it says 30. Caught by
+  // `qa:precio` 6f on 2026-11-16, in the release checklist of v0.9.0. `priceIn` rounds, so the
+  // conversion is done here with the same two rates it uses.
+  let enLaMonedaDelCosto: number | null = price;
+  if (costCurrency !== priceCurrency) {
+    const bsPorPrecio = rates == null ? null : bolivaresPorUnidad(priceCurrency, rates);
+    const bsPorCosto = rates == null ? null : bolivaresPorUnidad(costCurrency, rates);
+    enLaMonedaDelCosto =
+      bsPorPrecio == null || bsPorCosto == null ? null : (price * bsPorPrecio) / bsPorCosto;
+  }
   if (enLaMonedaDelCosto == null || !(enLaMonedaDelCosto > 0)) return null;
 
   return redondear(((enLaMonedaDelCosto - cost) / cost) * 100);

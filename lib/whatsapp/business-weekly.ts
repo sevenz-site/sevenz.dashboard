@@ -11,7 +11,7 @@ import {
   type WeeklyTarget,
 } from "@/lib/whatsapp/business-weekly-text";
 import {
-  cargarCierreDelMes,
+  cargarCierreDelMesServidor,
   juevesDeLaSemana,
   mesAnteriorA,
   startOfMonthUtc,
@@ -135,19 +135,19 @@ async function monthlyClosesSent(targets: WeeklyTarget[], now: Date): Promise<Se
   }
   if (!starts.size) return new Set();
   const earliest = new Date(Math.min(...starts.values())).toISOString();
-  const { data, error } = await createServiceClient()
-    .from("whatsapp_sends")
-    .select("owner_id, sent_at")
-    .eq("template", "cierre_mensual")
-    .not("ok", "is", false)
-    .gte("sent_at", earliest);
+  // THROUGH A FUNCTION, NOT THE TABLE: production gives the service role no SELECT on
+  // `whatsapp_sends` (migration 213). Read straight from the table, this failed there on every
+  // run and the fallback below turned that into «everyone already has it»: no close, ever.
+  const { data, error } = await createServiceClient().rpc("whatsapp_monthly_closes_sent", {
+    p_since: earliest,
+  });
   if (error) {
     // Unknown means «maybe sent»: a close sent twice cannot be taken back, one skipped can.
     console.error("cierre_mensual: envíos del mes:", error.message);
     return new Set(targets.map((t) => t.owner_id));
   }
   const out = new Set<string>();
-  for (const row of data ?? []) {
+  for (const row of (data ?? []) as { owner_id: string; sent_at: string }[]) {
     const start = starts.get(row.owner_id as string);
     if (start != null && new Date(row.sent_at as string).getTime() >= start) out.add(row.owner_id as string);
   }
@@ -171,7 +171,7 @@ async function sendMonthlyClose(
   let cierre: CierreDelMes | null = null;
   if (!t.paused && !t.is_test && th.day <= 14 && !alreadySent) {
     try {
-      cierre = await cargarCierreDelMes(createServiceClient(), t.owner_id, t.country, mesAnteriorA(th.year, th.month, t.country));
+      cierre = await cargarCierreDelMesServidor(createServiceClient(), t.owner_id, t.country, mesAnteriorA(th.year, th.month, t.country));
     } catch (e) {
       console.error(`[cierre_mensual] ${t.owner_id}:`, e instanceof Error ? e.message : e);
       result.cierreSaltados.error_lectura = (result.cierreSaltados.error_lectura ?? 0) + 1;
