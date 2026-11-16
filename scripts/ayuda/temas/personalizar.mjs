@@ -1,4 +1,4 @@
-// «Personalizar tu catálogo» (CT-170, v0.7.3) in the demo business.
+// «Personalizar tu catálogo» (CT-170, v0.8.0) in the demo business.
 //
 // With --finalizar it WRITES in dev: it uploads a cover drawn in the page (a canvas, so no
 // real photo of anybody's shop is published), saves a colour, a welcome and the address, and

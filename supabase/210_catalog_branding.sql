@@ -12,7 +12,7 @@
 -- Owner's request of 2026-11-12: «Como dueño de negocio quiero customizar mi catálogo en
 -- función de mi marca, información de negocio y productos». Phase 1, approved with its
 -- frames that day («Sí apruebo fase 1», section `2115:21701`): a brand colour, a cover
--- image, a welcome message and, if he wants, the address. Built for v0.7.3, owner's
+-- image, a welcome message and, if he wants, the address. Built for v0.8.0 (first named v0.7.3), owner's
 -- request of 2026-11-15.
 --
 -- THE COLUMNS, on `owners` because they are the business's own and the owner already

@@ -1148,8 +1148,8 @@ texto. Un frame sin texto, o cuyo único hijo tiene un relleno `IMAGE` del tama�
 es una captura y se rehace.
 
 **Qué pasó.** Las secciones de la `v0.7.0` y la `v0.7.2` se entregaron así, como capturas
-de la app pegadas en frames vacíos, y la primera de la `v0.7.3` igual. Esas dos ya
-aprobadas se quedan como están; la de la `v0.7.3` se rehace editable.
+de la app pegadas en frames vacíos, y la primera de la `v0.8.0` igual. Esas dos ya
+aprobadas se quedan como están; la de la `v0.8.0` se rehizo editable.
 
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 

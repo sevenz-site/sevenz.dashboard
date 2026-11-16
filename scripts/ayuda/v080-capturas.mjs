@@ -1,6 +1,6 @@
-// Captures for the v0.7.3 Figma frames and release document, taken from the dev app through
+// Captures for the v0.8.0 Figma frames and release document, taken from the dev app through
 // daemon.mjs with the demo account. Run with the daemon up:
-//   MSYS_NO_PATHCONV=1 node v073-capturas.mjs [phone|web]
+//   MSYS_NO_PATHCONV=1 node v080-capturas.mjs [phone|web]
 // Phone (375) is the default; `web` expects the daemon started with AYUDA_W=1280 AYUDA_H=800.
 //
 // WRITES IN DEV, and undoes it: the catalogue branding is saved through the real screen (cover
@@ -19,7 +19,7 @@ import { exportScreen } from "./figma-export.mjs";
 
 const MODE = process.argv[2] ?? "phone";
 const WEB = MODE === "web";
-const OUT = fileURLToPath(new URL("./raw/v073/", import.meta.url));
+const OUT = fileURLToPath(new URL("./raw/v080/", import.meta.url));
 // The same state, as editable layers for Figma (figma-export.mjs, figma-build.js).
 const FIGMA = fileURLToPath(new URL("./raw/figma/", import.meta.url));
 const M = JSON.parse(readFileSync(new URL("./demo-manifest.json", import.meta.url), "utf8"));
