@@ -1,4 +1,4 @@
-// Captures for the release document of three product changes of 2026-11-16 (the product page
+// Captures for the release document of the product changes of 2026-11-16 (the product page
 // lists only the enabled currencies, the price step without the chain, and «Editar» on a
 // cart line whose product was created in the sale), taken from the dev app through daemon.mjs
 // with the demo account. Run with the daemon up:
@@ -66,6 +66,12 @@ try {
   await ev(`(async()=>{const el=document.getElementById('precio_retail_EUR'); el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'1,10'); el.dispatchEvent(new Event('input',{bubbles:true})); await new Promise(r=>setTimeout(r,400)); return 1})()`);
   await top(`[...document.querySelectorAll('label')].find(s=>s.textContent.trim()==='Margen al detal')`, 120);
   await shot("precio-sin-cadena");
+
+  // Reportes › Inventario: the «Margen por producto» title now says the margin is measured in
+  // the cost's currency (owner's rule of 2026-11-16). Read-only.
+  await go(`${BASE}/reportes?seccion=margen&tab=inventario`, 8000);
+  await top(`[...document.querySelectorAll('h2')].find(s=>s.textContent.trim()==='Margen por producto')`, 260);
+  await shot("reportes-margen-moneda-del-costo");
 } finally {
   await admin.from("product_currencies").delete().eq("product_id", PRODUCT).eq("tier", "retail").eq("currency", "EUR");
 }

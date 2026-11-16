@@ -721,7 +721,9 @@ export function ReportesInventario({
         // completadas», y las órdenes de compra NO EXISTEN en esta app:
         // copiarlo prometería una pantalla que no está. Es la misma razón por
         // la que el subtítulo del bloque de arriba tampoco es el suyo.
-        subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor."
+        // THE SECOND SENTENCE IS THE OWNER'S RULE of 2026-11-16, which he asked to have here:
+        // the margin is measured in the cost's currency, the one he invested in.
+        subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor. Se calcula en la moneda del costo, que es en la que inviertes."
         accion={
           datos.margenLista.length ? (
             <ReportesProductosSheet

@@ -441,7 +441,13 @@ export function ProductoFlujo({
   // Since 2026-11-16 the price is the last TYPED one of the tier, not always the base:
   // `precioDelMargen`, the same rule step 2/4 shows.
   const marginOf = (price: string, tier: PriceTier): number | null => {
-    const del = precioDelMargen(ultimaTecleada[tier], currencies[tier], fixed[tier], toNum(price));
+    const del = precioDelMargen(
+      ultimaTecleada[tier],
+      currencies[tier],
+      fixed[tier],
+      toNum(price),
+      costCurrency,
+    );
     if (del == null) return null;
     return marginFromPrice(costNumber, costCurrency, del.precio, del.moneda, rates);
   };
@@ -1541,7 +1547,7 @@ function TierSection({
   // last typed one falls back to the base when it is emptied and relinked (or removed).
   //
   // The rule itself lives in `precioDelMargen`, shared with the review and the save.
-  const delMargen = precioDelMargen(ultimaTecleada, currencies, fixed, priceNumber);
+  const delMargen = precioDelMargen(ultimaTecleada, currencies, fixed, priceNumber, costCurrency);
   const deLaUltima = delMargen?.moneda ?? base;
   const precioDeLaUltima = delMargen?.precio ?? null;
   const derived =
@@ -1713,8 +1719,13 @@ function TierSection({
 // from a TYPED price only: the base, or a pinned currency. A currency following the rate
 // never gives one.
 //
-// Order: the currency typed last in this visit, then the base, then any pinned currency with
-// a figure (a product whose base price is empty but whose euro was typed). Three readers use
+// Order: the COST's currency when its price was typed (owner's rule of 2026-11-16, «si ese
+// dueño compró ese producto en 5 dolares y lo vende en 7 dólares y 6.5 euros, el margen seguirá
+// calculándose en la moneda del costo»), then the currency typed last in this visit, then the
+// base, then any pinned currency with a figure (a product whose base price is empty but whose
+// euro was typed). Whichever price is picked, `marginFromPrice` measures it in the cost's
+// currency. With the cost in bolívares and two typed prices in other currencies, the last
+// typed one decides. Three readers use
 // it, and they must agree or the review contradicts the step it re-reads: the margin of step
 // 2/4, the review of 4/4, and `margin_retail_pct` / `margin_wholesale_pct`, which Reportes
 // shows in «Margen por producto».
@@ -1726,6 +1737,7 @@ function precioDelMargen(
   currencies: PriceCurrency[],
   fijos: Partial<Record<PriceCurrency, string>>,
   precioBase: number | null,
+  monedaDelCosto: CostCurrency,
 ): { moneda: PriceCurrency; precio: number } | null {
   const base = currencies[0];
   const tecleado = (c: PriceCurrency): number | null => {
@@ -1734,7 +1746,9 @@ function precioDelMargen(
     const n = parseTypedAmount(fijos[c] ?? "");
     return n != null && n > 0 ? n : null;
   };
+  const delCosto = currencies.find((c) => c === monedaDelCosto);
   const orden = [
+    ...(delCosto != null ? [delCosto] : []),
     ...(ultima != null && currencies.includes(ultima) ? [ultima] : []),
     base,
     ...currencies.filter((c) => c !== base),

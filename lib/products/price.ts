@@ -203,15 +203,22 @@ export function marginFromPrice(
   // no hay margen que calcular. Devolver un número aquí sería inventarlo.
   if (costCurrency == null || costCurrency === "OTHER") return null;
 
-  const enLaMonedaDelPrecio =
+  // THE MARGIN IS MEASURED IN THE COST'S CURRENCY. Owner's rule of 2026-11-16: «la aplicación
+  // debe calcular el margen en la misma moneda del costo, esa es la que manda para el cálculo
+  // del margen porque es la moneda en la que el dueño está haciendo la inversión». So the PRICE
+  // is converted to the cost's currency, never the cost to the price's. Until that day it went
+  // the other way: bought at $5 and sold at €7, the $5 became euros and the margin was read in
+  // euros. With one exact rate both directions give the same ratio, but each conversion rounds
+  // to cents on its own side, so the two could differ by a few hundredths of a point.
+  const enLaMonedaDelCosto =
     costCurrency === priceCurrency
-      ? cost
+      ? price
       : rates == null
         ? null
-        : priceIn(priceCurrency, { amount: cost, currency: costCurrency }, rates).amount;
-  if (enLaMonedaDelPrecio == null || !(enLaMonedaDelPrecio > 0)) return null;
+        : priceIn(costCurrency, { amount: price, currency: priceCurrency }, rates).amount;
+  if (enLaMonedaDelCosto == null || !(enLaMonedaDelCosto > 0)) return null;
 
-  return redondear(((price - enLaMonedaDelPrecio) / enLaMonedaDelPrecio) * 100);
+  return redondear(((enLaMonedaDelCosto - cost) / cost) * 100);
 }
 
 // ── Parsing what somebody typed, and what the database returned ──────────
