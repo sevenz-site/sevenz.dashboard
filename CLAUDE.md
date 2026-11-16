@@ -1123,6 +1123,34 @@ copy en horas, y el dueño corrigió dos cifras de sus frames y una palabra que 
 hacer perder dinero. Solo se vio porque estaban los casos uno al lado del otro. Sin
 ese documento, cada caso se revisa por separado y nadie compara los demás.
 
+### LOS FRAMES DE FIGMA SE CONSTRUYEN EDITABLES. NUNCA CON CAPTURAS
+
+**Regla del dueño, 2026-11-15**: *«En figma estás creando los frames con
+captures/screenshots, está mal, debe ser 100% editable para poder realizar ajustes
+manuales»*.
+
+**La regla**: cada frame que se deja en Figma se arma con capas de Figma. Los textos son
+nodos de texto, con el copy final; los botones, campos, tarjetas y chips son formas o
+componentes del propio archivo; los iconos, vectores. **Una imagen solo entra donde la
+pantalla enseña una imagen**: la foto de un producto, una portada, un logo. Un frame cuyo
+contenido es una sola captura con relleno de imagen no cuenta como frame, aunque se vea
+igual.
+
+**Dónde va cada cosa, entonces**:
+
+- **Figma** es donde el dueño ajusta a mano. Tiene que poder cambiar un rótulo, mover un
+  botón o probar otro color sin redibujar la pantalla.
+- **El PDF de Drive** es la foto fija de lo que salió, y ahí sí van las capturas reales de
+  la app. Son dos piezas distintas: una no sustituye a la otra.
+
+**Cómo se comprueba antes de entregar**: se recorre cada frame y se cuentan sus nodos de
+texto. Un frame sin texto, o cuyo único hijo tiene un relleno `IMAGE` del tamaño del frame,
+es una captura y se rehace.
+
+**Qué pasó.** Las secciones de la `v0.7.0` y la `v0.7.2` se entregaron así, como capturas
+de la app pegadas en frames vacíos, y la primera de la `v0.7.3` igual. Esas dos ya
+aprobadas se quedan como están; la de la `v0.7.3` se rehace editable.
+
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
 **Un enlace a un frame de Figma es una instrucción de leerlo, no una

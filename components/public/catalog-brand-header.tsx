@@ -12,15 +12,22 @@ import type { ReactNode } from "react";
 // the logo in a white circle, the business name, the welcome message, the address and the
 // note about bolívares. Without a cover the band starts the page, with 28px above the logo.
 //
-// THE COLOURS COME FROM `--catalog-brand` / `--catalog-brand-foreground`, set by the
-// catalogue page (`lib/catalog/brand-style.ts`), so the band and the selected chip cannot
-// disagree. Unset, the band is the catalogue's old #272727 with #DADADA on
-// it -- the frame's own note: «Sin color elegido, el catálogo se ve como hoy».
+// REVISED BY THE OWNER ON 2026-11-15, frame `2163:955`, and this displaces the coloured
+// band of the 2026-11-12 frames: *«se registra el color de la marca pero de momento no se
+// aplica en ningún lugar, el background del header será blanco»*. So the band is WHITE with
+// the app's primary text (#272727) whatever colour the owner picked; the colour is stored
+// (`owners.brand_color`) and nothing reads it here. The selected category chip went back to
+// its usual #272727 the same day. If the colour is ever applied again, the contrast rules
+// are still in `lib/catalog/brand-color.ts`.
 //
-// ONLY WHEN THE OWNER CUSTOMISED SOMETHING. A catalogue with no colour, no cover, no
-// welcome and no address keeps `PublicHeader`, the header it had before CT-170, watermark
-// included: an owner who never opened «Personalizar catálogo» sees nothing move. The page
-// makes that choice (`hasCatalogBranding`).
+// NO COVER, A GREY ONE: owner's decision the same day, «Portada gris por defecto». A
+// customised catalogue always opens with the cover's 125 / 280 px, so every white header has
+// the same shape.
+//
+// ONLY WHEN THE OWNER CUSTOMISED SOMETHING, colour included: *«Cualquier cambio, color
+// incluido»* (2026-11-15). A catalogue nobody customised keeps `PublicHeader`, the dark
+// header it had before CT-170, watermark included -- *«Se queda oscura»*, the same day. The
+// page makes that choice (`hasCatalogBranding`).
 //
 // The text column is capped at 560px on the web, as the frame notes: «El texto de la
 // cabecera no pasa de 560 px de ancho».
@@ -61,20 +68,17 @@ export function CatalogBrandHeader({
         backSlot
       )}
 
-      {coverUrl ? (
-        <div className="relative h-[125px] w-full bg-muted md:h-[280px]">
-          {/* `unoptimized`: a Supabase public URL of an image already resized on the
-              owner's device, served like the logo. */}
+      <div className="relative h-[125px] w-full bg-muted md:h-[280px]">
+        {coverUrl ? (
+          // `unoptimized`: a Supabase public URL of an image already resized on the owner's
+          // device, served like the logo.
           <Image src={coverUrl} alt="" fill unoptimized priority sizes="100vw" className="object-cover" />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
-      <div
-        className={`flex flex-col items-center gap-2.5 bg-[color:var(--catalog-brand,#272727)] px-4 pb-6 text-center text-[color:var(--catalog-brand-foreground,#DADADA)] md:px-12 ${
-          coverUrl ? "" : "pt-7"
-        }`}
-      >
-        <div className="relative size-[76px] shrink-0 overflow-hidden rounded-full border-3 border-white bg-white">
+      {/* Node `2163:958`: white, padding 24 / 16, 10 between items, text #272727. */}
+      <div className="flex flex-col items-center gap-2.5 bg-white px-4 py-6 text-center text-[#272727] md:px-12">
+        <div className="relative size-[76px] shrink-0 overflow-hidden rounded-full border-3 border-white bg-[#F5F5F5]">
           <Image
             src={logoUrl}
             alt=""

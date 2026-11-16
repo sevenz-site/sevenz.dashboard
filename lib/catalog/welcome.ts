@@ -39,3 +39,49 @@ export function checkWelcome(input: string | null | undefined): WelcomeCheck {
   }
   return { ok: true, text };
 }
+
+// Lives here and not in its own file because `qa/catalogo-marca.mjs` loads these checks
+// with Node's type stripping, which cannot follow an extensionless import between files:
+// one module keeps the link rule in one place.
+
+// THE OWNER'S DESCRIPTION OF HIS BRAND (CT-170, phase 1, revised 2026-11-15, migration 211).
+//
+// Owner's decision of 2026-11-15: «solo lo ve el dueño, no lo ve el cliente, servirá para
+// generación de creación de contenido de marketing de la marca». Limits, his choice the same
+// day: 500 characters, line breaks allowed, no links.
+//
+// UNLIKE THE WELCOME, LINE BREAKS STAY: it is a text the owner writes for himself, in
+// paragraphs if he wants. Runs of three or more line breaks fold into one blank line and
+// spaces at line ends go, so a pasted text does not store a page of empty lines. Spaces
+// inside a line collapse to one.
+//
+// NO LINKS, even though no customer reads it: that was the option the owner chose. If one
+// day it should take a link (his Instagram, say), this is the one line to change.
+//
+// Shared by the owner's screen (counter and error as he types) and the server action.
+
+export const DESCRIPTION_MAX = 500;
+
+export type DescriptionCheck = { ok: true; text: string | null } | { ok: false; error: string };
+
+export function normalizeDescription(input: string | null | undefined): string {
+  return (input ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t\f\v]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function checkDescription(input: string | null | undefined): DescriptionCheck {
+  const text = normalizeDescription(input);
+  if (!text) return { ok: true, text: null };
+  if ([...text].length > DESCRIPTION_MAX) {
+    return { ok: false, error: `La descripción puede tener hasta ${DESCRIPTION_MAX} caracteres.` };
+  }
+  if (LINK.test(text)) {
+    return { ok: false, error: "La descripción no puede llevar enlaces ni direcciones web." };
+  }
+  return { ok: true, text };
+}

@@ -408,23 +408,26 @@ try {
       ["pone como portada el archivo de B", A.cookie, () => [{ brandColor: null, coverPath: `${B.id}/logo.png`, welcome: "", showAddress: false }]],
       ["llega a la carpeta de B saliendo de la suya (../)", A.cookie, () => [{ brandColor: null, coverPath: `${A.id}/../${B.id}/logo.png`, welcome: "", showAddress: false }]],
       ["publica un enlace en la bienvenida", A.cookie, () => [{ brandColor: null, coverPath: null, welcome: "Paga aquí: https://estafa.io/pago", showAddress: false }]],
-      ["mete CSS en el color", A.cookie, () => [{ brandColor: "red;background:url(https://x.io)", coverPath: null, welcome: "", showAddress: false }]]],
+      ["mete CSS en el color", A.cookie, () => [{ brandColor: "red;background:url(https://x.io)", coverPath: null, welcome: "", showAddress: false }]],
+      ["mete un enlace en la descripción de la marca", A.cookie, () => [{ brandColor: null, coverPath: null, welcome: "", description: "Compra en www.estafa.io", showAddress: false }]]],
       control: [A.cookie, async () => {
         await svc.storage.from("logos").upload(`${A.id}/cover-1730000000000.jpg`, Buffer.from([0xff, 0xd8, 0xff, 0xd9]), { contentType: "image/jpeg", upsert: true });
         return [{ brandColor: "#FF0000", coverPath: `${A.id}/cover-1730000000000.jpg`, welcome: "Abrimos de lunes a sábado.", showAddress: false }];
       }],
-      // The control proves the action works AND adjusts: #FF0000 cannot carry readable
-      // text, so what is stored is #C20000 (owner's decision, «ajustarlo y avisar»).
+      // The control proves the action works and stores the colour AS PICKED: since
+      // 2026-11-15 it is registered and not applied (frame `2163:955`), so #FF0000 stays
+      // #FF0000. Until that day it was adjusted to #C20000.
       exitoAsync: async (r) => {
         if (!funciono(r)) return false;
         const { data } = await svc.from("owners").select("brand_color,catalog_cover_path").eq("id", A.id).single();
-        return data.brand_color === "#C20000" && data.catalog_cover_path === `${A.id}/cover-1730000000000.jpg`;
+        return data.brand_color === "#FF0000" && data.catalog_cover_path === `${A.id}/cover-1730000000000.jpg`;
       },
       juzgar: async () => {
-        const { data } = await svc.from("owners").select("brand_color,catalog_cover_path,catalog_welcome").eq("id", A.id).single();
+        const { data } = await svc.from("owners").select("brand_color,catalog_cover_path,catalog_welcome,brand_description").eq("id", A.id).single();
         const { data: files } = await svc.storage.from("logos").list(B.id);
         return !String(data.catalog_cover_path ?? "").includes(B.id) &&
           !/https?:|www\./i.test(String(data.catalog_welcome ?? "")) &&
+          !/https?:|www\./i.test(String(data.brand_description ?? "")) &&
           (data.brand_color === null || /^#[0-9A-F]{6}$/.test(data.brand_color)) &&
           (files ?? []).some((o) => o.name === "logo.png");
       } },

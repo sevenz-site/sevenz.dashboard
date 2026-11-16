@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,9 +13,8 @@ import { CatalogBrandHeader } from "@/components/public/catalog-brand-header";
 import { createClient } from "@/lib/supabase/client";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { fileToResizedBlob } from "@/lib/image";
-import { BRAND_DEFAULT, normalizeHex, resolveBrandColor } from "@/lib/catalog/brand-color";
-import { brandCssVars } from "@/lib/catalog/brand-style";
-import { WELCOME_MAX, checkWelcome } from "@/lib/catalog/welcome";
+import { BRAND_DEFAULT, normalizeHex } from "@/lib/catalog/brand-color";
+import { DESCRIPTION_MAX, WELCOME_MAX, checkDescription, checkWelcome } from "@/lib/catalog/welcome";
 import { saveCatalogBranding } from "@/app/(app)/productos/personalizar/actions";
 
 // «PERSONALIZAR CATÁLOGO» (CT-170, phase 1). Frames, read with `get_design_context` on
@@ -33,6 +32,16 @@ import { saveCatalogBranding } from "@/app/(app)/productos/personalizar/actions"
 // or not (owner's choice of 2026-11-15, «Lo que estoy editando»).
 //
 // Entered from the ⋮ menu of Catálogo (owner's choice of 2026-11-15, «Dentro del menú ⋮»).
+//
+// REVISED THE SAME DAY with frame `2163:955`: «Portada, color (no se aplica), bienvenida,
+// descripción de la marca (nuevo) y dirección». Two changes here:
+//   - THE COLOUR IS STORED AS PICKED and paints nothing yet, so the «ajustamos tu color»
+//     notice (node `2115:21880`) is gone: adjusting a colour nobody sees would only change
+//     the owner's real brand colour. Its hint now says it does not change the catalogue.
+//   - «Descripción de tu marca», new: «solo lo ve el dueño, no lo ve el cliente, servirá
+//     para generación de creación de contenido de marketing». 500 characters, line breaks,
+//     no links. Placed under the colour, the other private field; no frame draws it, so
+//     its place and its two lines of copy are mine and said in the report.
 
 type Props = {
   ownerId: string;
@@ -42,6 +51,7 @@ type Props = {
   brandColor: string | null;
   coverPath: string | null;
   welcome: string | null;
+  description: string | null;
   showAddress: boolean;
 };
 
@@ -67,15 +77,17 @@ export function CatalogBrandingForm(props: Props) {
   );
   const [uploading, setUploading] = useState(false);
   const [welcome, setWelcome] = useState(props.welcome ?? "");
+  const [description, setDescription] = useState(props.description ?? "");
   const [showAddress, setShowAddress] = useState(props.showAddress && Boolean(props.address));
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const chosen = normalizeHex(colorText);
   const colorInvalid = colorText.trim() !== "" && !chosen;
-  const resolved = useMemo(() => (chosen ? resolveBrandColor(chosen) : null), [chosen]);
-  const swatch = resolved?.chosen ?? BRAND_DEFAULT;
+  const swatch = chosen ?? BRAND_DEFAULT;
   const welcomeCheck = checkWelcome(welcome);
   const welcomeLength = [...welcome].length;
+  const descriptionCheck = checkDescription(description);
+  const descriptionLength = [...description].length;
   const hasAddress = Boolean(props.address && props.address.trim());
 
   // An upload nobody saved, about to be replaced or dropped: nothing will ever point at it.
@@ -115,12 +127,13 @@ export function CatalogBrandingForm(props: Props) {
   }
 
   function save() {
-    if (colorInvalid || !welcomeCheck.ok) return;
+    if (colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok) return;
     startTransition(async () => {
       const result = await saveCatalogBranding({
         brandColor: chosen,
         coverPath,
         welcome,
+        description,
         showAddress: showAddress && hasAddress,
       });
       if (!result.ok) {
@@ -181,32 +194,35 @@ export function CatalogBrandingForm(props: Props) {
             {colorInvalid ? (
               <p className="text-xs leading-[17px] text-destructive">Escribe el color como #RRGGBB, por ejemplo #043F01.</p>
             ) : null}
-            {/* ── EL AVISO DEL COLOR AJUSTADO, node `2115:21880` ──────────────── */}
-            {resolved?.adjusted ? (
-              <div className="flex flex-col gap-2.5 rounded-[10px] border border-amber-200 bg-amber-50 p-3">
-                <p className="text-[13px] leading-[19px] text-amber-900">
-                  Ajustamos un poco tu color para que los textos se lean bien. Elegiste {resolved.chosen} y usaremos{" "}
-                  {resolved.applied}.
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="size-6 rounded-[6px]" style={{ backgroundColor: resolved.chosen }} aria-hidden="true" />
-                  <span className="text-sm leading-5 text-amber-900" aria-hidden="true">
-                    →
-                  </span>
-                  <span className="size-6 rounded-[6px]" style={{ backgroundColor: resolved.applied }} aria-hidden="true" />
-                  <span
-                    className="max-w-[160px] truncate rounded-[6px] px-2.5 py-1 text-xs leading-[17px] font-medium"
-                    style={{ backgroundColor: resolved.applied, color: resolved.text }}
-                  >
-                    {props.businessName}
-                  </span>
-                </div>
-              </div>
-            ) : null}
           </div>
           <p className="text-xs leading-[17px] text-muted-foreground">
-            Los textos sobre tu color se ajustan solos para que siempre se lean.
+            Lo guardamos como el color de tu marca. Por ahora no cambia cómo se ve tu catálogo.
           </p>
+        </div>
+
+        {/* ── DESCRIPCIÓN DE TU MARCA, private, not in any frame (see the header) ─ */}
+        <div className="flex flex-col gap-2">
+          <label htmlFor="brand-description" className="text-sm leading-5 font-medium">
+            Descripción de tu marca
+          </label>
+          <div className="flex flex-col gap-1.5 rounded-[10px] border bg-background px-3 py-2.5 focus-within:ring-2 focus-within:ring-ring/50">
+            <textarea
+              id="brand-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={5}
+              maxLength={DESCRIPTION_MAX + 50}
+              placeholder="Qué vendes, a quién y qué hace distinto a tu negocio"
+              className="w-full resize-y bg-transparent text-base leading-[22px] outline-none placeholder:text-muted-foreground md:text-[15px]"
+            />
+            <span
+              className={`text-right text-xs leading-[17px] ${descriptionLength > DESCRIPTION_MAX ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {descriptionLength}/{DESCRIPTION_MAX}
+            </span>
+          </div>
+          {!descriptionCheck.ok ? <p className="text-xs leading-[17px] text-destructive">{descriptionCheck.error}</p> : null}
+          <p className="text-xs leading-[17px] text-muted-foreground">Solo la ves tú. Tus clientes no la ven.</p>
         </div>
 
         {/* ── PORTADA, nodes `2115:21840` / `2115:21893` ───────────────────── */}
@@ -318,7 +334,7 @@ export function CatalogBrandingForm(props: Props) {
           <Button
             type="button"
             className="h-10 w-full md:w-[180px]"
-            disabled={pending || uploading || colorInvalid || !welcomeCheck.ok}
+            disabled={pending || uploading || colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok}
             onClick={save}
           >
             {pending ? "Guardando…" : "Guardar cambios"}
@@ -339,7 +355,7 @@ export function CatalogBrandingForm(props: Props) {
       <Sheet open={previewOpen} onOpenChange={setPreviewOpen}>
         <SheetContent side="bottom" className="max-h-[90dvh] gap-0 overflow-y-auto rounded-t-3xl p-0">
           <SheetTitle className="px-4 pt-4 pb-3 text-base font-medium">Así lo verán tus clientes</SheetTitle>
-          <div style={brandCssVars(resolved?.applied ?? null)}>
+          <div>
             <CatalogBrandHeader
               logoUrl={logoUrl ?? "/fav-icon-primary.svg"}
               logoIsRemote={Boolean(logoUrl)}

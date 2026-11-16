@@ -13,7 +13,6 @@ import { ProductThumbnail } from "@/components/product-thumbnail";
 import { SetupNotice } from "@/components/setup-notice";
 import { PublicHeader } from "@/components/public/public-header";
 import { CatalogBrandHeader, hasCatalogBranding } from "@/components/public/catalog-brand-header";
-import { brandCssVars } from "@/lib/catalog/brand-style";
 import { BackToBalance } from "@/components/public/back-to-balance";
 import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
@@ -305,14 +304,10 @@ export default async function CatalogoPublicoPage({
     // chose it over the 672px column it had («Sí, como el frame»). For every catalogue,
     // customised or not. The phone does not change.
     //
-    // THE BRAND COLOUR IS SET HERE, on the page (CT-170): the header band and the selected
-    // category chip read it as CSS variables (`lib/catalog/brand-style.ts`). Only those two:
-    // the customer's buttons stay black, owner's decision of 2026-11-15 («mantengamos los
-    // botones en negro como ya están»). No colour, no variables, nothing changes.
-    <main
-      className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col md:max-w-none"
-      style={brandCssVars(shared.brand_color)}
-    >
+    // THE BRAND COLOUR IS NOT APPLIED, owner's decision of 2026-11-15 with frame `2163:955`:
+    // «se registra el color de la marca pero de momento no se aplica en ningún lugar». The
+    // header is white (CatalogBrandHeader) and every button and chip keeps its usual colour.
+    <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col md:max-w-none">
       {/* The shopkeeper's own preview is not a visit. */}
       {esVistaPrevia ? null : <CatalogOpenedEvent token={token} />}
       {/* LA CABECERA DEL FRAME `1190:5748`.

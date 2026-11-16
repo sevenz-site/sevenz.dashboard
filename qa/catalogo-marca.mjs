@@ -21,7 +21,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { resolveBrandColor } from "../lib/catalog/brand-color.ts";
-import { checkWelcome } from "../lib/catalog/welcome.ts";
+import { checkDescription, checkWelcome } from "../lib/catalog/welcome.ts";
 import { cookieDeDueno, idDeLaAccion, llamarAccion } from "./server-action.mjs";
 
 const env = Object.fromEntries(
@@ -65,7 +65,7 @@ function check(nombre, pasa, detalle) {
   console.log(`${pasa ? "PASS" : "FAIL"}  ${nombre}${detalle ? `  — ${detalle}` : ""}`);
 }
 
-const COLUMNAS = "brand_color, catalog_cover_path, catalog_welcome, catalog_show_address, address";
+const COLUMNAS = "brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address, address";
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
 let dueno = null;
 let antes = null;
@@ -90,12 +90,22 @@ try {
   check("2c. CONTROL: «Sr.Pérez» y «etc.lunes» no son enlaces", checkWelcome("Sr.Pérez atiende, etc.lunes").ok);
   check("2d. 141 caracteres se rechazan y 140 pasan", !checkWelcome("a".repeat(141)).ok && checkWelcome("a".repeat(140)).ok);
 
+  // ── 2'. The brand description (211): private, 500, line breaks, no links ──
+  const d = (t) => JSON.stringify(checkDescription(t));
+  check(
+    "2e. la descripción conserva los párrafos y recorta los huecos",
+    d(`  Vendemos víveres.${"\n".repeat(4)}Atendemos  a todo el barrio.  `) ===
+      JSON.stringify({ ok: true, text: `Vendemos víveres.${"\n".repeat(2)}Atendemos a todo el barrio.` }),
+    d(`  Vendemos víveres.${"\n".repeat(4)}Atendemos  a todo el barrio.  `),
+  );
+  check("2f. la descripción: 501 se rechazan, 500 pasan, y sin enlaces", !checkDescription("a".repeat(501)).ok && checkDescription("a".repeat(500)).ok && !checkDescription("Visita tienda.com").ok);
+
   // ── 3. As the owner ────────────────────────────────────────────────────
   if (!env.QA_OWNER_EMAIL) throw new Error("falta QA_OWNER_EMAIL en .env.local");
   ({ data: dueno } = await admin.from("owners").select("id").eq("email", env.QA_OWNER_EMAIL).single());
   const { data: otro } = await admin.from("owners").select("id, brand_color").neq("id", dueno.id).limit(1).single();
   ({ data: antes } = await admin.from("owners").select(COLUMNAS).eq("id", dueno.id).single());
-  if (!antes) throw new Error("no pude leer la marca del dueño de QA: ¿corrió la migración 210 en dev?");
+  if (!antes) throw new Error("no pude leer la marca del dueño de QA: ¿corrieron las migraciones 210 y 211 en dev?");
   const { data: enlace } = await admin.from("catalog_share_links").select("token").eq("owner_id", dueno.id).single();
   if (!enlace) throw new Error("el dueño de QA no tiene enlace de catálogo");
 
@@ -120,6 +130,8 @@ try {
   const { error: eLargo } = await admin.from("owners").update({ catalog_welcome: "a".repeat(141) }).eq("id", dueno.id);
   check("4a. la base rechaza un color que no es #RRGGBB", Boolean(eFormato), eFormato?.message);
   check("4b. la base rechaza un mensaje de más de 140", Boolean(eLargo), eLargo?.message);
+  const { error: eDesc } = await admin.from("owners").update({ brand_description: "a".repeat(501) }).eq("id", dueno.id);
+  check("4c. la base rechaza una descripción de más de 500", Boolean(eDesc), eDesc?.message ?? "¿corrió la 211 en dev?");
 
   // ── 5. What the customer receives ──────────────────────────────────────
   const publico = anon();
@@ -136,6 +148,11 @@ try {
   // black): if it still answers, 210 has not been re-run in this database.
   const { error: eQuitada } = await publico.rpc("get_catalog_brand", { p_token: enlace.token });
   check("5d. la función get_catalog_brand ya no existe", Boolean(eQuitada), eQuitada?.code ?? "TODAVÍA EXISTE: vuelve a correr la 210");
+  // The description is the owner's private text (211, «no lo ve el cliente»): with one
+  // saved, nothing the customer receives may carry it.
+  await admin.from("owners").update({ brand_description: "ZZ QA descripción privada" }).eq("id", dueno.id);
+  const { data: conDesc } = await publico.rpc("get_shared_catalog", { p_token: enlace.token });
+  check("5e. la descripción de la marca NO viaja al cliente", conDesc && !JSON.stringify(conDesc).includes("ZZ QA descripción privada") && !("brand_description" in conDesc));
 
   // ── 6. The nightly cleanup ─────────────────────────────────────────────
   const suelta = `${dueno.id}/cover-zz-qa-suelta-${Date.now()}.jpg`;
@@ -152,11 +169,15 @@ try {
   if (!accion) {
     check("7. la acción de verdad", false, `no encontré saveCatalogBranding en ${BASE}: esta sección necesita \`npm run dev\``);
   } else {
+    const DESC = ["Víveres del barrio.", "Abrimos temprano."].join(String.fromCharCode(10));
     const r7a = await llamarAccion(BASE, "/productos/personalizar", accion, cookie, [
-      { brandColor: "#1E88E5", coverPath: cover, welcome: "Abrimos de lunes a sábado.", showAddress: false },
+      { brandColor: "#1E88E5", coverPath: cover, welcome: "Abrimos de lunes a sábado.", description: DESC, showAddress: false },
     ]);
     const { data: tras7a } = await admin.from("owners").select(COLUMNAS).eq("id", dueno.id).single();
-    check("7a. la acción guarda el azul ya ajustado, #3092E7", r7a.ok === true && tras7a.brand_color === "#3092E7", JSON.stringify(r7a));
+    // Since 2026-11-15 the colour is registered and NOT applied (frame `2163:955`), so it is
+    // stored as picked: until that day this checked the adjusted #3092E7.
+    check("7a. la acción guarda el azul tal como se eligió, #1E88E5", r7a.ok === true && tras7a.brand_color === "#1E88E5", JSON.stringify(r7a));
+    check("7c. la acción guarda la descripción con su salto de línea", tras7a.brand_description === DESC, JSON.stringify(tras7a.brand_description));
     const r7b = await llamarAccion(
       BASE,
       "/productos/personalizar",
@@ -167,6 +188,16 @@ try {
     );
     const { data: tras7b } = await admin.from("owners").select("catalog_welcome").eq("id", dueno.id).single();
     check("7b. la acción rechaza una bienvenida con enlace, y no guarda nada", r7b.ok === false && tras7b.catalog_welcome === "Abrimos de lunes a sábado.", r7b.error);
+    const r7d = await llamarAccion(
+      BASE,
+      "/productos/personalizar",
+      accion,
+      cookie,
+      [{ brandColor: "#1E88E5", coverPath: cover, welcome: "", description: "Compra en www.tienda.com", showAddress: false }],
+      '{"ok":',
+    );
+    const { data: tras7d } = await admin.from("owners").select("brand_description").eq("id", dueno.id).single();
+    check("7d. la acción rechaza una descripción con enlace, y no guarda nada", r7d.ok === false && tras7d.brand_description === DESC, r7d.error);
   }
 } catch (error) {
   check("la suite terminó", false, error instanceof Error ? error.message : String(error));
@@ -178,6 +209,7 @@ try {
         brand_color: antes.brand_color,
         catalog_cover_path: antes.catalog_cover_path,
         catalog_welcome: antes.catalog_welcome,
+        brand_description: antes.brand_description,
         catalog_show_address: antes.catalog_show_address,
         address: antes.address,
       })

@@ -7,14 +7,14 @@ import { CatalogBrandingForm } from "@/components/dashboard/catalog-branding-for
 //
 // A FAILED READ IS SAID, not drawn as an empty form: an empty form saved by mistake would
 // wipe the owner's colour, cover and message. The likeliest cause is an environment where
-// migration 210 has not run yet, and the real error goes to the server log only.
+// migration 210 or 211 has not run yet, and the real error goes to the server log only.
 export default async function PersonalizarCatalogoPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const supabase = await getRequestClient();
   const { data: owner, error } = await supabase
     .from("owners")
-    .select("business_name, logo_path, address, brand_color, catalog_cover_path, catalog_welcome, catalog_show_address")
+    .select("business_name, logo_path, address, brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address")
     .eq("id", user.id)
     .single();
 
@@ -39,6 +39,7 @@ export default async function PersonalizarCatalogoPage() {
       brandColor={owner.brand_color ?? null}
       coverPath={owner.catalog_cover_path ?? null}
       welcome={owner.catalog_welcome ?? null}
+      description={owner.brand_description ?? null}
       showAddress={Boolean(owner.catalog_show_address)}
     />
   );

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { resolveBrandColor } from "@/lib/catalog/brand-color";
-import { checkWelcome } from "@/lib/catalog/welcome";
+import { normalizeHex } from "@/lib/catalog/brand-color";
+import { DESCRIPTION_MAX, checkDescription, checkWelcome, normalizeDescription } from "@/lib/catalog/welcome";
 import { storageFileExists } from "@/lib/storage-file-exists";
 import { mensajeDeError } from "@/lib/errores-legibles";
 import { trackServer } from "@/lib/mixpanel-server";
@@ -13,9 +13,13 @@ import { WELCOME_MAX } from "@/lib/catalog/welcome";
 // SAVES «PERSONALIZAR CATÁLOGO» (CT-170, phase 1, frames `2115:21868` and `2115:21966`).
 //
 // EVERYTHING IS DECIDED AGAIN HERE, never taken from the browser as it comes:
-//   - the colour goes through `resolveBrandColor`, so what is stored is always a colour
-//     that carries readable text, whatever the form sent («ajustarlo y avisar»);
+//   - the colour is only checked to be `#RRGGBB` and stored AS PICKED: since 2026-11-15
+//     (frame `2163:955`) it is «registrado, no se aplica», so moving it for contrast would
+//     only overwrite the owner's real brand colour. Until that day this stored the adjusted
+//     colour (`resolveBrandColor`, «ajustarlo y avisar»);
 //   - the welcome message through `checkWelcome`: 140 characters, no links;
+//   - the brand description through `checkDescription`: 500 characters, line breaks, no
+//     links, private to the owner (migration 211);
 //   - the cover must be a file in the owner's OWN folder of `logos`, the same rule as the
 //     logo (finding 10 of the 2026-11-02 audit: an owner pointing at another business's
 //     file), and, when new, a file that still exists (the nightly cleanup, `DM-12`).
@@ -32,14 +36,15 @@ import { WELCOME_MAX } from "@/lib/catalog/welcome";
 // Approved by the owner on 2026-11-15 («sí al evento»). The question they answer is the
 // one under CT-170 itself, *«Como dueño de negocio quiero customizar mi catálogo en función
 // de mi marca, información de negocio y productos»*: DOES ANY OWNER ACTUALLY DO IT, AND
-// WHICH PART? Phases 2 (sections) and 3 (templates) are the expensive ones; if owners set a
-// colour and stop there, they wait, and if covers and welcomes are what gets used, they
-// lead. The rejections say whether the screen itself is in the way (a link refused, a
+// WHICH PART? Phases 2 (sections) and 3 (templates) are the expensive ones; if owners use
+// the cover and the welcome and stop there, they wait. Since 2026-11-15 the colour is stored
+// and not applied, and the brand description (private) exists to feed the marketing content
+// the owner plans to generate: how many write one says whether that has material. The rejections say whether the screen itself is in the way (a link refused, a
 // cover lost), which the success count alone cannot tell from «not interested».
 //
 // Filed under the OWNER, sent from the server after the write (the browser may not
 // cooperate: CLAUDE.md's iPhone rule). Yes / no per part, the length of the welcome and the
-// list of parts that changed -- never the colour, the text or the address.
+// list of parts that changed -- never the colour, a text or the address.
 
 export type CatalogBrandingInput = {
   // `#RRGGBB` as picked, or null / "" for no brand colour (the catalogue as before).
@@ -47,6 +52,8 @@ export type CatalogBrandingInput = {
   // A path in `logos` under the owner's folder, or null for no cover.
   coverPath: string | null;
   welcome: string;
+  // Private: never in the catalogue (211). Optional so an older open tab still saves.
+  description?: string;
   showAddress: boolean;
 };
 
@@ -80,18 +87,21 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
   };
 
   let brandColor: string | null = null;
-  let colorAdjusted = false;
   if (input.brandColor && input.brandColor.trim()) {
-    const resolved = resolveBrandColor(input.brandColor);
-    if (!resolved) return rechazar("invalid_color", "Ese color no es válido. Elígelo de nuevo.");
-    brandColor = resolved.applied;
-    colorAdjusted = resolved.adjusted;
+    brandColor = normalizeHex(input.brandColor);
+    if (!brandColor) return rechazar("invalid_color", "Ese color no es válido. Elígelo de nuevo.");
   }
 
   const welcome = checkWelcome(input.welcome);
   if (!welcome.ok) {
     const tooLong = [...(input.welcome ?? "").replace(/\s+/g, " ").trim()].length > WELCOME_MAX;
     return rechazar(tooLong ? "welcome_too_long" : "welcome_has_link", welcome.error);
+  }
+
+  const description = checkDescription(input.description);
+  if (!description.ok) {
+    const tooLong = [...normalizeDescription(input.description)].length > DESCRIPTION_MAX;
+    return rechazar(tooLong ? "description_too_long" : "description_has_link", description.error);
   }
 
   const coverPath = input.coverPath && input.coverPath.trim() ? input.coverPath.trim() : null;
@@ -101,7 +111,7 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
 
   const { data: before, error: readError } = await supabase
     .from("owners")
-    .select("brand_color, catalog_cover_path, catalog_welcome, catalog_show_address")
+    .select("brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address")
     .eq("id", user.id)
     .single();
   if (readError) {
@@ -119,6 +129,7 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
       brand_color: brandColor,
       catalog_cover_path: coverPath,
       catalog_welcome: welcome.text,
+      brand_description: description.text,
       catalog_show_address: Boolean(input.showAddress),
     })
     .eq("id", user.id);
@@ -141,6 +152,7 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     (before?.brand_color ?? null) !== brandColor && "color",
     previousCover !== coverPath && "cover",
     (before?.catalog_welcome ?? null) !== welcome.text && "welcome",
+    (before?.brand_description ?? null) !== description.text && "description",
     Boolean(before?.catalog_show_address) !== Boolean(input.showAddress) && "show_address",
   ].filter((x): x is string => Boolean(x));
   trackServer(
@@ -148,10 +160,11 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     user.id,
     {
       has_color: Boolean(brandColor),
-      color_adjusted: colorAdjusted,
       has_cover: Boolean(coverPath),
       has_welcome: Boolean(welcome.text),
       welcome_length: welcome.text ? [...welcome.text].length : 0,
+      has_description: Boolean(description.text),
+      description_length: description.text ? [...description.text].length : 0,
       show_address: Boolean(input.showAddress),
       changed,
     },
