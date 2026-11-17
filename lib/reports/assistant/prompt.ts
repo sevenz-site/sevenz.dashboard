@@ -156,6 +156,16 @@ Si no hay nada preocupante, escribe igual pero de lo bueno, y deja la lista de r
 
 LARGO: el resumen más las recomendaciones, juntos, tienen que caber en ${PRESUPUESTO_SUGERIDO} caracteres. Cuéntalos. Es mejor decir menos que pasarte.
 
+CADA RECOMENDACIÓN LLEVA UN "enlace": la lista que el tendero tiene que abrir para hacerla. Elige SOLO uno de estos, o null si ninguno corresponde:
+- "criticos": clientes en estado crítico
+- "vencido": clientes con el plazo vencido
+- "malas-pagas": clientes marcados como mala paga
+- "por-agotarse": productos más vendidos que están por agotarse
+- "agotadas": referencias agotadas
+- "pedidos": pedidos del catálogo sin atender
+- "mejores-pagadores": buenos pagadores que dejaron de comprar
+No escribas el enlace dentro del texto: la pantalla pone «Ver clientes» o «Ver productos» sola.
+
 Contesta SOLO con este JSON, sin nada más:
-{"summary": "una o dos frases de diagnóstico", "recommendations": ["...", "...", "..."]}`;
+{"summary": "una o dos frases de diagnóstico", "recommendations": [{"texto": "...", "enlace": "criticos"}, {"texto": "...", "enlace": null}]}`;
 }

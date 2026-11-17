@@ -78,7 +78,12 @@ const EXTRACT = `(async () => {
     if (tag === 'svg') {
       if (!onScreen(r)) return;
       const clone = el.cloneNode(true);
-      const color = cs.color;
+      // AS RGB, NOT AS COMPUTED: Tailwind 4 computes oklch() and lab(), Figma's SVG reader does
+      // not understand them and paints the icon black -- the abono and fiado icons came out
+      // black in the frames of 2026-11-17 for that reason. (No backticks here: this code lives
+      // inside a template literal.)
+      const c0 = rgba(cs.color);
+      const color = c0 ? 'rgb(' + Math.round(c0.r * 255) + ',' + Math.round(c0.g * 255) + ',' + Math.round(c0.b * 255) + ')' : '#000000';
       clone.setAttribute('width', String(r.width)); clone.setAttribute('height', String(r.height));
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       let s = clone.outerHTML.replace(/currentColor/g, color);
@@ -159,24 +164,32 @@ const EXTRACT = `(async () => {
       return true;
     };
     const kids = [...el.children];
-    const hasText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    // A sentence whose words all sit in inline children (the assistant's recommendations are
+    // spans and a link, with no loose text) is still a sentence: before 2026-11-17 it fell to
+    // one layer per piece, and pieces that wrapped overlapped in the frame.
+    const hasText = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || (kids.length > 0 && el.textContent.trim().length > 0);
     const pre = /pre/.test(cs.whiteSpace);
-    if (hasText && !pre && kids.every(plainInline) && !['svg', 'select'].includes(tag)) {
+    // pre-wrap (the assistant's summary) merges too, keeping its line breaks; only true <pre>
+    // text, laid out by the browser line by line, stays out.
+    const preWrap = cs.whiteSpace === 'pre-wrap' || cs.whiteSpace === 'pre-line';
+    if (hasText && (!pre || preWrap) && kids.every(plainInline) && !['svg', 'select'].includes(tag)) {
       // The text, built piece by piece so each piece keeps its own style: «desde 12» is
       // smaller than «Precio al mayor», a <strong> is bold.
       let t = '';
       const segs = [];
       const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let n = tw.nextNode(); n; n = tw.nextNode()) {
-        let piece = n.textContent.replace(/\\s+/g, ' ');
-        if (t.endsWith(' ') || t === '') piece = piece.replace(/^ /, '');
+        let piece = preWrap ? n.textContent : n.textContent.replace(/\\s+/g, ' ');
+        if (!preWrap && (t.endsWith(' ') || t === '')) piece = piece.replace(/^ /, '');
         if (!piece) continue;
         const start = t.length;
         t += piece;
         const ps = getComputedStyle(n.parentElement);
-        segs.push({ start, end: t.length, font: weight(ps.fontWeight), size: px(ps.fontSize), color: rgba(ps.color) });
+        // The underline of a link inside a sentence travels with its piece («Ver clientes»).
+        const deco = (ps.textDecorationLine || '').includes('underline') ? 'UNDERLINE' : null;
+        segs.push({ start, end: t.length, font: weight(ps.fontWeight), size: px(ps.fontSize), color: rgba(ps.color), deco });
       }
-      t = t.replace(/ $/, '');
+      t = preWrap ? t.replace(/\\s+$/, '') : t.replace(/ $/, '');
       const range = document.createRange();
       range.selectNodeContents(el);
       const rects = [...range.getClientRects()].filter((q) => q.width > 0 && q.height > 0);
@@ -195,6 +208,12 @@ const EXTRACT = `(async () => {
           const clean = segs.map((g) => ({ ...g, end: Math.min(g.end, t.length) })).filter((g) => g.end > g.start);
           out.push({ type: 'text', name: t.slice(0, 40), z, opacity, x: left, y: top, w: right - left, h: bottom - top,
             text: st.upper ? t.toUpperCase() : t, multiline: lines > 1, ...st, segs: clean, owner: mine });
+          // A list item's bullet is a ::marker, not text in the page: drawn as its own layer
+          // at the left of the first line, where the browser puts it.
+          if (tag === 'li' && cs.listStyleType === 'disc') {
+            out.push({ type: 'text', name: 'viñeta', z, opacity, x: left - 12, y: top, w: 6, h: st.lh || st.size,
+              text: '•', multiline: false, ...st, decoration: 'NONE', segs: [], owner: mine });
+          }
         }
       }
       return;

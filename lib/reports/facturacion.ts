@@ -156,6 +156,13 @@ export type PuntoDeTransacciones = {
   devolucion: number;
 };
 
+/**
+ * How many of each type, per book: the counts the chart adds up across books, kept apart for
+ * the two closes' breakdown («De contado $340 · 5»), owner's request of 2026-11-17. Counted in
+ * the same passes as the amounts, so a count and its amount cannot come from two rules.
+ */
+export type RecuentosPorLibro = Partial<Record<Libro, { contado: number; abono: number; fiado: number; devolucion: number }>>;
+
 /** Un cliente dentro de una de las cuatro hojas de «Plazos de pago». */
 export type ClienteDePlazo = {
   clientId: string;
@@ -231,6 +238,8 @@ export type Facturacion = {
   ventasPorCatalogo: Partial<Record<Libro, number>>;
   serieVentas: PuntoDeVentas[];
   serieTransacciones: PuntoDeTransacciones[];
+  /** Counts per type and book; see the type. */
+  recuentos: RecuentosPorLibro;
   pedidosPorAtender: number;
   // LO QUE ESE DINERO VALE, en su moneda más grande. `null` cuando no hay
   // pedidos o cuando ninguno tiene líneas vivas. Por qué «la mayor» y no una
@@ -359,6 +368,13 @@ export async function cargarFacturacion({
   effectiveRate = null,
   /** Filtra todo por un cliente, como el `?cliente=` que ya tenía la pantalla. */
   clientId = null,
+  /**
+   * Only the money and the counts of the period: no «Por cobrar», no plazos, no orders, no
+   * best payers. For the two closes (2026-11-17), which call this with their own span so their
+   * breakdown is the Facturación cards' arithmetic and not a copy of it; the credit score alone
+   * reads every movement of the business, and the closes do not draw it.
+   */
+  soloTransacciones = false,
 }: {
   supabase: SupabaseClient;
   ownerId: string;
@@ -366,6 +382,7 @@ export async function cargarFacturacion({
   dosLibros: boolean;
   effectiveRate?: EffectiveRate | null;
   clientId?: string | null;
+  soloTransacciones?: boolean;
 }): Promise<Facturacion> {
   // DOS DÍAS DE HOLGURA EN LA CONSULTA, y ni uno en el dibujo. Los cubos
   // reparten el rango exacto; la consulta pide un poco más por los bordes,
@@ -466,9 +483,9 @@ export async function cargarFacturacion({
   const [ventas, movimientos, resumenes, pedidos, dineroPorAtender] = await Promise.all([
     conNombre("ventas", leerVentas()),
     conNombre("movimientos", leerMovimientos()),
-    conNombre("resúmenes", leerResumenes()),
-    countUnregisteredOrders(supabase, ownerId),
-    pendingOrdersMoney(supabase, ownerId),
+    soloTransacciones ? Promise.resolve([] as Record<string, unknown>[]) : conNombre("resúmenes", leerResumenes()),
+    soloTransacciones ? Promise.resolve(0) : countUnregisteredOrders(supabase, ownerId),
+    soloTransacciones ? Promise.resolve(null) : pendingOrdersMoney(supabase, ownerId),
   ]);
 
   const idsDeVenta = (ventas ?? []).map((v) => v.id as string);
@@ -684,6 +701,11 @@ export async function cargarFacturacion({
   // registra creando una venta normal --con su `catalog_order_id`-- así que
   // entra por `sales` como cualquier otra. No hay un segundo sitio donde
   // mirar.
+  const recuentos: RecuentosPorLibro = {};
+  const contar = (libro: Libro, tipo: "contado" | "abono" | "fiado" | "devolucion") => {
+    const r = (recuentos[libro] ??= { contado: 0, abono: 0, fiado: 0, devolucion: 0 });
+    r[tipo] += 1;
+  };
   const contadoYaContado = new Set<string>();
   for (const pg of pagos ?? []) {
     const clave = claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string));
@@ -693,6 +715,8 @@ export async function cargarFacturacion({
     if (i < 0) continue;
     contadoYaContado.add(clave);
     serieTransacciones[i].contado += 1;
+    const libroContado = (pg.currency as Libro) ?? "COP";
+    if (libros.includes(libroContado)) contar(libroContado, "contado");
   }
   for (const m of movimientos ?? []) {
     const libro = libroDeMovimiento(m.currency as string | null);
@@ -705,12 +729,14 @@ export async function cargarFacturacion({
     const monto = Number(m.amount);
     if (m.type === "payment") {
       serieTransacciones[i].abono += 1;
+      contar(libro, "abono");
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
       sumarMetodo(libro, (m.payment_method as string | null) ?? null, monto);
     } else if (m.type === "charge" && !m.paid_with_credit) {
       // `else if` AND NOT `else`: since migration 185 not being a payment no
       // longer means being a fiado, and a return here would add to the lending.
       serieTransacciones[i].fiado += 1;
+      contar(libro, "fiado");
       fiadosPorLibro[libro] = (fiadosPorLibro[libro] ?? 0) + monto;
     }
   }
@@ -723,6 +749,7 @@ export async function cargarFacturacion({
     const i = cuboDe(cs, d.createdAt);
     if (!libros.includes(libro) || i < 0) continue;
     serieTransacciones[i].devolucion += 1;
+    contar(libro, "devolucion");
     devolucionesPorLibro[libro] = (devolucionesPorLibro[libro] ?? 0) + d.amount;
     // The cash that went back comes off the method it went back by. See `porMetodo` in the type.
     if (d.toCash > 0) sumarMetodo(libro, d.refundMethod, -d.toCash);
@@ -869,11 +896,9 @@ export async function cargarFacturacion({
   // calcular con una ventana.
   // It reads by pages since PL-35. This comment used to put that problem at «decenas de
   // miles» of rows; the API cut at 1,000.
-  const puntajes = await computeCreditScoresForClients(
-    supabase,
-    (resumenes ?? []) as ClientSummary[],
-    effectiveRate,
-  );
+  const puntajes = soloTransacciones
+    ? {}
+    : await computeCreditScoresForClients(supabase, (resumenes ?? []) as ClientSummary[], effectiveRate);
 
   const mejoresPagadores: MejorPagador[] = ((resumenes ?? []) as ClientSummary[])
     .map((r) => ({ r, p: puntajes[r.client_id] }))
@@ -900,6 +925,7 @@ export async function cargarFacturacion({
     ventasPorCatalogo: catalogoPorLibro,
     serieVentas,
     serieTransacciones,
+    recuentos,
     pedidosPorAtender: pedidos,
     dineroPorAtender,
     plazos,

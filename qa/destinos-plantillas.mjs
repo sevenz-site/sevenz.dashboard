@@ -5,7 +5,7 @@
 // opens and nothing scrolls. It also checks the door those buttons depend on: that signing in
 // can only send someone back into Reportes, never out of Sevenz.
 import { readFileSync } from "node:fs";
-import { SECCIONES } from "../lib/reports/secciones.ts";
+import { ALIAS_DE_SECCION, SECCIONES } from "../lib/reports/secciones.ts";
 import { DESTINO_DE_PLANTILLA, urlDelBoton } from "../lib/whatsapp/destinos.ts";
 import { safeReturnPath } from "../lib/auth/return-after-login.ts";
 
@@ -31,6 +31,17 @@ check("3. la dirección lleva pestaña y sección, sin #", url === "https://app.
 check("4. la que habla de 7 días abre 7 días", urlDelBoton("negocio_resumen").includes("periodo=7d"), urlDelBoton("negocio_resumen"));
 check("5. las de cuenta van a Inicio", urlDelBoton("cuenta_lista") === "https://app.sevenz.site");
 check("6. una plantilla desconocida no inventa dirección", urlDelBoton("no_existe") === null);
+
+// A BLOCK THAT MOVED keeps its WhatsApp address, and the page sends it on (`ALIAS_DE_SECCION`,
+// 2026-11-17). Each alias must land on a block that exists and is drawn in its tab, or the
+// button opens the tab and reaches nothing -- the same silent failure check 2 guards.
+const aliasRotos = Object.entries(ALIAS_DE_SECCION).filter(([, a]) => {
+  const archivo = pestanas[SECCIONES[a]?.tab];
+  return !archivo || !readFileSync(`components/dashboard/${archivo}.tsx`, "utf8").includes(`"${a}"`);
+}).map(([d, a]) => `${d} → ${a}`);
+check("9. cada sección movida lleva a un bloque que se dibuja", aliasRotos.length === 0, aliasRotos.join(", "));
+check("9b. «Ver mi margen» (cierre_mensual) llega al cierre del mes", ALIAS_DE_SECCION[DESTINO_DE_PLANTILLA.cierre_mensual.seccion] === "cierre-del-mes");
+check("9c. «Ver mis ventas» (ventas_resumen) llega a Ventas de contado", ALIAS_DE_SECCION[DESTINO_DE_PLANTILLA.ventas_resumen.seccion] === "ventas-de-contado");
 
 check("7. una dirección de Reportes vuelve", safeReturnPath("/reportes?tab=facturacion&seccion=plazos") === "/reportes?tab=facturacion&seccion=plazos");
 for (const malo of ["https://malo.example", "//malo.example", "/\\malo.example", "/reportes/../admin", "/admin", "/login", "/reportesfalso", "/reportes?x=1\nSet-Cookie: a=b", "", null]) {

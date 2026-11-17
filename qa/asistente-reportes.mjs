@@ -209,6 +209,44 @@ try {
     `${todoJunto.recommendations.length} recomendaciones; la 4ª se quedó fuera`,
   );
 
+  // ── 7c-7f. THE LINKS OF EACH RECOMMENDATION (owner's request of 2026-11-17) ──────────
+  // «Ver clientes» under the critical clients must lead to the critical clients: the link
+  // travels with its recommendation, also when the budget cuts one, and a link the facts do
+  // not back is dropped, never shown leading to an empty list.
+  check(
+    "7c. cada recomendación del respaldo lleva el enlace de su lista",
+    JSON.stringify(todoJunto.links) === JSON.stringify(["criticos", "malas-pagas", "por-agotarse"]),
+    JSON.stringify(todoJunto.links),
+  );
+  const conEnlaces = validarNota(
+    {
+      summary: "Vas bien esta semana.",
+      recommendations: [
+        { texto: "Empieza por los clientes en estado crítico.", enlace: "criticos" },
+        { texto: "Repón lo que se está acabando.", enlace: "por-agotarse" },
+        { texto: "Revisa tus pedidos.", enlace: "https://otro-sitio.example" },
+      ],
+    },
+    { ...base, clients: { ...base.clients, critical: 2 } },
+  );
+  check(
+    "7d. un enlace sin datos detrás, o que no está en la lista, se queda en nada",
+    conEnlaces.ok && JSON.stringify(conEnlaces.note.links) === JSON.stringify(["criticos", null, null]),
+    conEnlaces.ok ? JSON.stringify(conEnlaces.note.links) : conEnlaces.detalle,
+  );
+  const comoTexto = validarNota({ summary: "Vas bien.", recommendations: ["Escríbele a tus clientes."] }, base);
+  check(
+    "7e. una recomendación escrita como texto suelto se lee igual, sin enlace",
+    comoTexto.ok && comoTexto.note.recommendations[0] === "Escríbele a tus clientes." && comoTexto.note.links?.[0] === null,
+    comoTexto.ok ? JSON.stringify(comoTexto.note) : comoTexto.detalle,
+  );
+  const recortada = trimToBudget({ summary: "x".repeat(445), recommendations: ["uno", "dos", "tres"], links: ["criticos", "vencido", "pedidos"] });
+  check(
+    "7f. el tope que quita una recomendación se lleva también su enlace",
+    recortada.recommendations.length === 1 && JSON.stringify(recortada.links) === JSON.stringify(["criticos"]),
+    `${recortada.recommendations.length} recomendaciones, ${(recortada.links ?? []).length} enlaces`,
+  );
+
   const sano = buildFallbackNote(base);
   check(
     "7b. sin nada preocupante, habla igual pero de lo bueno",
@@ -458,6 +496,26 @@ try {
   // la sección de verificación del informe como una consulta que corre el
   // dueño. La migración `165` concede el permiso explícitamente para que haya
   // algo que comprobar.
+
+  // ── 14c. THE LINKS ARE STORED WITH THE NOTE (migration 215) ──────────────────────────
+  // Through the eight-argument writer, the one the app calls since 2026-11-17, and read back as
+  // the owner. Without 215 in dev the function does not exist: the row says so instead of
+  // passing.
+  const { error: e8 } = await escribir(hoy, {
+    p_recommendations: ["uno", "dos"],
+    p_recommendation_links: ["criticos", null],
+  });
+  const { data: conLinks } = await comoDueno
+    .from("report_assistant_notes")
+    .select("recommendation_links")
+    .eq("owner_id", dueno.id)
+    .eq("day", hoy)
+    .maybeSingle();
+  check(
+    "14c. el destino de cada recomendación se guarda con la nota (migración 215)",
+    !e8 && JSON.stringify(conLinks?.recommendation_links) === JSON.stringify(["criticos", null]),
+    e8 ? `${e8.code}: ${e8.message} — ¿la 215 está corrida en dev?` : JSON.stringify(conLinks?.recommendation_links),
+  );
 
   const { data: ajenas, error: e7 } = await comoDueno
     .from("report_assistant_notes")

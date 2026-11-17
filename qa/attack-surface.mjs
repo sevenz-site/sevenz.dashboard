@@ -562,6 +562,9 @@ export const MANIFEST = {
     "/api/extract": "session",
     "/api/reportes/asistente": "session",
     "/api/reportes/catalogo": "session",
+    // The day's and the month's close as a file (2026-11-17). Takes no id: it reads the session's
+    // own business only, so there is no other owner to ask for.
+    "/api/reportes/cierre": "session",
     "/api/reportes/movimientos": "session",
     "/api/usdt": "session",
     "/api/track": "public",

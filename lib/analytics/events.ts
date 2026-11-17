@@ -443,6 +443,8 @@ export type EventProps = {
   // gets a real shape the day it is touched, as the skill asks. ────────────
   "AI Report Failed": Loose;
   "AI Report Rated": Loose;
+  // Owner's request of 2026-11-17: a link per recommendation. See reportes-asistente.tsx.
+  "Assistant Link Clicked": { enlace: string; posicion: number };
   "Business Contacted On WhatsApp": Loose;
   "Catalog Opened From Share Link": Loose;
   "Catalog Order Received": Loose;

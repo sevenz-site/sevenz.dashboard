@@ -7,6 +7,7 @@ import { trackServer } from "@/lib/mixpanel-server";
 import { buildFacts } from "@/lib/reports/assistant/facts";
 import { buildFallbackNote, type AssistantNote } from "@/lib/reports/assistant/fallback";
 import { generarNota } from "@/lib/reports/assistant/gemini";
+import { comoEnlace } from "@/lib/reports/assistant/links";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL RESUMEN DEL DÍA
@@ -97,7 +98,7 @@ export async function GET() {
   // ── 1. ¿YA HAY NOTA DE HOY? ───────────────────────────────────────
   const { data: guardada } = await supabase
     .from("report_assistant_notes")
-    .select("summary, recommendations, degraded, rating, model")
+    .select("summary, recommendations, recommendation_links, degraded, rating, model")
     .eq("owner_id", user.id)
     .eq("day", hoy)
     .maybeSingle();
@@ -159,6 +160,7 @@ export async function GET() {
 function aRespuesta(fila: {
   summary: string;
   recommendations: string[] | null;
+  recommendation_links?: (string | null)[] | null;
   degraded: boolean;
   rating?: string | null;
   model?: string | null;
@@ -166,6 +168,8 @@ function aRespuesta(fila: {
   return {
     summary: fila.summary,
     recommendations: fila.recommendations ?? [],
+    // A note stored before migration 215 has none: its recommendations show without links.
+    links: (fila.recommendations ?? []).map((_, i) => comoEnlace(fila.recommendation_links?.[i])),
     degraded: fila.degraded,
     rating: (fila.rating as "useful" | "not_useful" | null) ?? null,
     empty: !fila.degraded && !fila.model,
@@ -253,6 +257,8 @@ async function guardar(
     p_day: hoy,
     p_summary: note.summary,
     p_recommendations: note.recommendations,
+    // Migration 215: the key of the list each recommendation talks about, same index.
+    p_recommendation_links: note.recommendations.map((_, i) => note.links?.[i] ?? null),
     p_degraded: meta.degraded,
     p_model: meta.modelo,
     p_failure_reason: meta.motivo,

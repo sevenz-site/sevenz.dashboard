@@ -6,8 +6,6 @@ import {
   ChevronRight,
   CircleAlert,
   CircleDollarSign,
-  Eye,
-  EyeOff,
   Package,
   Undo2,
   UserRound,
@@ -26,6 +24,13 @@ import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { cn } from "@/lib/utils";
 import { PlazosSheet } from "@/components/dashboard/reportes-plazos-sheet";
 import { MetodosDePago } from "@/components/dashboard/reportes-metodos-de-pago";
+import {
+  BotonDelOjo,
+  ReportesCierreDelDia,
+  ReportesCierreDelMes,
+  type DesgloseDelCierre,
+} from "@/components/dashboard/reportes-cierre-del-mes";
+import type { CierreDelDia, CierreDelMes, FilaDelDia } from "@/lib/reports/cierre-del-mes";
 import type {
   ClavePlazo,
   ClienteDePlazo,
@@ -36,9 +41,10 @@ import type {
 // ═══════════════════════════════════════════════════════════════════════
 // LA PESTAÑA «FACTURACIÓN» — frame `1502:10283`
 //
-// Cuatro bloques, en el orden del frame: Cartera, Transacciones, Plazos de
-// pago y Mejores pagadores. De dónde sale cada cifra y las decisiones que el
-// mock no toma están en `lib/reports/facturacion.ts`.
+// Since the owner's frame of 2026-11-17 (2189:28237), in this order: the day's and the month's
+// close, Por cobrar, Ventas de contado, Transacciones, Abonos, Fiados, Devoluciones, Pedidos,
+// Métodos de pago, Plazos de pago and Mejores pagadores. Where each figure comes from, and the
+// decisions the mock does not take, is in `lib/reports/facturacion.ts`.
 // ═══════════════════════════════════════════════════════════════════════
 
 const NOMBRE_DEL_LIBRO: Record<Libro, string> = {
@@ -47,6 +53,10 @@ const NOMBRE_DEL_LIBRO: Record<Libro, string> = {
   EUR: "Euro",
   COP: "Pesos",
 };
+
+// «Total en Dólares», «Total en Euros», «Ventas en Euros»: the frame's plural, for the cards and
+// the legend of «Ventas de contado» (read on 2026-11-17).
+const NOMBRE_EN_PLURAL: Record<Libro, string> = { USD: "Dólares", EUR: "Euros", COP: "Pesos" };
 
 function Monto({
   valor,
@@ -60,11 +70,13 @@ function Monto({
   className?: string;
 }) {
   return (
-    <span className={cn("flex items-center gap-1.5 tabular-nums", className)}>
+    <span className={cn("flex items-center gap-1 tabular-nums", className)}>
+      {/* THE FLAG BEFORE THE AMOUNT since the frame of 2026-11-17 (2189:28237); it went after
+          until then. */}
+      <CurrencyFlagIcon currency={libro as PriceCurrency} />
       {/* OCULTAR ES SUSTITUIR, NO BORRAR: el hueco conserva su sitio, así que
           la tarjeta no cambia de alto al taparse y la pantalla no salta. */}
       {oculto ? "•••••" : formatPriceAmount(valor, libro as PriceCurrency)}
-      <CurrencyFlagIcon currency={libro as PriceCurrency} />
     </span>
   );
 }
@@ -116,12 +128,18 @@ function TarjetaDeMonto({
   oculto,
   tasas,
   icono,
+  color,
+  grande = false,
 }: {
   rotulo: string;
   valor: number;
   libro: Libro;
   oculto: boolean;
   tasas: { usd: number; eur: number } | null;
+  /** The amount's colour, as the frame of 2026-11-17 paints it per block. None: the text's. */
+  color?: string;
+  /** 24px, «Por cobrar» in that frame; the rest are 20. */
+  grande?: boolean;
   // EL FRAME LE RESERVA UNA COLUMNA A LA DERECHA (el «Icons Container» de
   // `card_total_debt`, 24px de ancho). Entra como ranura y no como un icono
   // fijo porque cada tarjeta lleva el suyo.
@@ -131,7 +149,12 @@ function TarjetaDeMonto({
     <div className="flex min-w-0 flex-1 items-start gap-2 rounded-[10px] border px-3 py-3">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-xs text-muted-foreground">{rotulo}</span>
-        <Monto valor={valor} libro={libro} oculto={oculto} className="text-xl leading-7" />
+        <Monto
+          valor={valor}
+          libro={libro}
+          oculto={oculto}
+          className={cn(grande ? "text-2xl leading-8" : "text-xl leading-7", color)}
+        />
         <EnBolivares valor={valor} libro={libro} oculto={oculto} tasas={tasas} />
       </div>
       {icono ? <span className="shrink-0">{icono}</span> : null}
@@ -235,8 +258,23 @@ export function ReportesFacturacion({
   datos,
   periodoTexto,
   tasas,
+  cierreDelDia,
+  desgloseDelDia,
+  ventasDelDia,
+  cierreDelMes,
+  desgloseDelMes,
+  country,
 }: {
   datos: Facturacion;
+  /** Today so far, and its sales (`lib/reports/cierre-del-mes.ts`). Null: not drawn. */
+  cierreDelDia: CierreDelDia | null;
+  /** The four types of each close (Facturación's own arithmetic over its span). */
+  desgloseDelDia: DesgloseDelCierre | null;
+  desgloseDelMes: DesgloseDelCierre | null;
+  ventasDelDia: FilaDelDia[];
+  /** The last closed month. Null: not drawn. */
+  cierreDelMes: CierreDelMes | null;
+  country: string | null;
   /**
    * Bs por dólar y por euro, para la segunda línea de cada tarjeta.
    *
@@ -259,6 +297,7 @@ export function ReportesFacturacion({
   // que lo usó una vez abriría su propio informe tapado sin acordarse de por
   // qué, y lo leería como que la app no carga.
   const [oculto, setOculto] = useState(false);
+  const alternarOculto = () => setOculto((v) => !v);
   const [registrando, setRegistrando] = useState(false);
   const { libros } = datos;
 
@@ -329,24 +368,43 @@ export function ReportesFacturacion({
 
   return (
     <div className="flex flex-col">
-      {/* ══ CARTERA ══════════════════════════════════════════════════ */}
-      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
-          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
-          `lib/reports/secciones.ts`. */}
+      {/* ══ LOS CIERRES — owner's request of 2026-11-17 (frame 2189:28187) ══════════════
+          At the top, under the assistant: «Cierre del día» (today so far) and «Cierre de …»
+          (the last closed month, moved here from Inventario). Each is null when it could not
+          be read or a client is picked; see `app/(app)/reportes/page.tsx`. */}
+      {cierreDelDia ? (
+        <section id="cierre-del-dia" className="flex scroll-mt-28 flex-col pt-3">
+          <ReportesCierreDelDia
+            cierre={cierreDelDia}
+            desglose={desgloseDelDia}
+            ventas={ventasDelDia}
+            country={country}
+            oculto={oculto}
+            onAlternarOculto={alternarOculto}
+          />
+        </section>
+      ) : null}
+      {cierreDelMes ? (
+        <section id="cierre-del-mes" className="flex scroll-mt-28 flex-col pt-3">
+          <ReportesCierreDelMes
+            cierre={cierreDelMes}
+            desglose={desgloseDelMes}
+            country={country}
+            oculto={oculto}
+            onAlternarOculto={alternarOculto}
+            descargarHref="/api/reportes/cierre?que=mes"
+          />
+        </section>
+      ) : null}
+
+      {/* ══ POR COBRAR ═══════════════════════════════════════════════════
+          «Cartera» until 2026-11-17, renamed by the owner. THE ANCHOR STAYS `cartera`: the
+          `negocio_resumen` WhatsApp («Ver mi cartera») lands on it with an address Meta approved.
+          `scroll-mt-28`: the sticky header measures 112px collapsed (`lib/reports/secciones.ts`). */}
       <section id="cartera" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque
-          texto="Cartera"
-          accion={
-            <button
-              type="button"
-              onClick={() => setOculto((v) => !v)}
-              aria-pressed={oculto}
-              aria-label={oculto ? "Mostrar importes" : "Ocultar importes"}
-              className="-m-2 rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {oculto ? <Eye className="size-6" /> : <EyeOff className="size-6" />}
-            </button>
-          }
+          texto="Por cobrar"
+          accion={<BotonDelOjo oculto={oculto} onClick={alternarOculto} />}
         />
         {!hayCartera && !hayVentas && !hayDevoluciones ? (
           <EmptyState
@@ -364,6 +422,9 @@ export function ReportesFacturacion({
                   libro={l}
                   oculto={oculto}
                   tasas={tasas}
+                  // #BF4C00 at 24px, the frame's «warning» (read on 2026-11-17).
+                  color="text-warning"
+                  grande
                   // EL ICONO DEL FRAME `1752:14798` es `report` -- una
                   // admiración dentro de un círculo-- en #BF4C00, que es el
                   // token `--brand-report` creado para esto. `CircleAlert` de
@@ -387,15 +448,32 @@ export function ReportesFacturacion({
             <p className="text-xs leading-4 text-muted-foreground">
               Total de lo que te deben. No cambia con el periodo que elijas.
             </p>
+          </div>
+        )}
+      </section>
+
+      {/* ══ VENTAS DE CONTADO — its own block since the frame of 2026-11-17 ═══════════
+          The cards that read «Ventas» inside «Cartera» until then, now «Total en …», and the
+          sales chart under them. Same figure as before: what was collected in cash, minus the
+          cash given back in returns. Hidden while there is nothing at all, like «Por cobrar». */}
+      {hayCartera || hayVentas || hayDevoluciones ? (
+        <section id="ventas-de-contado" className="flex scroll-mt-28 flex-col">
+          <TituloDeBloque
+            texto="Ventas de contado"
+            accion={<BotonDelOjo oculto={oculto} onClick={alternarOculto} />}
+          />
+          <div className="flex flex-col gap-3">
             <div className="flex gap-3">
               {libros.map((l) => (
                 <TarjetaDeMonto
                   key={l}
-                  rotulo={libros.length > 1 ? `Ventas en ${NOMBRE_DEL_LIBRO[l]}` : "Ventas"}
+                  rotulo={libros.length > 1 ? `Total en ${NOMBRE_EN_PLURAL[l]}` : "Total"}
                   valor={datos.ventas[l] ?? 0}
                   libro={l}
                   oculto={oculto}
                   tasas={tasas}
+                  // #007956, the frame's «success».
+                  color="text-brand-sales"
                   // `paid` en #007956 -- frame `1752:14744`. `CircleDollarSign`
                   // de lucide es la misma moneda; el dueño dijo que los iconos
                   // que pasó son referenciales y el COLOR es el requisito.
@@ -403,9 +481,9 @@ export function ReportesFacturacion({
                 />
               ))}
             </div>
-            {/* QUÉ CUENTA «VENTAS», porque dejó de contar lo mismo el
-                2026-10-29 y la cifra cae un 88 %. Una bajada así sin una
-                línea que la explique se lee como que la app perdió datos. */}
+            {/* WHAT THIS FIGURE COUNTS, because it stopped counting the same thing on
+                2026-10-29 and fell 88 %. A drop like that with no line explaining it reads
+                as the app losing data. */}
             <p className="text-xs leading-4 text-muted-foreground">
               Solo lo que cobraste de contado. Lo que fiaste está más abajo, en «Fiados».
             </p>
@@ -416,18 +494,15 @@ export function ReportesFacturacion({
                 valores: libros.map((l) => p[l] ?? 0),
               }))}
               series={libros.map((l, i) => ({
-                nombre: libros.length > 1 ? `Ventas en ${NOMBRE_DEL_LIBRO[l]}` : "Ventas",
+                nombre: libros.length > 1 ? `Ventas en ${NOMBRE_EN_PLURAL[l]}` : "Ventas",
                 clase: i === 0 ? "bg-money-in" : "bg-sky-600",
               }))}
             />
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       {/* ══ TRANSACCIONES ════════════════════════════════════════════ */}
-      {/* `id` + `scroll-mt-28`: el ancla sirve de poco si el titulo queda
-          DEBAJO de la cabecera pegada, que mide 112px colapsada. Ver
-          `lib/reports/secciones.ts`. */}
       <section id="transacciones" className="flex scroll-mt-28 flex-col">
         <TituloDeBloque
           texto="Transacciones"
@@ -453,56 +528,40 @@ export function ReportesFacturacion({
               { nombre: "Devolución", clase: "bg-warning" },
             ]}
           />
+          {/* «DE CONTADO Y FIADOS POR CATÁLOGO» — frame 2189:31547, owner's answer of
+              2026-11-17. The figure did not change: everything that went through catalogue
+              orders, credit and cash (his decision of 2026-10-29). Under «Ventas de contado»
+              it could read larger than the cash total beside it; the label now says what it
+              counts and the card lives with the counts. */}
           <div className="flex gap-3">
             {libros.map((l) => (
               <TarjetaDeMonto
                 key={l}
-                rotulo={
-                  libros.length > 1
-                    ? `Transacciones por catálogo en ${NOMBRE_DEL_LIBRO[l]}`
-                    : "Transacciones por catálogo"
-                }
+                rotulo="De contado y fiados por catálogo"
                 valor={datos.ventasPorCatalogo[l] ?? 0}
                 libro={l}
                 oculto={oculto}
                 tasas={tasas}
-                // ── EL ICONO ES EL DE «CATÁLOGO» DE LA BARRA DE ABAJO ────
-                //
-                // Encargo del dueño el 2026-10-29. SE APARTA DEL FRAME a
-                // propósito: `1752:14808` especifica `package_2`, y aquí va
-                // `Package`, que es el que `mobile-nav.tsx` usa para la
-                // pestaña «Catálogo». El verde se queda.
-                //
-                // Por qué pesa más que el frame: esta tarjeta habla de lo que
-                // entró por el catálogo, y el tendero llega al catálogo por
-                // ese icono. Dos dibujos distintos para la misma cosa en la
-                // misma pantalla le piden aprenderse dos.
+                color="text-brand-sales"
+                // THE ICON IS «CATÁLOGO»'S IN THE BOTTOM BAR, owner's request of 2026-10-29:
+                // the frame specifies `package_2`, and `Package` is the one `mobile-nav.tsx`
+                // uses for the catalogue tab. Two drawings for the same thing on one screen ask
+                // him to learn two. The green stays.
                 icono={<Package className="size-4 text-brand-sales" aria-hidden />}
               />
             ))}
           </div>
-          {/* ── POR QUÉ PUEDE SALIR MAYOR QUE «VENTAS» ──────────────────
-              Esta cuenta TODO lo que pasó por pedidos --fiado y contado,
-              decisión del dueño el 2026-10-29-- y «Ventas» ya solo cuenta el
-              contado. En dev son $1.729,00 contra $1.556,00: la parte mayor
-              que el todo. Las dos son correctas; juntas y sin esta línea se
-              leen como un error de la app. */}
-          <p className="text-xs leading-4 text-muted-foreground">
-            Todo lo que se movió por pedidos del catálogo, fiado y de contado. Por eso puede
-            ser mayor que «Ventas».
-          </p>
+        </div>
+      </section>
 
-          {/* ── ABONOS Y FIADOS — encargo del dueño el 2026-10-29 ───────
-              Van aquí, encima de «Pedidos por atender», y en este orden,
-              que es el de la leyenda del gráfico de este mismo bloque:
-              «De contado · Abono · Fiado». El contado ya tiene su tarjeta
-              arriba, en Cartera, con el rótulo «Ventas».
-
-              LOS COLORES DE LOS ICONOS SON LOS DE ESAS SERIES --sky para el
-              abono, destructive para el fiado-- y no unos nuevos: es el
-              único lenguaje visual que la pantalla ya tiene para estas dos
-              cosas. Las FORMAS son propuestas: estas dos tarjetas no están
-              en ningún frame, las pidió él hoy. */}
+      {/* ══ ABONOS, FIADOS Y DEVOLUCIONES ═══════════════════════════════
+          NOT IN THE FRAME OF 2026-11-17, AND THEY STAY: his answer the same day, «Se quedan,
+          ponles el título con el mismo estilo y jerarquía que "Por cobrar", "Ventas de
+          contado"». Each is its own block now, in the order of the chart's legend above. Their
+          explanatory lines stay: each answers a doubt that was real. */}
+      <section id="abonos" className="flex scroll-mt-28 flex-col">
+        <TituloDeBloque texto="Abonos" />
+        <div className="flex flex-col gap-3">
           <div className="flex gap-3">
             {libros.map((l) => (
               <TarjetaDeMonto
@@ -516,14 +575,18 @@ export function ReportesFacturacion({
               />
             ))}
           </div>
-          {/* LO QUE PAGÓ AL FIAR TAMBIÉN CUENTA AQUÍ, y es la mitad que
-              sorprende: un fiado con abono inicial no escribe movimiento de
-              abono --escribe un cargo por lo que queda-- así que sin esto
-              ese dinero no salía en ninguna tarjeta de la pantalla. */}
+          {/* WHAT WAS PAID WHEN LENDING COUNTS HERE TOO: a fiado with a first payment writes
+              no abono movement, so without this that money was on no card of the screen. */}
           <p className="text-xs leading-4 text-muted-foreground">
             Lo que tus clientes pagaron de sus deudas, incluido lo que abonaron al momento de
             fiar.
           </p>
+        </div>
+      </section>
+
+      <section id="fiados" className="flex scroll-mt-28 flex-col">
+        <TituloDeBloque texto="Fiados" />
+        <div className="flex flex-col gap-3">
           <div className="flex gap-3">
             {libros.map((l) => (
               <TarjetaDeMonto
@@ -540,11 +603,15 @@ export function ReportesFacturacion({
           <p className="text-xs leading-4 text-muted-foreground">
             Lo que fiaste {periodoTexto}. «Por cobrar», arriba, es lo que te deben en total.
           </p>
-          {/* «DEVOLUCIONES», under the fiados, one card per currency: owner's
-              request of 2026-11-03. The sentence below is not decoration. This
-              card is the whole value of what came back, and «Fiados» and
-              «Abonos» already lost a part of it each: read side by side with
-              no explanation, the same return looks counted twice. */}
+        </div>
+      </section>
+
+      {/* «DEVOLUCIONES»: owner's request of 2026-11-03. The sentence below is not decoration:
+          «Fiados» and «Abonos» already lost a part of each return, and read side by side with
+          no explanation the same return looks counted twice. */}
+      <section id="devoluciones" className="flex scroll-mt-28 flex-col">
+        <TituloDeBloque texto="Devoluciones" />
+        <div className="flex flex-col gap-3">
           <div className="flex gap-3">
             {libros.map((l) => (
               <TarjetaDeMonto
@@ -560,43 +627,46 @@ export function ReportesFacturacion({
           </div>
           <p className="text-xs leading-4 text-muted-foreground">
             El valor de lo que te devolvieron {periodoTexto}. «Fiados» ya descuenta lo que rebajó cada
-            fiado. El dinero que devolviste ya está restado de «Ventas» o de «Abonos», según cómo se
-            había pagado.
+            fiado. El dinero que devolviste ya está restado de «Ventas de contado» o de «Abonos», según
+            cómo se había pagado.
           </p>
-          {/* UNA SOLA TARJETA DE PEDIDOS, y el frame dibuja dos idénticas.
-              No es una por moneda: un pedido sin atender no tiene moneda
-              todavía --nadie ha decidido cómo se cobra--. Dos tarjetas con el
-              mismo número se leen como dos cosas distintas que coinciden. */}
-          <Link
-            href="/productos/ordenes"
-            className="flex items-center gap-3 rounded-[10px] border px-3 py-3 transition-colors active:bg-accent"
-          >
-            <span className="text-xl leading-7 text-money-due tabular-nums">
-              {datos.pedidosPorAtender}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-sm">Pedidos por atender</span>
-              {/* EL DINERO QUE ESPERA, y es el motivo de la tarjeta. Encargo
-                  del dueño el 2026-10-27: *«mostrar el dinero pendiente por
-                  atender es un cue visual para incentivar a que atienda los
-                  pedidos»*. Un «3» no dice si vale la pena dejar lo que estás
-                  haciendo; un «$240» sí.
+        </div>
+      </section>
 
-                  EN SU MONEDA MÁS GRANDE Y NO SUMADO: en este producto no hay
-                  tasa de euro a dólar, así que un total único sería inventado.
-                  El porqué entero está en `pendingOrdersMoney`. */}
+      {/* ══ PEDIDOS — its own block since the frame of 2026-11-17 (2189:28677) ══════════
+          ONE CARD, not one per currency: an order not yet handled has no currency of its own --
+          nobody has decided how it will be paid. The frame's layout: the count in #BF4C00 at
+          24px with its label and the box icon on the first line; the money waiting, muted at
+          16px with its flag, and the chevron on the second. */}
+      <section id="pedidos" className="flex scroll-mt-28 flex-col">
+        <TituloDeBloque texto="Pedidos" />
+        <Link
+          href="/productos/ordenes"
+          className="flex flex-col gap-1 rounded-[10px] border px-3 py-3 transition-colors active:bg-accent"
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-2xl leading-8 text-warning tabular-nums">{datos.pedidosPorAtender}</span>
+            <span className="min-w-0 flex-1 text-xs">Pedidos por atender</span>
+            <Package className="size-4 shrink-0 text-warning" aria-hidden />
+          </span>
+          <span className="flex items-center gap-2">
+            {/* THE MONEY WAITING, and it is the reason for the card: owner's request of
+                2026-10-27, *«mostrar el dinero pendiente por atender es un cue visual para
+                incentivar a que atienda los pedidos»*. In its largest currency and not added
+                up: see `pendingOrdersMoney`. */}
+            <span className="min-w-0 flex-1">
               {datos.dineroPorAtender ? (
                 <Monto
                   valor={datos.dineroPorAtender.amount}
                   libro={datos.dineroPorAtender.currency as Libro}
                   oculto={oculto}
-                  className="text-xs text-muted-foreground"
+                  className="text-base text-muted-foreground"
                 />
               ) : null}
             </span>
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          </Link>
-        </div>
+            <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+          </span>
+        </Link>
       </section>
 
       {/* ══ MÉTODOS DE PAGO ═══════════════════════════════════════════ */}

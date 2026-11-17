@@ -85,6 +85,7 @@ for (const n of nodes) {
         if (g.end <= g.start || g.end > n.text.length) continue;
         if (g.font !== n.font) t.setRangeFontName(g.start, g.end, fontOf(g.font));
         if (g.size && g.size !== n.size) t.setRangeFontSize(g.start, g.end, g.size);
+        if (g.deco) t.setRangeTextDecoration(g.start, g.end, g.deco);
         if (g.color && n.color && (g.color.r !== n.color.r || g.color.g !== n.color.g || g.color.b !== n.color.b || g.color.a !== n.color.a)) {
           t.setRangeFills(g.start, g.end, [paint(g.color)]);
         }
@@ -132,4 +133,77 @@ for (const n of nodes) {
     failed++;
   }
 }
-return { frameId: frame.id, made, failed, total: nodes.length };
+// ── TIED TO THE DESIGN SYSTEM, NOT RAW COLOURS ─────────────────────────────────────────────
+//
+// Owner's request of 2026-11-17: «Estilos de color de textos, buttons icons deben ser los ya
+// implementados en el design system, veo que en figma el color negro es un poco más
+// oscuro/puro», and «Revisa los estilos de lo implementado en figma, y manténlos». Every solid
+// fill and stroke is bound to the nearest variable of «Sevenz · Color · App» when it is close
+// enough to be that token; a colour with no token near it (the sky of the abono icon) keeps its
+// value. TEXT IN NEAR-BLACK IS `primary` (#272727), the text colour of the implemented frames:
+// the app renders `foreground` (#0a0a0a), which is the «more pure black» he saw. And each text
+// takes the text style of its size and weight when it is one style throughout.
+let ligados = 0, estilos = 0;
+try {
+  const coleccion = (await figma.variables.getLocalVariableCollectionsAsync()).find((c) => c.name === "Sevenz · Color · App");
+  const vars = [];
+  if (coleccion) {
+    for (const id of coleccion.variableIds) {
+      const v = await figma.variables.getVariableByIdAsync(id);
+      const val = v && v.resolvedType === "COLOR" ? v.valuesByMode[coleccion.defaultModeId] : null;
+      // Not the chart or sidebar tokens: a card border tied to «chart-3» because its grey is
+      // nearest says nothing true about the card.
+      if (val && val.r !== undefined && !/^(chart|sidebar)-/.test(v.name)) vars.push({ v, r: val.r, g: val.g, b: val.b, name: v.name });
+    }
+  }
+  // Names that are aliases of others with the same value: prefer the ones the frames use.
+  const PREFERIDOS = ["primary", "muted-foreground", "border", "success", "warning", "destructive", "background", "muted", "secondary", "info", "brand", "subtle"];
+  const porNombre = (n) => vars.find((x) => x.name === n);
+  const cercano = (c) => {
+    let mejor = null, d = Infinity;
+    for (const x of vars) {
+      const e = Math.hypot((x.r - c.r) * 255, (x.g - c.g) * 255, (x.b - c.b) * 255);
+      const pref = PREFERIDOS.includes(x.name) ? -0.5 : 0;
+      if (e + pref < d) { d = e + pref; mejor = x; }
+    }
+    return d <= 14 ? mejor : null;
+  };
+  const casiNegro = (c) => c.r < 0.12 && c.g < 0.12 && c.b < 0.12;
+  const ligar = (paints, esTexto) => {
+    if (!Array.isArray(paints)) return paints;
+    let cambio = false;
+    const out = paints.map((p) => {
+      if (p.type !== "SOLID") return p;
+      const x = esTexto && casiNegro(p.color) ? porNombre("primary") : cercano(p.color);
+      if (!x) return p;
+      cambio = true;
+      ligados++;
+      return figma.variables.setBoundVariableForPaint(p, "color", x.v);
+    });
+    return cambio ? out : paints;
+  };
+  const textStyles = await figma.getLocalTextStylesAsync();
+  const estiloDe = (size, style) =>
+    textStyles.find((t) => t.name.startsWith("Texto/") && t.fontSize === size && t.fontName.family === "Geist" && t.fontName.style === style);
+  for (const node of frame.findAll(() => true)) {
+    if ("fills" in node && node.fills !== figma.mixed) node.fills = ligar(node.fills, node.type === "TEXT");
+    else if (node.type === "TEXT") {
+      // A sentence with pieces in other colours (an amount in green): bind each piece.
+      for (const seg of node.getStyledTextSegments(["fills"])) node.setRangeFills(seg.start, seg.end, ligar(seg.fills, true));
+    }
+    if ("strokes" in node) node.strokes = ligar(node.strokes, false);
+    // Not on an underlined text: a text style carries «no decoration» and would wipe the link's
+    // underline.
+    if (node.type === "TEXT" && node.fontName !== figma.mixed && node.fontSize !== figma.mixed && node.textDecoration === "NONE") {
+      const st = estiloDe(node.fontSize, node.fontName.style);
+      if (st) {
+        await node.setTextStyleIdAsync(st.id);
+        estilos++;
+      }
+    }
+  }
+} catch (e) {
+  // A frame with raw colours is still a frame: report it, do not lose the build.
+  return { frameId: frame.id, made, failed, total: nodes.length, ligados, estilos, errorDS: String(e) };
+}
+return { frameId: frame.id, made, failed, total: nodes.length, ligados, estilos };
