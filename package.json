@@ -88,6 +88,7 @@
     "qa:account-ready": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/account-ready.mjs",
     "qa:trial-ending": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/trial-ending.mjs",
     "qa:cierre-mensual": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/cierre-mensual.mjs",
+    "qa:metodo-pago": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/metodo-pago.mjs",
     "qa:negocio-semanal": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/negocio-semanal.mjs",
     "qa:aviso-resumen": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/aviso-resumen.mjs",
     "qa:security-alerts": "node --experimental-strip-types --no-warnings --import ./analytics/register-hooks.mjs qa/security-alerts.mjs",

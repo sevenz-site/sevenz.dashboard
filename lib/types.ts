@@ -33,6 +33,9 @@ export type Movement = {
   transaction_code?: string | null;
   needs_review: boolean;
   photo_path: string | null;
+  // How an abono's money arrived (migration 214). Optional: queries that do not ask for it, and
+  // every payment recorded before 2026-11-17, leave it out or null.
+  payment_method?: string | null;
   plazo_dias: number | null;
   // How many cuotas the fiado was agreed in (migration `118`). null = single
   // payment, and that is every row stored before 2026-10-16. Only a charge with

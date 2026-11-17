@@ -1,6 +1,8 @@
 "use client";
 
 import { track } from "@/lib/mixpanel";
+import { defaultMethod, isMethodForBook, type PaymentMethod } from "@/lib/payments/methods";
+import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
 import { newFlowId } from "@/lib/analytics/flow-client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -60,6 +62,11 @@ export type ReturnContext = {
   // The other open fiados OF THE SAME CURRENCY. A debt in the other book does
   // not appear here on purpose: it changes nothing in the table.
   otherFiados: OtherFiado[];
+  // THE ONE METHOD THE SALE WAS PAID WITH IN THIS BOOK, or null when it was paid with two or
+  // none (a fiado taken entirely on credit). The cash question opens on it: owner's decision of
+  // 2026-11-17, «El de la venta», so a Zelle sale refunded by Zelle needs no tap and the Reportes
+  // chart does not split one sale between two methods.
+  saleMethod?: string | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -96,6 +103,13 @@ export function RegistrarDevolucionDialog({
   const [quantity, setQuantity] = useState(Math.min(1, available));
   const [saving, setSaving] = useState<ReturnChoice["kind"] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // HOW THE CASH GOES BACK (migration 214, owner's decision of 2026-11-17: «Preguntar al
+  // devolver»). Opens on the method the sale was paid with («El de la venta», 2026-11-17);
+  // without one, on «Efectivo», the default for money in the book's own currency. The Reportes
+  // chart takes the refund off whatever is chosen here.
+  const [metodo, setMetodo] = useState<PaymentMethod>(() =>
+    isMethodForBook(context.saleMethod, currency) ? context.saleMethod : defaultMethod(currency, currency),
+  );
 
   const money = (n: number) => formatLedgerAmount(n, currency, ledger);
   const value = returnValue(quantity, line.unitPrice, line.devuelto ?? 0, line.devueltoValor ?? 0, context.ceiling);
@@ -193,7 +207,16 @@ export function RegistrarDevolucionDialog({
     setSaving(choice.kind);
     setError(null);
     const { fiados, aFavor, efectivo } = choice;
-    const payload = { lineId: line.id, quantity, fiados, aFavor, efectivo, analitica: { flowId: flujo.current } };
+    const payload = {
+      lineId: line.id,
+      quantity,
+      fiados,
+      aFavor,
+      efectivo,
+      // Only a button that hands cash back carries a method; the others send none.
+      metodo: efectivo > 0 ? metodo : null,
+      analitica: { flowId: flujo.current },
+    };
     const result =
       source.kind === "fiado"
         ? await registrarDevolucion({ ...payload, movementId: source.movementId })
@@ -298,6 +321,20 @@ export function RegistrarDevolucionDialog({
           {isCash && !walkIn ? <li>No cuenta como abono o ingreso de dinero.</li> : null}
           <li>Puedes revertir la devolución desde el historial.</li>
         </ul>
+
+        {/* «¿CÓMO LE DEVOLVISTE EL DINERO?», only when one of the buttons hands cash back. It
+            sits above them because the buttons are the decision: whichever hands cash back takes
+            this method, and the others ignore it. */}
+        {value > 0 && choices.some((c) => c.efectivo > 0) ? (
+          <MetodoDePagoField
+            id="devolucion-metodo"
+            bookCurrency={currency}
+            value={metodo}
+            onValueChange={setMetodo}
+            disabled={saving !== null}
+            label="¿Cómo le devolviste el dinero?"
+          />
+        ) : null}
 
         <div className="flex flex-col gap-4">
           {choices.map((choice, index) => (

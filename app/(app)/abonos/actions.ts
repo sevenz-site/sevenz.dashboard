@@ -16,6 +16,7 @@ import {
 import { convertirDesdeBolivares } from "@/lib/exchange-rate/monto-en-bolivares";
 import { guardarPermisoDeclarado } from "@/lib/whatsapp/declared-consent";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
+import { isMethodForBook, type PaymentMethod } from "@/lib/payments/methods";
 import type { LedgerCurrency } from "@/lib/types";
 import {
   repartir,
@@ -71,6 +72,9 @@ export type AbonoDirigidoEntrada = {
   usarPrevista?: boolean;
   photoPath?: string | null;
   descripcion?: string | null;
+  // How the money arrived (migration 214, owner's request of 2026-11-17). Optional: a browser
+  // still on the code from before it sends none, and the abono is stored without one.
+  paymentMethod?: PaymentMethod | null;
   // Si la casilla del permiso llegó a estar en pantalla. Va aparte de
   // `avisarPorWhatsapp` porque un «no» también se anota: sin eso, el cliente
   // nunca queda marcado como preguntado y la casilla reaparece en cada
@@ -176,6 +180,11 @@ export async function registrarAbonoDirigido(
 
   if (!(monto > 0)) return rechazar("invalid_amount", "Escribe cuánto te pagó.");
 
+  // THE METHOD MUST BELONG TO THIS FIADO'S BOOK: `libro` is null for a Colombian one.
+  if (entrada.paymentMethod != null && !isMethodForBook(entrada.paymentMethod, libro)) {
+    return rechazar("payment_method_invalid", "Elige el método de pago otra vez.");
+  }
+
   // REGLA DEL DUEÑO, 2026-10-19: *«no debe permitir abonar más de lo que debe,
   // pero sí puede abonar parcial»*. El tope es ESE fiado, no la deuda total.
   //
@@ -200,6 +209,7 @@ export async function registrarAbonoDirigido(
       description: entrada.descripcion?.trim() || null,
       source: "manual",
       photo_path: entrada.photoPath ?? null,
+      payment_method: entrada.paymentMethod ?? null,
       // LO QUE HACE QUE ESTE ABONO SEA DIRIGIDO. Todo lo demás de esta fila es
       // igual que el de un abono normal.
       applies_to_movement_id: fiado.id,
@@ -378,6 +388,9 @@ export type AbonoRepartidoEntrada = {
   // GUARDA como `entry_amount`: su cifra exacta en vez de la reconversión que
   // se enseñaba hasta el 2026-10-24.
   aManoBs?: Record<string, number>;
+  // How the money arrived, ONE for the whole payment: it is one bill, split across fiados
+  // (migration 214, owner's request of 2026-11-17). Every line carries it.
+  paymentMethod?: PaymentMethod | null;
   // La misma pareja de banderas que mandan las otras puertas: un «no» también
   // se anota, o el cliente nunca queda marcado como preguntado.
   permisoMostrado?: boolean;
@@ -919,6 +932,15 @@ export async function registrarAbonoRepartido(
       rate_eur_at_time: sello.rateEurAtTime,
     }));
     totalDelResultado = reparto.repartido;
+  }
+
+  // THE METHOD, ON EVERY LINE OF BOTH PATHS. A split that crosses books is always paid in
+  // bolívares, so both books are Venezuelan and one list fits; `libro` is null for a Colombian one.
+  if (entrada.paymentMethod != null) {
+    if (!isMethodForBook(entrada.paymentMethod, entrada.libro)) {
+      return rechazar("payment_method_invalid", "Elige el método de pago otra vez.");
+    }
+    lineasRpc = lineasRpc.map((l) => ({ ...l, payment_method: entrada.paymentMethod }));
   }
 
   const { data: escrito, error: errorRpc } = await supabase.rpc("registrar_abono_repartido", {

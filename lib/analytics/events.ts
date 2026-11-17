@@ -58,6 +58,7 @@ export type SaleRejectionReason =
   | "payment_currency_invalid"
   | "rate_missing"
   | "invalid_amount"
+  | "payment_method_invalid"
   | "overpayment"
   | "walk_in_debt"
   | "walk_in_credit"
@@ -83,11 +84,13 @@ export type PaymentRejectionReason =
   | "split_invalid"
   | "mixed_currencies"
   | "duplicate_fiado"
+  | "payment_method_invalid"
   | "db_error";
 
 export type ReturnRejectionReason =
   | "paused_account"
   | "invalid_quantity"
+  | "refund_method_invalid"
   | "not_found"
   | "no_products"
   | "sale_deleted"

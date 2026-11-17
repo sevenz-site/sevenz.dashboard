@@ -25,6 +25,7 @@ import { marcarPantallaVacia } from "@/components/dashboard/pantalla-vacia";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { cn } from "@/lib/utils";
 import { PlazosSheet } from "@/components/dashboard/reportes-plazos-sheet";
+import { MetodosDePago } from "@/components/dashboard/reportes-metodos-de-pago";
 import type {
   ClavePlazo,
   ClienteDePlazo,
@@ -596,6 +597,17 @@ export function ReportesFacturacion({
             <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           </Link>
         </div>
+      </section>
+
+      {/* ══ MÉTODOS DE PAGO ═══════════════════════════════════════════ */}
+      {/* Owner's request of 2026-11-17: «¿Cuáles son los métodos de pago que generan mayor
+          ingreso?». After the money cards it splits, before the clients. See `MetodosDePago`. */}
+      <section id="metodos-de-pago" className="flex scroll-mt-28 flex-col">
+        <TituloDeBloque
+          texto="Métodos de pago"
+          subtitulo={`Lo que cobraste ${periodoTexto} con cada método, de mayor a menor. Ya descuenta lo que devolviste por cada uno.`}
+        />
+        <MetodosDePago libros={libros} porMetodo={datos.porMetodo} oculto={oculto} />
       </section>
 
       {/* ══ PLAZOS DE PAGO ═══════════════════════════════════════════ */}

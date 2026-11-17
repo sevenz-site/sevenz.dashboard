@@ -48,6 +48,8 @@ import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
+import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
+import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
 //
@@ -165,6 +167,10 @@ export function AbonoMonto({
   const [descripcion, setDescripcion] = useState("");
   const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [avisar, setAvisar] = useState(false);
+  // THE METHOD, or null while untouched: then the default follows the currency being typed
+  // (owner's decision of 2026-11-17). See `MetodoDePagoField`.
+  const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(null);
+  const metodo: PaymentMethod = metodoElegido ?? defaultMethod(libro, monedaTecleada === "VES" ? "VES" : libro);
 
   // `parseAmount` Y NO `Number(...)`, que es lo que había aquí.
   //
@@ -335,6 +341,7 @@ export function AbonoMonto({
         usarPrevista,
         photoPath,
         descripcion,
+        paymentMethod: metodo,
         // Se mandan los DOS por separado: que la casilla estuviera en pantalla
         // y que la marcara. Mandar solo «aceptó» hace que un «no» no quede
         // anotado, y entonces la casilla vuelve a salir en el siguiente
@@ -596,6 +603,18 @@ export function AbonoMonto({
           </>
         ) : null}
       </div>
+
+      {/* «MÉTODO DE PAGO» (owner's request of 2026-11-17). NOT IN THE SPLIT: there this screen only
+          fixes one fiado's share and goes back, and the method is asked once, for the whole bill,
+          on the split's own screen. */}
+      {!enReparto ? (
+        <MetodoDePagoField
+          id="abono-metodo"
+          bookCurrency={libro}
+          value={metodo}
+          onValueChange={setMetodoElegido}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="descripcion">Descripción (opcional)</Label>

@@ -59,6 +59,8 @@ type SharedMovement = {
   // Los dos que trae la migración `127`.
   applies_to_movement_id: string | null;
   photo_path: string | null;
+  // Migration 214. Optional: absent while code and database are out of step.
+  payment_method?: string | null;
   // Y el de la `129`: lo que se abonó EN EL MOMENTO de registrar el fiado.
   // Opcional porque durante un despliegue el código y la base no coinciden en
   // un sentido o en el otro; ausente cae a 0, que es también lo que vale para
@@ -483,6 +485,7 @@ export default async function DetalleDelClientePage({
         amount={Number(m.amount)}
         currency={m.currency}
         description={m.description}
+        paymentMethod={m.payment_method ?? null}
         // LA MISMA TABLA QUE LA DEL DUEÑO, y el mismo componente. La `139` ya
         // manda solo las líneas de la moneda de este movimiento, así que no
         // hay nada que filtrar aquí.

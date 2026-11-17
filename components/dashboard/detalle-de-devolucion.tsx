@@ -1,5 +1,6 @@
 import { conHoy } from "@/lib/exchange-rate/format";
 import Link from "next/link";
+import { methodLabel } from "@/lib/payments/methods";
 import { ChevronRight, Undo2 } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { Fila, Grupo, NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
@@ -93,7 +94,19 @@ export function DetalleDeDevolucion({
           <Linea key={f.movementId} rotulo={`Abonó a ${f.title}`} cifra={money(f.amount)} href={f.href} />
         ))}
         {devolucion.to_credit > 0 ? <Linea rotulo="Saldo a favor" cifra={money(devolucion.to_credit)} /> : null}
-        {devolucion.to_cash > 0 ? <Linea rotulo="Efectivo devuelto" cifra={money(devolucion.to_cash)} /> : null}
+        {/* HOW THE CASH WENT BACK (migration 214), in the same line as the amount: «Devuelto por
+            Zelle». Cash, and every return from before the question existed, keep the line they
+            always had, «Efectivo devuelto». */}
+        {devolucion.to_cash > 0 ? (
+          <Linea
+            rotulo={
+              devolucion.refund_method && devolucion.refund_method !== "cash"
+                ? `Devuelto por ${methodLabel(devolucion.refund_method, currency) ?? devolucion.refund_method}`
+                : "Efectivo devuelto"
+            }
+            cifra={money(devolucion.to_cash)}
+          />
+        ) : null}
 
         <FilaDeTotal
           rotulo="Total por cobrar"

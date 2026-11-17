@@ -34,6 +34,7 @@ export const SECCIONES = {
   // ── Facturación ──────────────────────────────────────────────────────
   cartera: { tab: "facturacion", titulo: "Cartera" },
   transacciones: { tab: "facturacion", titulo: "Transacciones" },
+  "metodos-de-pago": { tab: "facturacion", titulo: "Métodos de pago" },
   plazos: { tab: "facturacion", titulo: "Plazos de pago" },
   "mejores-pagadores": { tab: "facturacion", titulo: "Mejores pagadores" },
   // ── Inventario ───────────────────────────────────────────────────────

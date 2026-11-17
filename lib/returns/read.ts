@@ -18,6 +18,9 @@ export type ReturnSummary = {
   to_fiados: number;
   to_credit: number;
   to_cash: number;
+  // How the cash went back (migration 214). Optional: absent on the client's payload while code
+  // and database are out of step, and null on every return from before 2026-11-17.
+  refund_method?: string | null;
   // Null for a return of a sale paid in full (migration 186).
   charge_movement_id: string | null;
   sale_id: string;
@@ -90,7 +93,7 @@ export async function withReturns<T extends WithGroup>(
 
   const { data, error } = await supabase
     .from("sale_returns")
-    .select("id, product_name, quantity, unit_price, amount, to_own, to_fiados, to_credit, to_cash, charge_movement_id, sale_id")
+    .select("id, product_name, quantity, unit_price, amount, to_own, to_fiados, to_credit, to_cash, refund_method, charge_movement_id, sale_id")
     .in("id", ids);
   if (error) {
     // A label is missing, the money is not: the row still draws from `movements`.
@@ -110,6 +113,7 @@ export async function withReturns<T extends WithGroup>(
         to_fiados: Number(r.to_fiados),
         to_credit: Number(r.to_credit),
         to_cash: Number(r.to_cash),
+        refund_method: (r.refund_method as string | null) ?? null,
         charge_movement_id: (r.charge_movement_id as string | null) ?? null,
         sale_id: r.sale_id as string,
       } satisfies ReturnSummary,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
+import { MetodoDePagoFila, metodoUnico } from "@/components/dashboard/metodo-de-pago-fila";
 import { redirect, notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { getCurrentUser, getRequestClient } from "@/lib/supabase/current-user";
@@ -88,7 +89,7 @@ export default async function VentaDeContadoPage({
     lineasDe(supabase, saleId, moneda),
     supabase
       .from("sale_payments")
-      .select("amount, currency, entry_currency, entry_amount, rate_used, description")
+      .select("amount, currency, entry_currency, entry_amount, rate_used, description, payment_method")
       .eq("sale_id", saleId),
   ]);
 
@@ -149,6 +150,8 @@ export default async function VentaDeContadoPage({
   const formatear = (n: number) => formatLedgerAmount(n, moneda, ledger).primary;
 
   const descripcion = pagos.map((p) => p.description).find((d) => d != null && d !== "") ?? null;
+  // How it was paid (migration 214): one method for every payment of this book, or none.
+  const metodo = metodoUnico(pagos.map((p) => p.payment_method as string | null));
 
   // ── EL PEDIDO DEL QUE NACIÓ ESTA VENTA, SI NACIÓ DE UNO ─────────────
   //
@@ -208,6 +211,7 @@ export default async function VentaDeContadoPage({
       bookBalance: await bookBalance(supabase, cliente.id, moneda),
       ceiling: await ceilingOfBook(supabase, saleId, moneda, 0),
       otherFiados: otherFiadosOf(abiertos ?? [], moneda, null),
+      saleMethod: metodo,
       currency: moneda,
       ledger,
     };
@@ -340,6 +344,7 @@ export default async function VentaDeContadoPage({
         </div>
 
         <Grupo>
+          <MetodoDePagoFila metodo={metodo} bookCurrency={moneda} />
           <dt className="text-xs leading-5 text-muted-foreground">Descripción</dt>
           <dd className="text-sm break-words">{descripcion || "—"}</dd>
         </Grupo>

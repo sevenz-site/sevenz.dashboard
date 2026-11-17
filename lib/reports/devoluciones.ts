@@ -50,6 +50,9 @@ export type ReturnOfRange = {
   currency: string;
   toOwn: number;
   toCash: number;
+  // How that cash went back (migration 214), or null: a return from before 2026-11-17, or one
+  // that handed no cash back.
+  refundMethod: string | null;
   fromCatalog: boolean;
   // It hangs from a fiado. If not, it came from a sale paid in full.
   fromFiado: boolean;
@@ -86,7 +89,7 @@ export async function cargarDevoluciones(
   let q = supabase
     .from("sale_returns")
     .select(
-      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, charge_movement_id, sales!inner(catalog_order_id), sale_lines(unit_cost, supplier)",
+      "created_at, product_id, product_name, quantity, unit_price, amount, currency, to_own, to_cash, refund_method, charge_movement_id, sales!inner(catalog_order_id), sale_lines(unit_cost, supplier)",
     )
     .eq("owner_id", ownerId)
     .is("deleted_at", null)
@@ -112,6 +115,7 @@ export async function cargarDevoluciones(
     currency: (r.currency as string | null) ?? "COP",
     toOwn: Number(r.to_own),
     toCash: Number(r.to_cash),
+    refundMethod: (r.refund_method as string | null) ?? null,
     fromCatalog: Boolean((r.sales as unknown as { catalog_order_id: string | null } | null)?.catalog_order_id),
     fromFiado: r.charge_movement_id != null,
   }));

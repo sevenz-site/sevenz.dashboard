@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { MetodoDePagoFila } from "@/components/dashboard/metodo-de-pago-fila";
 import { ChevronRight } from "lucide-react";
 import { EyeOff, ImageOff } from "lucide-react";
 import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
@@ -56,6 +57,10 @@ export type DatosDelDetalle = {
   // El libro al que pertenece (USD/EUR), o `null` en un negocio colombiano.
   currency: LedgerCurrency | null;
   description: string | null;
+  // How an abono's money arrived (migration 214). Both faces pass it: owner's decision of
+  // 2026-11-17, the client sees it as the owner does. Absent or null, the row is not drawn:
+  // a payment recorded before that day has no method, and «—» would read as «none».
+  paymentMethod?: string | null;
   // La nota interna. La pantalla del cliente NO la pasa — ni podría:
   // `get_shared_balance` no la devuelve.
   ownerNote?: string | null;
@@ -176,6 +181,7 @@ export function DetalleDeTransaccion({
   amount,
   currency = null,
   description,
+  paymentMethod = null,
   ownerNote = null,
   plazoDias,
   cuotas,
@@ -784,6 +790,7 @@ export function DetalleDeTransaccion({
       )}
 
       <Grupo>
+        {type === "payment" ? <MetodoDePagoFila metodo={paymentMethod} bookCurrency={currency} /> : null}
         <dt className="text-xs leading-5 text-muted-foreground">Descripción</dt>
         <dd className="text-sm break-words">{description || "—"}</dd>
 

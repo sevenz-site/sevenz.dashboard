@@ -207,6 +207,25 @@ export type Facturacion = {
   abonos: Partial<Record<Libro, number>>;
   /** Lo fiado en el periodo: la suma de los cargos, por libro. */
   fiados: Partial<Record<Libro, number>>;
+  /**
+   * WHAT CAME IN, BY PAYMENT METHOD, per book (migration 214). Owner's request of 2026-11-17:
+   * «¿Cuáles son los métodos de pago que generan mayor ingreso?».
+   *
+   * IT IS `ventas` + `abonos`, split by method: the same payments, the same buckets, the same
+   * cash refunds taken off. So a book's methods always add up to its two cards, and the chart
+   * cannot tell a different total from the screen it sits on.
+   *
+   * CASH REFUNDS COME OFF THE METHOD THEY WENT BACK BY, owner's decisions of 2026-11-17: «Lo
+   * cobrado menos devoluciones», and then «Preguntar al devolver», when he saw the first version
+   * take every refund off «Efectivo» by assumption. The return asks «¿Cómo le devolviste el
+   * dinero?» and stores it in `sale_returns.refund_method` (migration 214). A return from before
+   * that has none and comes off «Sin registrar». A method can go below zero (more went back by it
+   * than came in by it in the period); the chart says so instead of drawing a negative bar.
+   *
+   * The key is the method, or "" for payments that carry none: everything before 2026-11-17 and
+   * anything from the libreta import. The chart calls them «Sin registrar».
+   */
+  porMetodo: Partial<Record<Libro, Record<string, number>>>;
   /** El valor de lo devuelto en el rango, por libro. Ver `devoluciones.ts`. */
   devoluciones: Partial<Record<Libro, number>>;
   ventasPorCatalogo: Partial<Record<Libro, number>>;
@@ -419,7 +438,7 @@ export async function cargarFacturacion({
       ? readAllByIds<Record<string, unknown>>(idsDeCliente, (batch, from, to) =>
           supabase
             .from("movements")
-            .select("type, amount, currency, created_at, client_id, paid_with_credit", { count: "exact" })
+            .select("type, amount, currency, created_at, client_id, paid_with_credit, payment_method", { count: "exact" })
             .in("client_id", batch)
             .is("deleted_at", null)
             .gte("created_at", desdeIso)
@@ -483,7 +502,7 @@ export async function cargarFacturacion({
           readAllByIds<Record<string, unknown>>(idsDeVenta, (batch, from, to) =>
             supabase
               .from("sale_payments")
-              .select("sale_id, amount, currency, created_at", { count: "exact" })
+              .select("sale_id, amount, currency, created_at, payment_method", { count: "exact" })
               .in("sale_id", batch)
               .order("id")
               .range(from, to),
@@ -595,6 +614,16 @@ export async function cargarFacturacion({
       (catalogoPorLibro[libro] ?? 0) + Number(li.quantity) * Number(li.unit_price);
   }
 
+  // ── BY PAYMENT METHOD, in the same passes that fill «Ventas» and «Abonos» ───
+  // A third loop over the same payments would be a second place where the chart and the cards
+  // could part ways. No method recorded is kept under the key "".
+  const porMetodo: Partial<Record<Libro, Record<string, number>>> = {};
+  const sumarMetodo = (libro: Libro, metodo: string | null, monto: number) => {
+    const delLibro = (porMetodo[libro] ??= {});
+    const clave = metodo ?? "";
+    delLibro[clave] = (delLibro[clave] ?? 0) + monto;
+  };
+
   // ── «VENTAS» Y LA MITAD DE «ABONOS»: LOS PAGOS DE LA CAJA ───────────
   //
   // Cada pago va a un sitio u otro según si SU LIBRO quedó fiado. Los dos
@@ -613,6 +642,7 @@ export async function cargarFacturacion({
     if (i < 0) continue;
 
     const monto = Number(pg.amount);
+    sumarMetodo(libro, (pg.payment_method as string | null) ?? null, monto);
     if (librosFiados.has(claveDeFila(pg.sale_id as string, libroDeVenta(pg.currency as string)))) {
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
       continue;
@@ -676,6 +706,7 @@ export async function cargarFacturacion({
     if (m.type === "payment") {
       serieTransacciones[i].abono += 1;
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) + monto;
+      sumarMetodo(libro, (m.payment_method as string | null) ?? null, monto);
     } else if (m.type === "charge" && !m.paid_with_credit) {
       // `else if` AND NOT `else`: since migration 185 not being a payment no
       // longer means being a fiado, and a return here would add to the lending.
@@ -693,6 +724,8 @@ export async function cargarFacturacion({
     if (!libros.includes(libro) || i < 0) continue;
     serieTransacciones[i].devolucion += 1;
     devolucionesPorLibro[libro] = (devolucionesPorLibro[libro] ?? 0) + d.amount;
+    // The cash that went back comes off the method it went back by. See `porMetodo` in the type.
+    if (d.toCash > 0) sumarMetodo(libro, d.refundMethod, -d.toCash);
     if (d.fromFiado) {
       abonosPorLibro[libro] = (abonosPorLibro[libro] ?? 0) - d.toCash;
     } else {
@@ -862,6 +895,7 @@ export async function cargarFacturacion({
     ventas: ventasPorLibro,
     abonos: abonosPorLibro,
     fiados: fiadosPorLibro,
+    porMetodo,
     devoluciones: devolucionesPorLibro,
     ventasPorCatalogo: catalogoPorLibro,
     serieVentas,
