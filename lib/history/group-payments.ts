@@ -1,3 +1,4 @@
+import { roundBs } from "@/lib/exchange-rate/format";
 // ONE ABONO, ONE ROW: the lines of a split payment, put back together.
 //
 // Owner's request of 2026-10-30, from a user's comment: an abono of USD 20
@@ -105,7 +106,7 @@ export function groupPayments<T extends GroupableMovement>(movements: T[]): Paym
         amount: round2(ordered.reduce((sum, l) => sum + Number(l.amount), 0)),
         entry_currency: allTypedInBolivars ? "VES" : null,
         entry_amount: allTypedInBolivars
-          ? round2(ordered.reduce((sum, l) => sum + Number(l.entry_amount), 0))
+          ? roundBs(ordered.reduce((sum, l) => sum + Number(l.entry_amount), 0))
           : null,
       },
       lines: ordered,

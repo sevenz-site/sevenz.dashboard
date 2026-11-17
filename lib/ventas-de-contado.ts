@@ -1,5 +1,6 @@
 import type { LedgerCurrency } from "@/lib/types";
 import type { SaleLineRow } from "@/lib/sale-lines";
+import { roundBs } from "@/lib/exchange-rate/format";
 
 // UNA VENTA PAGADA ENTERA, para que aparezca en el historial del cliente.
 //
@@ -219,7 +220,7 @@ export function filasDeContado(
       tecleadoEnBs: mezclados.has(clave)
         ? null
         : (bsTecleados.get(clave) != null
-            ? Math.round(bsTecleados.get(clave)! * 100) / 100
+            ? roundBs(bsTecleados.get(clave)!)
             : null),
       transactionCode: venta.transaction_code ?? null,
       lineas: lineasPorVentaYLibro.get(clave) ?? [],

@@ -51,7 +51,7 @@ import {
   absorbPinnedCents,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
-import { formatBs, conHoy, formatBsHoy } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy, formatBsHoy, roundBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   parseAmount,
@@ -593,11 +593,11 @@ export function AbonoReparto({
     let repartido = 0;
     for (let j = 0; j < conImporte.length; j += 1) {
       if (j === conImporte.length - 1) {
-        return Math.round((montoNum - repartido) * 100) / 100;
+        return roundBs(montoNum - repartido);
       }
-      const v = Math.round(montoNum * (pesoDe(conImporte[j].movementId) / peso) * 100) / 100;
+      const v = roundBs(montoNum * (pesoDe(conImporte[j].movementId) / peso));
       if (j === i) return v;
-      repartido = Math.round((repartido + v) * 100) / 100;
+      repartido = roundBs(repartido + v);
     }
     return null;
   };

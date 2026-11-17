@@ -159,6 +159,9 @@ export type Owner = {
   // When the one-time notice «tu resumen semanal ahora incluye ventas y productos» was shown
   // (migration 202, v0.6.0). Null until then.
   whatsapp_scope_notice_at: string | null;
+  // When he switched off «Consejos de Sevenz», the inactivity nudges (migration 217). Null, or
+  // absent before 217 runs, means he gets them.
+  product_tips_opt_out_at?: string | null;
   created_at: string;
 };
 

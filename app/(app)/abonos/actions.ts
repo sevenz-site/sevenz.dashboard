@@ -27,7 +27,7 @@ import {
   type FiadoParaRepartir,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
-import { formatBs } from "@/lib/exchange-rate/format";
+import { formatBs, roundBs } from "@/lib/exchange-rate/format";
 
 // EL ABONO DIRIGIDO — paso 3/3 del flujo, frame `1389:9381`.
 //
@@ -551,7 +551,7 @@ async function armarRepartoCruzandoLibros(
   };
   const aBolivares = (monto: number, moneda: LedgerCurrency | null) => {
     const t = tasaDe(moneda);
-    return t == null ? null : Math.round(monto * t * 100) / 100;
+    return t == null ? null : roundBs(monto * t);
   };
   const desdeBolivares = (bs: number, moneda: LedgerCurrency | null) => {
     const t = tasaDe(moneda);
@@ -634,7 +634,7 @@ async function armarRepartoCruzandoLibros(
   // Lo que queda del billete para las líneas que NO tienen cifra propia. Si
   // las suyas ya suman el billete entero, aquí queda cero y las demás —que no
   // las hay, porque el reparto no les dejó bolívares— tampoco piden nada.
-  const porRepartir = Math.round((montoBs - yaPuesto) * 100) / 100;
+  const porRepartir = roundBs(montoBs - yaPuesto);
   const pesoTotal = sinCifraPropia.reduce((acc, l) => acc + (l.asignadoBs ?? 0), 0);
 
   let repartidoHastaAqui = 0;
@@ -650,15 +650,15 @@ async function armarRepartoCruzandoLibros(
     // la suma dé exactamente el billete. Un céntimo repartido a la baja entre
     // tres líneas deja al tendero buscando un bolívar que nunca faltó.
     if (vistasSinCifra === sinCifraPropia.length) {
-      bsDeCadaLinea.push(Math.round((porRepartir - repartidoHastaAqui) * 100) / 100);
+      bsDeCadaLinea.push(roundBs(porRepartir - repartidoHastaAqui));
       return;
     }
     const v =
       pesoTotal > 0
-        ? Math.round(porRepartir * ((l.asignadoBs ?? 0) / pesoTotal) * 100) / 100
+        ? roundBs(porRepartir * ((l.asignadoBs ?? 0) / pesoTotal))
         : 0;
     bsDeCadaLinea.push(v);
-    repartidoHastaAqui = Math.round((repartidoHastaAqui + v) * 100) / 100;
+    repartidoHastaAqui = roundBs(repartidoHastaAqui + v);
   });
 
   // ── LA PARADA DURA: LAS PARTES SUMAN EL BILLETE ─────────────────────
@@ -889,11 +889,11 @@ export async function registrarAbonoRepartido(
     let acumulado = 0;
     lineas.forEach((l, i) => {
       if (i === lineas.length - 1) {
-        bsPorLinea.push(Math.round((tecleadoEnBs - acumulado) * 100) / 100);
+        bsPorLinea.push(roundBs(tecleadoEnBs - acumulado));
       } else {
-        const v = Math.round(tecleadoEnBs * (l.asignado / total) * 100) / 100;
+        const v = roundBs(tecleadoEnBs * (l.asignado / total));
         bsPorLinea.push(v);
-        acumulado = Math.round((acumulado + v) * 100) / 100;
+        acumulado = roundBs(acumulado + v);
       }
     });
   }

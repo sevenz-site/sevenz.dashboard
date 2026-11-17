@@ -161,6 +161,17 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "sin_parametros",
   },
 
+  // THE INACTIVITY NUDGES (MS-53), sent from `lib/whatsapp/inactivity-nudge.ts`. APPROVED AS
+  // MARKETING, read back from Meta through Kapso on 2026-11-17: one named parameter, `es`, the
+  // owners' number, footer present and a FIXED URL button «Abrir Sevenz» →
+  // https://app.sevenz.site/. Bodies compared character by character with their fichas.
+  // `inactive_nudge_tax_invoice` is approved too and deliberately absent: it is never sent
+  // («Las 4, sin SENIAT»), so a call to it must not be recognised here.
+  inactive_nudge_credit: { cuerpo: ["owner_name"], boton: "sin_parametros" },
+  inactive_nudge_catalog: { cuerpo: ["owner_name"], boton: "sin_parametros" },
+  inactive_nudge_inventory: { cuerpo: ["owner_name"], boton: "sin_parametros" },
+  inactive_nudge_cash_sales: { cuerpo: ["owner_name"], boton: "sin_parametros" },
+
   // THE BUSINESS FAMILY, sent from 2026-11-13 (v0.6.0, `lib/whatsapp/business-weekly.ts`).
   // All three carry a FIXED URL button to a section of Reportes (`lib/whatsapp/destinos.ts`).
   //

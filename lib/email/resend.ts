@@ -36,6 +36,11 @@ export async function sendEmail(opciones: {
   text: string;
   idempotencyKey: string;
   tag: string;
+  // Both optional, for the inactivity nudges (2026-11-17): they leave from their own
+  // subdomain, never the one that sends login codes, and carry the one-click unsubscribe
+  // headers Gmail and Yahoo expect from marketing mail.
+  fromOverride?: string;
+  headers?: Record<string, string>;
 }): Promise<EmailResult> {
   const key = apiKey();
   if (!key) return { ok: false, error: "RESEND_API_KEY no está configurada." };
@@ -48,10 +53,11 @@ export async function sendEmail(opciones: {
         "Idempotency-Key": opciones.idempotencyKey.slice(0, 256),
       },
       body: JSON.stringify({
-        from: from(),
+        from: opciones.fromOverride ?? from(),
         to: [opciones.to],
         subject: opciones.subject,
         text: opciones.text,
+        ...(opciones.headers ? { headers: opciones.headers } : {}),
         tags: [{ name: "kind", value: opciones.tag.replace(/[^a-z0-9_-]/gi, "_") }],
       }),
       signal: AbortSignal.timeout(15_000),

@@ -26,7 +26,7 @@ import {
   type MovementCurrency,
   type MovementRateContext,
 } from "@/lib/exchange-rate/convert";
-import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { BS_DECIMALS, formatBs, formatBsAmount, formatDisplayCurrency, formatPlainAmount } from "@/lib/exchange-rate/format";
 import type { LedgerCurrency } from "@/lib/types";
 import { usePrecioUsdt } from "@/components/dashboard/use-precio-usdt";
 
@@ -290,8 +290,14 @@ function RateCalculator({
   const labelFor = (c: MonedaVisible) =>
     c === "VES" ? "Bolívares" : c === "USD" ? "Dólares" : c === "EUR" ? "Euros" : "USDT";
 
+  // FOUR DECIMALS WHEN THE TYPED FIELD IS IN BOLIVARS (owner's decision of 2026-11-17, see
+  // `BS_DECIMALS`): the mask shifts digits in from the right and the last four are the decimals;
+  // in dollars, euros or USDT the last two. The field's own text already prints that many, so the
+  // digits read back from it always mean the figure on screen.
+  const decimalsOf = (c: MonedaVisible) => (c === "VES" ? BS_DECIMALS : 2);
+  const typedCurrency = source === "put" ? putCurrency : getCurrency;
   const cents = Number(rawDigits || "0");
-  const typed = cents / 100;
+  const typed = cents / 10 ** decimalsOf(typedCurrency);
   const hasAmount = typed > 0;
 
   // Con USDT de por medio la cuenta se hace AQUÍ y no en
@@ -323,7 +329,7 @@ function RateCalculator({
     currency === "VES"
       ? `Bs. ${formatBsAmount(amount)}`
       : currency === "USDT"
-        ? `${formatBsAmount(amount)} USDT`
+        ? `${formatPlainAmount(amount)} USDT`
         : formatDisplayCurrency(amount, currency);
 
   // An empty field stays empty rather than snapping back to 0,00 — the owner is
@@ -560,7 +566,7 @@ function RateCalculator({
             // labels. Keeping the digits would turn "Bs. 100.000" into
             // "€100.000" — the same number meaning something a thousand times
             // larger, with nothing on screen to say so.
-            setRawDigits(String(Math.round(getAmount * 100)));
+            setRawDigits(String(Math.round(getAmount * 10 ** decimalsOf(getCurrency))));
             setSource("put");
             setPristine(false);
             setEntry((e) => (e === "VES" ? "FOREIGN" : "VES"));

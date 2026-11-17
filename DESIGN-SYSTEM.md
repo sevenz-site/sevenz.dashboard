@@ -490,11 +490,11 @@ phone or address is itself visible rather than silently absent.
 
 Decisión del dueño el 2026-11-06. Un solo estándar para toda la app.
 
-- **`Bs. 1.234,56 hoy`**: la cifra se calculó con la tasa de hoy. Minúscula y después de la
+- **`Bs. 1.234,5678 hoy`**: la cifra se calculó con la tasa de hoy. Minúscula y después de la
   cifra, en la línea secundaria.
-- **`Bs. 1.000,00`**: se tecleó o quedó sellada. Nunca lleva «hoy», porque la palabra dice
+- **`Bs. 1.000,0000`**: se tecleó o quedó sellada. Nunca lleva «hoy», porque la palabra dice
   que mañana cambia.
-- **`Bs. 1.234,56 al día del pago`**: bolívares del momento de un pago. Se escribe con
+- **`Bs. 1.234,5678 al día del pago`**: bolívares del momento de un pago. Se escribe con
   `alDiaDelPago`, y nunca «al día de pago».
 - **`•••••• hoy`**: el mismo rótulo con el saldo oculto.
 
@@ -2438,7 +2438,7 @@ el PNG que se comparte y en el mensaje de WhatsApp.** Decisión del dueño el
 2026-10-24: *«ese formato de miles 1.000 será el estándar para toda el app»*.
 
 ```
-$1.234.567,89     €1.234.567,89     Bs. 1.234.567,89     $ 1.234.567,89 (COP)
+$1.234.567,89     €1.234.567,89     Bs. 1.234.567,8912     $ 1.234.567,89 (COP)
 ```
 
 **No es una convención nueva: es la que ya tenían dos de las tres monedas.** El
@@ -2457,6 +2457,24 @@ dos formas de escribir dinero a dos renglones de distancia.
 | Cualquiera, por su código | `formatPriceAmount` | `lib/products/price.ts` |
 | Dentro de un campo | `formatAmountForInput(x, { miles: true })` | `lib/products/price.ts` |
 
+### El bolívar lleva CUATRO decimales; las demás monedas, dos
+
+Decisión del dueño el 2026-11-17: *«Calculadora y montos en bolívares debe tener 4 decimales
+en toda la app porque así lo exige la ley»*, y preguntado como elección, *«Todo, y se teclean
+4»*. Vale para las tasas (`$1 = Bs. 915,7476`), las equivalencias (`Bs. 42.954,0643 hoy`),
+los montos tecleados, la calculadora, el historial de tasas, la vista del cliente, el PNG y el
+mensaje de WhatsApp. Los campos en bolívares aceptan cuatro al teclear.
+
+- **Se formatea con `formatBs` / `formatBsAmount`** y se redondea con **`roundBs`**, los dos
+  en `lib/exchange-rate/format.ts`, que leen `BS_DECIMALS`. Nunca `* 100) / 100` sobre una cifra
+  en bolívares: así se queda en dos sin que nada avise.
+- **Dólares, euros y pesos siguen en dos.** Un número sin símbolo que no es bolívar —USDT, una
+  moneda escrita a mano— va con `formatPlainAmount`, nunca con `formatBsAmount`.
+- **Lo guardado antes con dos se lee igual**: `Bs. 1.000,00` pasa a `Bs. 1.000,0000`, que es
+  la misma cifra. No se reescribe nada.
+- **La base también**: `get_shared_balance` y el pedido del catálogo redondean a cuatro desde la
+  migración `216`. Una función nueva que devuelva bolívares redondea a cuatro.
+
 **Nunca se escribe un importe con `toFixed`, con `toLocaleString` suelto ni con
 un `Intl.NumberFormat` nuevo.** Un formateador de más es la forma exacta de que
 media app vuelva a las comas sin que nadie lo note.
@@ -2474,7 +2492,7 @@ sobre el ICU de este Node:
 | `es-ES` | `1.234.567,89 US$` |
 
 Todos cambian el símbolo, lo mueven al final, o las dos cosas. Así que se hace
-con un **formateador de número** (`es-VE`, dos decimales) y el **símbolo
+con un **formateador de número** (`es-VE`, dos decimales; cuatro en bolívares) y el **símbolo
 literal delante** — que es el patrón que `formatBs` lleva documentado desde el
 primer día, por esta misma razón. La ventaja práctica: lo único que cambia
 respecto a lo que había son los separadores; el símbolo y su posición se quedan

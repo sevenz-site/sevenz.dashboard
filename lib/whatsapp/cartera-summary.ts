@@ -13,6 +13,8 @@ import { sendMondayMessages, type WeeklyBatchResult } from "@/lib/whatsapp/busin
 
 export type ResumenDeLaTanda = WeeklyBatchResult;
 
-export function enviarResumenSemanal(): Promise<ResumenDeLaTanda> {
-  return sendMondayMessages();
+// `quietMondays`, optional: the daily cron passes a set and gets back the owners whose Monday
+// stayed silent, for the inactivity nudges (2026-11-17). The other callers pass nothing.
+export function enviarResumenSemanal(quietMondays?: Set<string>): Promise<ResumenDeLaTanda> {
+  return sendMondayMessages(new Date(), quietMondays);
 }

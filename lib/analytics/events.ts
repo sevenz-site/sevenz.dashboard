@@ -390,6 +390,10 @@ export type EventProps = {
   };
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };
+  // «Consejos de Sevenz», the inactivity nudges (2026-11-17). `source: "email_link"` is the
+  // unsubscribe link in the email, which has no session and files under the owner it was
+  // signed for.
+  "Product Tips Changed": { enabled: boolean; source: "settings" | "email_link" };
   "Owner Notices Prompt Shown": { ask_number: number };
   "Owner Notices Scope Notice Shown": Record<string, never>;
   "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "code" | "other" };

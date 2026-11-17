@@ -66,7 +66,12 @@ export async function updateSession(request: NextRequest) {
     // «No fui yo» (C2 of PL-22): the owner taps it on a phone with no session, and when the
     // thief is the one signed in, that is the session it ends. The page guards itself: a
     // one-use token in, three fixed sentences out, and nothing closes on a GET.
-    request.nextUrl.pathname.startsWith("/cuenta/no-fui-yo/");
+    request.nextUrl.pathname.startsWith("/cuenta/no-fui-yo/") ||
+    // The nudge email's unsubscribe (2026-11-17): the page behind the link in the body, and
+    // the RFC 8058 one-click POST from the mail client. Both read with no session, and both
+    // guard themselves: a signed token in, nothing but «off» out, and nothing changes on a GET.
+    request.nextUrl.pathname.startsWith("/consejos/baja/") ||
+    request.nextUrl.pathname === "/api/consejos/baja";
 
   // A public route's decision doesn't depend on who is asking, so skip the
   // session lookup entirely rather than paying for an answer nothing reads.

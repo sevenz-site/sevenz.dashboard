@@ -16,7 +16,7 @@ import { VentaAcciones } from "@/components/dashboard/venta-acciones";
 import { DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import type { DatosParaCompartir } from "@/lib/share-balance";
 import { getOwnerRateContextResult } from "@/lib/exchange-rate/owner-rate";
-import { alDiaDelPago, formatBs } from "@/lib/exchange-rate/format";
+import { alDiaDelPago, formatBs, roundBs } from "@/lib/exchange-rate/format";
 import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { bookBalance, ceilingOfBook, lineasDe, otherFiadosOf } from "@/lib/returns/read";
@@ -137,7 +137,7 @@ export default async function VentaDeContadoPage({
   // que al menos es coherente.
   const tecleadoEnBs =
     pagos.length > 0 && pagos.every((p) => p.entry_currency === "VES" && p.entry_amount != null)
-      ? Math.round(pagos.reduce((s, p) => s + Number(p.entry_amount), 0) * 100) / 100
+      ? roundBs(pagos.reduce((s, p) => s + Number(p.entry_amount), 0))
       : null;
   const enBs =
     tecleadoEnBs != null ? tecleadoEnBs : tasaSellada != null ? total * Number(tasaSellada) : null;

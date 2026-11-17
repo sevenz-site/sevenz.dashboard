@@ -63,9 +63,36 @@ async function loadTargets(period: string, prevPeriod: string): Promise<WeeklyTa
   return (data ?? []) as WeeklyTarget[];
 }
 
-async function runBatch(day: "monday" | "thursday", now = new Date()): Promise<WeeklyBatchResult> {
+// THE OWNERS WHOSE MONDAY SLOT AN INACTIVITY NUDGE ALREADY TOOK (migration 217). The nudge goes
+// only on a Monday whose plan came out empty («Esperar al lunes libre», owner's decision of
+// 2026-11-17), but this batch runs every day: without this, a sale on Monday could turn
+// Tuesday's retry into `ventas_resumen` and put a second message in the same Monday slot.
+// Unknown (217 not run, or the read failed) means «nobody»: before 217 there are no nudges.
+async function nudgedThisWeek(now: Date): Promise<Set<string>> {
+  const monday = new Date(now.getTime() - 5 * 3_600_000);
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  const { data, error } = await createServiceClient().rpc("inactivity_nudged_owners", {
+    p_since: monday.toISOString().slice(0, 10),
+  });
+  if (error) {
+    if (!/does not exist|Could not find/i.test(error.message)) {
+      console.error("inactivity_nudged_owners:", error.message);
+    }
+    return new Set();
+  }
+  return new Set(((data ?? []) as unknown[]).map((r) => String(typeof r === "string" ? r : Object.values(r as object)[0])));
+}
+
+async function runBatch(
+  day: "monday" | "thursday",
+  now = new Date(),
+  // Filled with the owners whose Monday plan came out empty: the ones an inactivity nudge may
+  // use. Ids stay in memory; they never reach the batch result, which goes out over HTTP.
+  quietMondays?: Set<string>,
+): Promise<WeeklyBatchResult> {
   const periodo = claveSemanal(now);
   const targets = await loadTargets(periodo, previousWeekKey(now));
+  const nudged = day === "monday" ? await nudgedThisWeek(now) : new Set<string>();
   const result: WeeklyBatchResult = {
     periodo,
     destinatarios: targets.length,
@@ -84,8 +111,18 @@ async function runBatch(day: "monday" | "thursday", now = new Date()): Promise<W
 
   for (const t of targets) {
     const sentOnPhone = sentByPhone.get(t.whatsapp) ?? 0;
-    const plan = day === "monday" ? mondayPlan(t, sentOnPhone) : thursdayPlan(t, sentOnPhone);
+    const plan: Plan =
+      day === "monday" && nudged.has(t.owner_id)
+        ? { skip: "cita_usada" }
+        : day === "monday"
+          ? mondayPlan(t, sentOnPhone)
+          : thursdayPlan(t, sentOnPhone);
     if ("skip" in plan) {
+      // Only these two mean «this Monday has nothing to say». Every other skip is a slot
+      // already used, a phone at its cap or a paused account, and none of those is free.
+      if (day === "monday" && (plan.skip === "cuenta_vacia" || plan.skip === "estado_detenido")) {
+        quietMondays?.add(t.owner_id);
+      }
       result.saltados[plan.skip] = (result.saltados[plan.skip] ?? 0) + 1;
       if (day === "thursday") await sendMonthlyClose(t, plan, closesSent, periodo, now, sentByPhone, result);
       continue;
@@ -226,8 +263,8 @@ async function remember(ownerId: string, period: string): Promise<void> {
 }
 
 /** Every day; the Monday slot check decides whether anything goes out. */
-export function sendMondayMessages(now = new Date()): Promise<WeeklyBatchResult> {
-  return runBatch("monday", now);
+export function sendMondayMessages(now = new Date(), quietMondays?: Set<string>): Promise<WeeklyBatchResult> {
+  return runBatch("monday", now, quietMondays);
 }
 
 /** Thursday onwards; the Thursday slot check decides whether anything goes out. */

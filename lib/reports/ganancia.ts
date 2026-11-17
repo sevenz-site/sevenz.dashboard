@@ -4,7 +4,7 @@ import {
   type BolivarRates,
   type PriceCurrency,
 } from "@/lib/products/price";
-import { formatBsAmount } from "@/lib/exchange-rate/format";
+import { formatPlainAmount } from "@/lib/exchange-rate/format";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LA GANANCIA DE UN PRODUCTO, EN UN SOLO SITIO
@@ -382,5 +382,5 @@ export function esMonedaConocida(c: string): c is PriceCurrency {
  */
 export function formatDinero(d: Dinero): string {
   if (esMonedaConocida(d.currency)) return formatPriceAmount(d.amount, d.currency);
-  return `${formatBsAmount(d.amount)} ${d.currency}`;
+  return `${formatPlainAmount(d.amount)} ${d.currency}`;
 }

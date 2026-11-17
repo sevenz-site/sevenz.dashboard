@@ -238,6 +238,8 @@ export const MANIFEST = {
     // 206: which products and orders were on the last Thursday message. Server only.
     whatsapp_attention_item_memory: { via: "none" },
     whatsapp_sends: { via: "owner" },
+    // 217: one row per inactivity nudge. Server only, no policy: the owner never reads it.
+    inactivity_nudges: { via: "none" },
     client_summary: { via: "owner" },
     client_summary_all: { via: "owner" },
   },
@@ -266,6 +268,13 @@ export const MANIFEST = {
     account_ready_pending: "service",
     // 201: whose trial ends in exactly 7 days. Only the cron calls it.
     trial_ending_targets: "service",
+    // 217: the inactivity nudges. Cron only, and the unsubscribe route, which verifies an HMAC
+    // before calling `product_tips_unsubscribe`.
+    inactivity_nudge_targets: "service",
+    inactivity_nudge_reserve: "service",
+    inactivity_nudge_finish: "service",
+    inactivity_nudged_owners: "service",
+    product_tips_unsubscribe: "service",
     // 205: the Monday and Thursday figures, the book judge and the Thursday memory. Cron only.
     whatsapp_business_weekly_targets: "service",
     whatsapp_ledger_states: "service",
@@ -435,6 +444,9 @@ export const MANIFEST = {
     // qa:new-device drives the function it calls with an invented, a used and an expired
     // token, and proves anon cannot call it; the action adds no decision of its own.
     "app/cuenta/no-fui-yo/[token]/actions.ts#confirmNotMe": "cubierta: qa:new-device, token inventado, usado y caducado; anon sin permiso",
+    // 2026-11-17, the nudge email's unsubscribe: unauthenticated by design, a signed token in,
+    // one fixed sentence out, and all it can do is turn the tips OFF.
+    "app/consejos/baja/[token]/actions.ts#confirmUnsubscribe": "cubierta: qa:avisos-inactividad, token inventado, firma de otro dueño y vacío; anon sin permiso sobre product_tips_unsubscribe",
     // C1 of PL-22. The code screen's actions read a ten-minute ticket cookie and nothing
     // else; qa:segundo-factor drives the functions they call (wrong code, five misses, an
     // expired one, a forged ticket, a resend without the chain) and proves anon cannot.
@@ -510,6 +522,7 @@ export const MANIFEST = {
     "app/(app)/profile/actions.ts#deletePaymentMethod": "atacada",
     "app/(app)/profile/actions.ts#updatePaymentMethod": "atacada",
     "app/(app)/profile/actions.ts#guardarAvisosWhatsapp": "atacada",
+    "app/(app)/profile/actions.ts#guardarConsejosSevenz": "atacada",
     "app/(app)/profile/actions.ts#registrarPreguntaAvisos": "atacada",
     // v0.6.0 (202): marks the «tu resumen cambia» notice as seen. Writes only the caller's own row.
     "app/(app)/profile/actions.ts#registrarAvisoDelResumen": "atacada",
@@ -569,6 +582,9 @@ export const MANIFEST = {
     "/api/usdt": "session",
     "/api/track": "public",
     "/api/share-contact": "public",
+    // RFC 8058 one-click unsubscribe of the nudge emails (2026-11-17): a signed token in, an empty
+    // 200 out whatever happens. qa:avisos-inactividad attacks it with forged tokens.
+    "/api/consejos/baja": "public",
     "/api/share-catalog": "public",
     "/api/public-event": "public",
   },

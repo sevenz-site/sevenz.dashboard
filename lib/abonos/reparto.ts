@@ -1,5 +1,6 @@
 import { porGravedad, type FiadoOrdenable } from "@/lib/estado-del-plazo";
 import type { LedgerCurrency } from "@/lib/types";
+import { roundBs } from "@/lib/exchange-rate/format";
 
 // CÓMO SE REPARTE UN ABONO ENTRE VARIOS FIADOS.
 //
@@ -191,7 +192,7 @@ export function absorbLedgerCents(
     return own != null && Math.abs(own - l.asignado) <= HOLGURA;
   });
   if (exact.length < 2) return result;
-  const converted = fromBolivars(redondear(exact.reduce((acc, l) => acc + l.bs, 0)));
+  const converted = fromBolivars(roundBs(exact.reduce((acc, l) => acc + l.bs, 0)));
   if (converted == null) return result;
   // Rounded to the cent BEFORE comparing: the screen converts with `priceIn`,
   // which does not round, and the server does. Unrounded, the two could move
@@ -407,7 +408,7 @@ export function repartirEnBolivares({
       lineas.set(f.movementId, vacia(f, aManoFlag));
       return;
     }
-    const tomaBs = redondear(Math.min(enBs, quedaBs));
+    const tomaBs = roundBs(Math.min(enBs, quedaBs));
     const enSuLibro = desdeBolivares(tomaBs, f.currency);
     // EL SEGUNDO TOPE, tras la vuelta. Ver la cabecera.
     const asignado = enSuLibro == null ? 0 : redondear(Math.min(enSuLibro, f.pendiente));
@@ -419,7 +420,7 @@ export function repartirEnBolivares({
       currency: f.currency,
       aMano: aManoFlag,
     });
-    if (asignado > HOLGURA) quedaBs = redondear(quedaBs - tomaBs);
+    if (asignado > HOLGURA) quedaBs = roundBs(quedaBs - tomaBs);
   };
 
   // PRIMERO LO FIJADO A MANO. Su decisión manda sobre el automático, y hasta
@@ -468,12 +469,12 @@ export function repartirEnBolivares({
   }
 
   const enOrden = porOrden.map((f) => lineas.get(f.movementId)!);
-  const repartidoBs = redondear(enOrden.reduce((s, l) => s + l.asignadoBs, 0));
+  const repartidoBs = roundBs(enOrden.reduce((s, l) => s + l.asignadoBs, 0));
 
   return {
     lineas: enOrden,
     repartidoBs,
-    sinAsignarBs: redondear(Math.max(0, montoBs) - repartidoBs),
+    sinAsignarBs: roundBs(Math.max(0, montoBs) - repartidoBs),
   };
 }
 
@@ -490,7 +491,7 @@ export function deudaEnBolivares(
   fiados: FiadoParaRepartirMulti[],
   aBolivares: (monto: number, moneda: LedgerCurrency | null) => number | null,
 ): number {
-  return redondear(fiados.reduce((s, f) => s + (aBolivares(f.pendiente, f.currency) ?? 0), 0));
+  return roundBs(fiados.reduce((s, f) => s + (aBolivares(f.pendiente, f.currency) ?? 0), 0));
 }
 
 // ===========================================================================

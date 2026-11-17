@@ -66,7 +66,8 @@ for (const deuda of [55, 0.01, 1, 12.34, 240.24, 999.99, 1000]) {
 
 // Euros con la tasa del euro, no con la del dolar.
 check("el tope en euros usa la tasa del euro",
-  topeEnBolivares(10, "EUR", TASA) === Math.floor(10 * TASA.eur * 100) / 100,
+  // Floored to four decimals since 2026-11-17: bolivars carry four (`BS_DECIMALS`).
+  topeEnBolivares(10, "EUR", TASA) === Math.floor(10 * TASA.eur * 10_000) / 10_000,
   "= " + topeEnBolivares(10, "EUR", TASA));
 check("el tope en euros y en dolares no coinciden",
   topeEnBolivares(10, "EUR", TASA) !== topeEnBolivares(10, "USD", TASA));

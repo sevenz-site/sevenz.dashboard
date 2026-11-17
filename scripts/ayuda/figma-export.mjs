@@ -178,7 +178,18 @@ const EXTRACT = `(async () => {
       let t = '';
       const segs = [];
       const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      // Text inside a hidden descendant is not on the screen: the percentage of the rate table is
+      // display:none on a phone, and before 2026-11-17 it was merged into the cell anyway and
+      // pushed the column into its neighbour in the frame.
+      const hiddenUnder = (node) => {
+        for (let p = node.parentElement; p && p !== el; p = p.parentElement) {
+          const ps0 = getComputedStyle(p);
+          if (ps0.display === 'none' || ps0.visibility === 'hidden') return true;
+        }
+        return false;
+      };
       for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+        if (hiddenUnder(n)) continue;
         let piece = preWrap ? n.textContent : n.textContent.replace(/\\s+/g, ' ');
         if (!preWrap && (t.endsWith(' ') || t === '')) piece = piece.replace(/^ /, '');
         if (!piece) continue;
