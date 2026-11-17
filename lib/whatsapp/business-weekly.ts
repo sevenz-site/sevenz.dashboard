@@ -3,10 +3,20 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { claveSemanal, enviarAvisoAlDueno, type ResultadoEnvio } from "@/lib/whatsapp/send";
 import {
   mondayPlan,
+  monthlyClosePlan,
   thursdayPlan,
+  type MonthlyCloseSkip,
+  type Plan,
   type SkipReason,
   type WeeklyTarget,
 } from "@/lib/whatsapp/business-weekly-text";
+import {
+  cargarCierreDelMesServidor,
+  juevesDeLaSemana,
+  mesAnteriorA,
+  startOfMonthUtc,
+  type CierreDelMes,
+} from "@/lib/reports/cierre-del-mes";
 
 // THE MONDAY AND THURSDAY BATCHES. Built on 2026-11-13 for v0.6.0, owner's request «sí
 // constrúyelo»: the business family (`negocio_resumen`, `atencion_cobros`, `atencion_negocio`)
@@ -31,6 +41,9 @@ export type WeeklyBatchResult = {
   // said no) so «nothing to tell him» never hides «the routing broke».
   saltados: Partial<Record<SkipReason, number>>;
   porPlantilla: Record<string, number>;
+  // `cierre_mensual`, Thursday only: why it did not go, and how many went as a third message.
+  cierreSaltados: Partial<Record<MonthlyCloseSkip | "error_lectura", number>>;
+  cierreExtraordinarios: number;
 };
 
 /** Last week's key, for the «clientes nuevos» comparison. */
@@ -61,7 +74,10 @@ async function runBatch(day: "monday" | "thursday", now = new Date()): Promise<W
     fallidos: 0,
     saltados: {},
     porPlantilla: {},
+    cierreSaltados: {},
+    cierreExtraordinarios: 0,
   };
+  const closesSent = day === "thursday" ? await monthlyClosesSent(targets, now) : new Set<string>();
 
   // What THIS run sent to each number. The database count was read once, before the loop.
   const sentByPhone = new Map<string, number>();
@@ -71,6 +87,7 @@ async function runBatch(day: "monday" | "thursday", now = new Date()): Promise<W
     const plan = day === "monday" ? mondayPlan(t, sentOnPhone) : thursdayPlan(t, sentOnPhone);
     if ("skip" in plan) {
       result.saltados[plan.skip] = (result.saltados[plan.skip] ?? 0) + 1;
+      if (day === "thursday") await sendMonthlyClose(t, plan, closesSent, periodo, now, sentByPhone, result);
       continue;
     }
 
@@ -100,9 +117,101 @@ async function runBatch(day: "monday" | "thursday", now = new Date()): Promise<W
     } else {
       result.fallidos += 1;
     }
+    if (day === "thursday") await sendMonthlyClose(t, plan, closesSent, periodo, now, sentByPhone, result);
   }
 
   return result;
+}
+
+// Owners who already got this month's close, or have it on its way (ok not false), counted
+// from the first day of the month of this week's Thursday at their own business. One read for
+// the whole batch. A failed send (ok false) does not count, so the next run in the window
+// retries it.
+async function monthlyClosesSent(targets: WeeklyTarget[], now: Date): Promise<Set<string>> {
+  const starts = new Map<string, number>();
+  for (const t of targets) {
+    const th = juevesDeLaSemana(now, t.country);
+    starts.set(t.owner_id, startOfMonthUtc(th.year, th.month, t.country).getTime());
+  }
+  if (!starts.size) return new Set();
+  const earliest = new Date(Math.min(...starts.values())).toISOString();
+  // THROUGH A FUNCTION, NOT THE TABLE: production gives the service role no SELECT on
+  // `whatsapp_sends` (migration 213). Read straight from the table, this failed there on every
+  // run and the fallback below turned that into «everyone already has it»: no close, ever.
+  const { data, error } = await createServiceClient().rpc("whatsapp_monthly_closes_sent", {
+    p_since: earliest,
+  });
+  if (error) {
+    // Unknown means «maybe sent»: a close sent twice cannot be taken back, one skipped can.
+    console.error("cierre_mensual: envíos del mes:", error.message);
+    return new Set(targets.map((t) => t.owner_id));
+  }
+  const out = new Set<string>();
+  for (const row of (data ?? []) as { owner_id: string; sent_at: string }[]) {
+    const start = starts.get(row.owner_id as string);
+    if (start != null && new Date(row.sent_at as string).getTime() >= start) out.add(row.owner_id as string);
+  }
+  return out;
+}
+
+// `cierre_mensual`, after the owner's Thursday plan is settled: in the Thursday slot when that
+// plan stayed quiet, or as a third message on the second Thursday (`monthlyClosePlan`). The
+// month's figures are read only when nothing cheaper already rules it out.
+async function sendMonthlyClose(
+  t: WeeklyTarget,
+  thursday: Plan,
+  closesSent: Set<string>,
+  periodo: string,
+  now: Date,
+  sentByPhone: Map<string, number>,
+  result: WeeklyBatchResult,
+): Promise<void> {
+  const th = juevesDeLaSemana(now, t.country);
+  const alreadySent = closesSent.has(t.owner_id);
+  let cierre: CierreDelMes | null = null;
+  if (!t.paused && !t.is_test && th.day <= 14 && !alreadySent) {
+    try {
+      cierre = await cargarCierreDelMesServidor(createServiceClient(), t.owner_id, t.country, mesAnteriorA(th.year, th.month, t.country));
+    } catch (e) {
+      console.error(`[cierre_mensual] ${t.owner_id}:`, e instanceof Error ? e.message : e);
+      result.cierreSaltados.error_lectura = (result.cierreSaltados.error_lectura ?? 0) + 1;
+      return;
+    }
+  }
+
+  const sentOnPhone = sentByPhone.get(t.whatsapp) ?? 0;
+  const plan = monthlyClosePlan(t, thursday, { thursdayDay: th.day, alreadySent, cierre }, sentOnPhone);
+  if ("skip" in plan) {
+    result.cierreSaltados[plan.skip] = (result.cierreSaltados[plan.skip] ?? 0) + 1;
+    return;
+  }
+
+  let r: ResultadoEnvio;
+  try {
+    r = await enviarAvisoAlDueno({
+      ownerId: t.owner_id,
+      to: t.whatsapp,
+      plantilla: plan.template,
+      periodKey: periodo,
+      parametrosCuerpo: plan.params,
+      // Fixed URL button «Ver mi margen» (`qa/plantillas-esperadas.mjs`): nothing goes with it.
+    });
+  } catch (e) {
+    console.error(`[cierre_mensual] ${t.owner_id}:`, e instanceof Error ? e.message : e);
+    r = { estado: "fallido", error: "excepcion" };
+  }
+  if (r.estado === "enviado") {
+    result.enviados += 1;
+    result.porPlantilla[plan.template] = (result.porPlantilla[plan.template] ?? 0) + 1;
+    closesSent.add(t.owner_id);
+    if (plan.extraordinary) result.cierreExtraordinarios += 1;
+    // Inside the slot it counts against the phone's two; as a third message it does not.
+    else sentByPhone.set(t.whatsapp, sentOnPhone + 1);
+  } else if (r.estado === "omitido") {
+    result.omitidos += 1;
+  } else {
+    result.fallidos += 1;
+  }
 }
 
 // Who was overdue in the Thursday message that just went out, so next Thursday can say how

@@ -203,15 +203,28 @@ export function marginFromPrice(
   // no hay margen que calcular. Devolver un número aquí sería inventarlo.
   if (costCurrency == null || costCurrency === "OTHER") return null;
 
-  const enLaMonedaDelPrecio =
-    costCurrency === priceCurrency
-      ? cost
-      : rates == null
-        ? null
-        : priceIn(priceCurrency, { amount: cost, currency: costCurrency }, rates).amount;
-  if (enLaMonedaDelPrecio == null || !(enLaMonedaDelPrecio > 0)) return null;
+  // THE MARGIN IS MEASURED IN THE COST'S CURRENCY. Owner's rule of 2026-11-16: «la aplicación
+  // debe calcular el margen en la misma moneda del costo, esa es la que manda para el cálculo
+  // del margen porque es la moneda en la que el dueño está haciendo la inversión». So the PRICE
+  // is converted to the cost's currency, never the cost to the price's. Until that day it went
+  // the other way: bought at $5 and sold at €7, the $5 became euros and the margin was read in
+  // euros.
+  //
+  // THE CONVERTED PRICE IS NOT ROUNDED TO CENTS. It is an intermediate figure nobody sees, and
+  // rounding it moved the answer: $10 at 30 % writes €11,56, and reading that back through a
+  // price rounded to $13,01 said 30,1 % where the preset that wrote it says 30. Caught by
+  // `qa:precio` 6f on 2026-11-16, in the release checklist of v0.9.0. `priceIn` rounds, so the
+  // conversion is done here with the same two rates it uses.
+  let enLaMonedaDelCosto: number | null = price;
+  if (costCurrency !== priceCurrency) {
+    const bsPorPrecio = rates == null ? null : bolivaresPorUnidad(priceCurrency, rates);
+    const bsPorCosto = rates == null ? null : bolivaresPorUnidad(costCurrency, rates);
+    enLaMonedaDelCosto =
+      bsPorPrecio == null || bsPorCosto == null ? null : (price * bsPorPrecio) / bsPorCosto;
+  }
+  if (enLaMonedaDelCosto == null || !(enLaMonedaDelCosto > 0)) return null;
 
-  return redondear(((price - enLaMonedaDelPrecio) / enLaMonedaDelPrecio) * 100);
+  return redondear(((enLaMonedaDelCosto - cost) / cost) * 100);
 }
 
 // ── Parsing what somebody typed, and what the database returned ──────────

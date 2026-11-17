@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
-import { createProduct, productNameTaken } from "@/app/(app)/productos/actions";
+import { createProduct, productNameTaken, updateProduct } from "@/app/(app)/productos/actions";
 import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   currencyName,
@@ -54,12 +54,28 @@ import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 // producto nace en el catálogo y entra en el carrito con la cantidad elegida.
 // Separarlo en «Guardar» y luego buscarlo en la cuadrícula sería devolverle al
 // tendero el trabajo que esta hoja existe para quitarle.
+// What the sheet typed beyond name, price and currency, which the product row does not carry
+// back to the cart. Kept on the cart line so «Editar» reopens the sheet as it was left.
+export type DatosRapidos = { publicar: boolean; descripcion: string | null };
+
+// A product this sheet created, as «Editar» reopens it.
+export type ProductoRapido = DatosRapidos & {
+  productId: string;
+  nombre: string;
+  precio: number;
+  moneda: PriceCurrency;
+  cantidad: number;
+  photoPath: string | null;
+};
+
 export function QuickProductSheet({
   open,
   onOpenChange,
   ownerId,
   monedas,
   onCreado,
+  editando = null,
+  onEditado,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,11 +85,17 @@ export function QuickProductSheet({
   monedas: PriceCurrency[];
   // El producto recién creado y cuántas unidades van al carrito. La pantalla
   // de venta se encarga de recargar la cuadrícula y de meterlo.
-  onCreado: (productId: string, cantidad: number) => void;
+  // What was typed rides along so the cart can reopen this same sheet to edit it.
+  onCreado: (productId: string, cantidad: number, datos: DatosRapidos) => void;
+  // EDIT MODE: the product this sheet created earlier in the same sale, opened from its cart
+  // line's «Editar» (owner's request of 2026-11-16). Same fields, prefilled; saving updates
+  // the product instead of creating one. Without it the sheet is exactly what it was.
+  editando?: ProductoRapido | null;
+  onEditado?: (productId: string, cantidad: number, datos: DatosRapidos) => void;
 }) {
-  const [nombre, setNombre] = useState("");
-  const [precio, setPrecio] = useState("");
-  const [moneda, setMoneda] = useState<PriceCurrency>(monedas[0] ?? "USD");
+  const [nombre, setNombre] = useState(editando?.nombre ?? "");
+  const [precio, setPrecio] = useState(editando ? String(editando.precio).replace(".", ",") : "");
+  const [moneda, setMoneda] = useState<PriceCurrency>(editando?.moneda ?? monedas[0] ?? "USD");
   // LA CANTIDAD ES UNA CADENA, NO UN NÚMERO, y por eso el campo se puede
   // escribir. Era `useState(1)` pintado en un `<span>` hasta el 2026-10-19:
   // solo se podía mover con los botones «−» y «+», así que poner 24 eran
@@ -85,10 +107,10 @@ export function QuickProductSheet({
   // rechaza la pulsación. Guardar el texto y parsearlo al leerlo es el mismo
   // patrón que ya usa `components/public/product-detail.tsx`, que es la otra
   // pantalla donde se elige una cantidad.
-  const [cantidad, setCantidad] = useState("1");
-  const [publicar, setPublicar] = useState(true);
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
-  const [descripcion, setDescripcion] = useState("");
+  const [cantidad, setCantidad] = useState(editando ? String(editando.cantidad) : "1");
+  const [publicar, setPublicar] = useState(editando?.publicar ?? true);
+  const [photoPath, setPhotoPath] = useState<string | null>(editando?.photoPath ?? null);
+  const [descripcion, setDescripcion] = useState(editando?.descripcion ?? "");
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
 
@@ -124,6 +146,13 @@ export function QuickProductSheet({
   const [repetido, setRepetido] = useState(false);
 
   function intentarGuardar() {
+    // EDITING DOES NOT ASK ABOUT A REPEATED NAME: the product wizard only asks when creating,
+    // which is what the owner asked for («cuando se crea un producto repetido»), and this
+    // product already exists under this name.
+    if (editando) {
+      guardar();
+      return;
+    }
     setError(null);
     startTransition(async () => {
       if (await productNameTaken(nombre)) {
@@ -145,8 +174,7 @@ export function QuickProductSheet({
       // repeated name, so the message asks to look before saving again.
       let r: Awaited<ReturnType<typeof createProduct>>;
       try {
-        r = await createProduct({
-          analitica: { source: "quick_sheet" },
+        const datos = {
           name: nombre.trim(),
           unit: null,
           // UNA SOLA MONEDA, Y LA MISMA EN LOS DOS ESCALONES.
@@ -191,20 +219,29 @@ export function QuickProductSheet({
           publishedWholesale: false,
           photoPath,
           description: descripcion.trim() || null,
-        });
+        };
+        // THE SAME FIELDS EITHER WAY. The product was created from this sheet with no cost,
+        // stock or wholesale price, so writing them back as null changes nothing the owner
+        // set; what changes is only what he can see and edit here.
+        r = editando
+          ? await updateProduct(editando.productId, datos)
+          : await createProduct({ analitica: { source: "quick_sheet" }, ...datos });
       } catch (e) {
-        console.error("[QuickProductSheet] createProduct:", e);
+        console.error("[QuickProductSheet] save:", e);
         setError(
           "No pudimos confirmar que se guardó, revisa tu conexión. Antes de intentar de nuevo, búscalo en la venta: puede que ya esté guardado.",
         );
         return;
       }
       if (avisarCuentaPausada(r.error)) return;
-      if (r.error || !r.id) {
+      // `updateProduct` answers without an id (it already has one), so only a create needs it.
+      if (r.error || (!editando && !r.id)) {
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
       }
-      onCreado(r.id, unidades);
+      const escrito = { publicar, descripcion: descripcion.trim() || null };
+      if (editando) onEditado?.(editando.productId, unidades, escrito);
+      else if (r.id) onCreado(r.id, unidades, escrito);
       onOpenChange(false);
     });
   }
@@ -216,7 +253,9 @@ export function QuickProductSheet({
           tiene siete campos y a 375px no caben sin desplazar. */}
       <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
         <SheetHeader>
-          <SheetTitle className="text-xl font-medium">Registrar producto</SheetTitle>
+          <SheetTitle className="text-xl font-medium">
+            {editando ? "Editar producto" : "Registrar producto"}
+          </SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 p-4">
@@ -354,7 +393,9 @@ export function QuickProductSheet({
               carrito —precio por cantidad— y no solo «Agregar»: es la última
               cifra que el tendero ve antes de que la venta la dé por buena. */}
           <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={intentarGuardar}>
-            {guardando ? "Guardando…" : `Agregar ${formatPriceAmount(total, moneda)}`}
+            {guardando
+              ? "Guardando…"
+              : `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
           </Button>
         </div>
       </SheetContent>

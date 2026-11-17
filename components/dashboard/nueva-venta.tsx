@@ -112,6 +112,9 @@ const ClientAccountSheet = dynamic(
   () => import("@/components/dashboard/client-account-sheet").then((m) => m.ClientAccountSheet),
   { ssr: false },
 );
+// Types only: the sheet itself stays lazily loaded.
+import type { DatosRapidos } from "@/components/dashboard/quick-product-sheet";
+
 const QuickProductSheet = dynamic(
   () => import("@/components/dashboard/quick-product-sheet").then((m) => m.QuickProductSheet),
   { ssr: false },
@@ -161,6 +164,10 @@ type LineaVenta = {
   producto: ProductoPublico;
   quantity: number;
   currency: PriceCurrency;
+  // Set when the product was created in this sale with the quick sheet: its line gets
+  // «Editar», which reopens that sheet (owner's request of 2026-11-16). What the sheet typed
+  // and the product row does not carry back rides here.
+  creadoEnVenta?: DatosRapidos;
 };
 
 // LA FILA DE `client_summary`, no `{id, name}`: la tarjeta del paso 4 es la
@@ -615,6 +622,7 @@ export function NuevaVenta({
       {paso === 2 ? (
         <PasoCarrito
           lineas={lineas}
+          ownerId={ownerId}
           rates={catalogo?.rates ?? null}
           monedasDelLibro={catalogo?.monedasDelLibro ?? []}
           onCambiar={setLineas}
@@ -1064,7 +1072,7 @@ function PasoProducto({
           onOpenChange={(next: boolean) => !next && setCreando(false)}
           ownerId={ownerId}
           monedas={catalogo?.monedasDelLibro ?? []}
-          onCreado={async (productId, cantidad) => {
+          onCreado={async (productId, cantidad, datos) => {
             setCreando(false);
             // The grid is refreshed so the new product shows up where it sorts.
             setRecarga((n) => n + 1);
@@ -1104,6 +1112,7 @@ function PasoProducto({
                 producto: nuevo.producto,
                 quantity: unidades,
                 currency: moneda,
+                creadoEnVenta: datos,
               } satisfies LineaVenta;
             };
             for (let intento = 0; intento < 2; intento++) {
@@ -1268,6 +1277,7 @@ function TarjetaDeProducto({
 // ── 3/4 ────────────────────────────────────────────────────────────────
 function PasoCarrito({
   lineas,
+  ownerId,
   rates,
   monedasDelLibro,
   onCambiar,
@@ -1275,12 +1285,61 @@ function PasoCarrito({
   onIrAPago,
 }: {
   lineas: LineaVenta[];
+  ownerId: string;
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
   onCambiar: (l: LineaVenta[]) => void;
   onSeguirComprando: () => void;
   onIrAPago: () => void;
 }) {
+  // THE LINE WHOSE PRODUCT IS BEING EDITED, by index. Only lines created in this sale have it.
+  const [editando, setEditando] = useState<number | null>(null);
+  const lineaEditada = editando == null ? null : lineas[editando] ?? null;
+
+  // AFTER SAVING, EVERY LINE OF THAT PRODUCT IS REBUILT FROM THE SAVED ROW, never from what
+  // was typed: the cart prices from the product's whole block (tiers, pinned prices), the
+  // same reason the line is fetched by id when the product is created. A line whose currency
+  // the product no longer offers moves to the first one it does, and lines that end up equal
+  // are merged, as `agregar` does when adding.
+  async function alEditar(productId: string, cantidad: number, datos: DatosRapidos) {
+    const indice = editando;
+    setEditando(null);
+    for (let intento = 0; intento < 2; intento++) {
+      try {
+        const r = await productoParaVentaPorId(productId);
+        const nuevo = r.productos.find((x) => x.id === productId);
+        if (!nuevo) break;
+        const rehechas = lineas.map((l, j) => {
+          if (l.productId !== productId) return l;
+          const unidades = j === indice ? Math.max(cantidad, cantidadMinima(nuevo.producto)) : l.quantity;
+          const escalon = escalonParaCantidad(nuevo.producto, unidades);
+          const bloque = escalon === "wholesale" ? nuevo.producto.wholesale : nuevo.producto.retail;
+          const ofrecidas = monedasDelBloque(bloque ?? null, r.rates).filter((c) => r.monedasDelLibro.includes(c));
+          return {
+            ...l,
+            name: nuevo.name,
+            unit: nuevo.unit,
+            photoPath: nuevo.photoPath,
+            producto: nuevo.producto,
+            quantity: unidades,
+            currency: ofrecidas.includes(l.currency) ? l.currency : ofrecidas[0] ?? l.currency,
+            creadoEnVenta: l.creadoEnVenta ? datos : undefined,
+          } satisfies LineaVenta;
+        });
+        onCambiar(rehechas.reduce<LineaVenta[]>((xs, l) => agregar(xs, l), []));
+        return;
+      } catch (e) {
+        console.error("[PasoCarrito] edited product:", e);
+        if (intento === 0) await new Promise((ok) => setTimeout(ok, 1500));
+      }
+    }
+    // THE PRODUCT IS SAVED BUT THE CART STILL HOLDS THE OLD PRICE. Said plainly, because the
+    // worst case is charging the old price without knowing it.
+    toast.error(
+      "Guardamos los cambios del producto, pero el carrito sigue con los datos anteriores. Quítalo y agrégalo de nuevo.",
+    );
+  }
+
   if (lineas.length === 0) {
     return (
       <div className="flex flex-1 flex-col gap-4">
@@ -1304,8 +1363,31 @@ function PasoCarrito({
           onCantidad={(q) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, quantity: q } : x)))}
           onMoneda={(c) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, currency: c } : x)))}
           onQuitar={() => onCambiar(lineas.filter((_, j) => j !== i))}
+          onEditar={l.creadoEnVenta ? () => setEditando(i) : undefined}
         />
       ))}
+
+      {/* MOUNTED ONLY WHILE EDITING, like the create sheet: Radix leaves a closed sheet in
+          the DOM, and its own `useState` would reopen with the previous product's fields. */}
+      {lineaEditada?.creadoEnVenta && lineaEditada.producto.retail ? (
+        <QuickProductSheet
+          open
+          onOpenChange={(next: boolean) => !next && setEditando(null)}
+          ownerId={ownerId}
+          monedas={monedasDelLibro}
+          onCreado={() => {}}
+          editando={{
+            productId: lineaEditada.productId,
+            nombre: lineaEditada.name,
+            precio: lineaEditada.producto.retail.price,
+            moneda: lineaEditada.producto.retail.base,
+            cantidad: lineaEditada.quantity,
+            photoPath: lineaEditada.photoPath,
+            ...lineaEditada.creadoEnVenta,
+          }}
+          onEditado={alEditar}
+        />
+      ) : null}
 
       {/* EL TOTAL NO SALE EN EL FRAME, y no se añade: cada línea ya enseña su
           subtotal con su bandera, y la pantalla de pago abre con una tarjeta
@@ -1329,6 +1411,7 @@ function TarjetaDeLinea({
   onCantidad,
   onMoneda,
   onQuitar,
+  onEditar,
 }: {
   linea: LineaVenta;
   rates: BolivarRates | null;
@@ -1336,6 +1419,8 @@ function TarjetaDeLinea({
   onCantidad: (q: number) => void;
   onMoneda: (c: PriceCurrency) => void;
   onQuitar: () => void;
+  // Only on a line whose product was created in this sale.
+  onEditar?: () => void;
 }) {
   const [eligiendoMoneda, setEligiendoMoneda] = useState(false);
 
@@ -1504,6 +1589,20 @@ function TarjetaDeLinea({
             onClick={() => setEligiendoMoneda(true)}
           >
             Cambiar
+            <ChevronRight className="size-5" aria-hidden="true" />
+          </Button>
+        ) : null}
+        {/* «EDITAR», SAME LOOK AS «CAMBIAR», owner's request of 2026-11-16: a product created
+            in this sale had no way back to its sheet, so a typo in its name or price meant
+            removing it and creating it again. It reopens the sheet it was created with. */}
+        {onEditar ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto shrink-0 px-1 py-1.5 text-sm font-normal"
+            onClick={onEditar}
+          >
+            Editar
             <ChevronRight className="size-5" aria-hidden="true" />
           </Button>
         ) : null}

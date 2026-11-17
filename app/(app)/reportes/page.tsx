@@ -20,6 +20,7 @@ import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion
 import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
 import { cargarInventario } from "@/lib/reports/inventario";
+import { cargarCierreDelMes, ultimoMesCerrado } from "@/lib/reports/cierre-del-mes";
 import { cargarProveedores } from "@/lib/reports/proveedores";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { ReportesProveedores } from "@/components/dashboard/reportes-proveedores";
@@ -205,6 +206,18 @@ export default async function ReportesPage({
         })
       : null;
 
+  // «Cierre de …» in Inventario: the last CLOSED month, whatever range is picked, and the same
+  // computation the `cierre_mensual` WhatsApp sends. A failure costs the card, never the tab.
+  const cierreDelMes =
+    apartado === "inventario"
+      ? await cargarCierreDelMes(supabase, user!.id, ownerCountry, ultimoMesCerrado(new Date(), ownerCountry)).catch(
+          (e: unknown) => {
+            console.error("[reportes] cierre del mes:", e instanceof Error ? e.message : e);
+            return null;
+          },
+        )
+      : null;
+
   const productoElegido =
     (productosParaBuscar ?? []).find((p) => p.id === producto)?.name ?? null;
 
@@ -373,7 +386,13 @@ export default async function ReportesPage({
         <MarcarPantallaVacia />
       ) : null}
       {apartado === "inventario" && inventario ? (
-        <ReportesInventario datos={inventario} periodoTexto={periodoTexto} tasas={tasas} />
+        <ReportesInventario
+          datos={inventario}
+          periodoTexto={periodoTexto}
+          tasas={tasas}
+          cierre={cierreDelMes}
+          country={ownerCountry}
+        />
       ) : null}
       {apartado === "proveedores" && proveedores ? (
         <ReportesProveedores

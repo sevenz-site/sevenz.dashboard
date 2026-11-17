@@ -203,6 +203,23 @@ export const PLANTILLAS_ESPERADAS = {
     boton: "sin_parametros",
   },
 
+  // APPROVED BY META, reported by the owner on 2026-11-16 with Kapso's curl for both. Compared
+  // that day: named parameters in this order, language `es`, the owners' number
+  // (1373508439159674), and no button component -- Kapso: «ambos botones tienen URL fija; no
+  // requieren parámetros adicionales al enviar». NOT compared: category, body text, footer and
+  // the button's text and address, which the curl does not carry. NOTHING SENDS THEM YET:
+  // `thursdayPlan` skips a Thursday with products and no debts (`sin_cobros`), and no code
+  // builds the monthly close. The rows are here so the day a send is written, a parameter out
+  // of place fails a suite instead of being rejected by Meta in silence.
+  atencion_productos: {
+    cuerpo: ["owner_name", "out_of_stock", "low_stock", "open_orders"],
+    boton: "sin_parametros",
+  },
+  cierre_mensual: {
+    cuerpo: ["owner_name", "month_name", "sales_summary", "profit_summary", "lines_without_cost"],
+    boton: "sin_parametros",
+  },
+
   // ── Cliente ─────────────────────────────────────────────────────────────
   //
   // Las dos que se lanzan. `fiado_notification_v2`, `pending_balance_weekly`,

@@ -31,7 +31,7 @@ export const metadata = { title: "Producto — Sevenz" };
 // precios tecleados a `allPrices`, y esta ficha no, así que un producto puesto a
 // €10 y $10 a mano enseñaba aquí «$11,07» y al cliente $10,00. Lo encontró el
 // dueño con las dos capturas delante: *«el valor escrito a mano es el que manda,
-// el app no debe recalcularlo»*. Las `initialCurrencies` siguen sin usarse aquí.
+// el app no debe recalcularlo»*. Since 2026-11-16 `initialCurrencies` are used too: the page lists only the currencies the owner enabled (see `BloqueDePrecios`).
 export default async function ProductoPage({ params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
@@ -75,6 +75,7 @@ export default async function ProductoPage({ params }: { params: Promise<{ id: s
       product={cargado.product}
       extraPhotos={cargado.extraPhotos}
       overrides={cargado.overrides}
+      currencies={cargado.initialCurrencies}
       rates={rates}
       // The price its «Compartir» message carries (owner's request of
       // 2026-11-09), from the same rows the screen already loaded.

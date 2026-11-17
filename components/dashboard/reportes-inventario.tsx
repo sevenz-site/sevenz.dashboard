@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { esMonedaConocida, formatDinero } from "@/lib/reports/ganancia";
 import { guardarUmbralDeStock } from "@/app/(app)/reportes/actions";
 import type { Inventario } from "@/lib/reports/inventario";
+import type { CierreDelMes } from "@/lib/reports/cierre-del-mes";
+import { ReportesCierreDelMes } from "@/components/dashboard/reportes-cierre-del-mes";
 
 // ═══════════════════════════════════════════════════════════════════════
 // LA PESTAÑA «INVENTARIO» — frame `1667:19321`
@@ -447,11 +449,16 @@ export function ReportesInventario({
   datos,
   periodoTexto,
   tasas,
+  cierre = null,
+  country = null,
 }: {
   datos: Inventario;
   periodoTexto: string;
   /** Bs por dólar y por euro, para la línea pequeña de las hojas. */
   tasas: { usd: number; eur: number } | null;
+  /** Last closed month (`lib/reports/cierre-del-mes.ts`). Null when it could not be read. */
+  cierre?: CierreDelMes | null;
+  country?: string | null;
 }) {
   const sinProductos = datos.totalProductos === 0;
 
@@ -714,7 +721,9 @@ export function ReportesInventario({
         // completadas», y las órdenes de compra NO EXISTEN en esta app:
         // copiarlo prometería una pantalla que no está. Es la misma razón por
         // la que el subtítulo del bloque de arriba tampoco es el suyo.
-        subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor."
+        // THE SECOND SENTENCE IS THE OWNER'S RULE of 2026-11-16, which he asked to have here:
+        // the margin is measured in the cost's currency, the one he invested in.
+        subtitulo="El margen que escribiste en la ficha de cada producto, de mayor a menor. Se calcula en la moneda del costo, que es en la que inviertes."
         accion={
           datos.margenLista.length ? (
             <ReportesProductosSheet
@@ -733,6 +742,13 @@ export function ReportesInventario({
           ) : null
         }
       />
+      {/* «Cierre de …», where the `cierre_mensual` button lands (`?seccion=margen`): right
+          under this title, so the anchor puts it on screen. Frame 2170:19145. */}
+      {cierre ? (
+        <div className="pb-4">
+          <ReportesCierreDelMes cierre={cierre} country={country} />
+        </div>
+      ) : null}
       <GraficoDeProductos
         filas={datos.margen.map((m) => ({
           id: m.id,
