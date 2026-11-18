@@ -114,8 +114,12 @@ function EnBolivares({
   if (!tasas) return null;
   const tasa = libro === "USD" ? tasas.usd : libro === "EUR" ? tasas.eur : null;
   if (tasa == null || !(tasa > 0)) return null;
+  // IT WRAPS, IT IS NOT CUT. With four decimals (2026-11-17) «Bs. 754.072,3612 hoy» needs 119px
+  // and a half-width card on a phone gives it 116: `truncate` turned «hoy» into «h…», and that
+  // word is the one that says the figure moves with the rate. Wrapped, «hoy» drops to a second
+  // line and nothing is lost. Found by the v0.10.0 checklist at 375px.
   return (
-    <span className="truncate text-xs text-muted-foreground tabular-nums">
+    <span className="text-xs break-words text-muted-foreground tabular-nums">
       {oculto ? "•••••" : `${formatBsHoy(valor * tasa)}`}
     </span>
   );
