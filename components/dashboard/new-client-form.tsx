@@ -23,6 +23,8 @@ import {
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
+import { BsAmountPreview } from "@/components/dashboard/movement-currency-field";
+import type { MovementRateContext } from "@/lib/exchange-rate/convert";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -75,9 +77,12 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 // «flex/hidden»).
 export function NewClientForm({
   ownerCountry,
+  rateContext = null,
   ownerId,
 }: {
   ownerCountry: OwnerCountry | null;
+  /** For the bolívar equivalent under «Deuda antigua». `null` in Colombia. */
+  rateContext?: MovementRateContext | null;
   ownerId: string;
 }) {
   const router = useRouter();
@@ -334,6 +339,12 @@ export function NewClientForm({
                 </>
               ) : null}
             </div>
+            {/* THE BOLÍVAR EQUIVALENT, in the support line under the field (owner's request of
+                2026-11-17): the same `BsAmountPreview` every other money field draws, so the
+                figure and its rate are the ones the server will stamp. */}
+            {rateContext && ownerCountry === "VE" ? (
+              <BsAmountPreview amount={monto} currency={moneda} rateContext={rateContext} />
+            ) : null}
           </div>
 
           {/* LAS MISMAS OPCIONES QUE UN FIADO, por instrucción del dueño, y los
@@ -408,13 +419,16 @@ export function NewClientForm({
           </>
         ) : (
           <>
+            {/* «CONTINUAR CON VENTA» FIRST AND FILLED, «REGISTRAR Y FINALIZAR» BELOW AND OUTLINED:
+                owner's request of 2026-11-17, the order and weights swapped. Both still do what
+                they did; see the header of this file. */}
             <Button
               type="button"
               className="h-10 w-full"
               disabled={enviando}
-              onClick={() => guardar("ficha")}
+              onClick={() => guardar("venta")}
             >
-              {enviando ? "Guardando…" : "Registrar y finalizar"}
+              Continuar con venta
             </Button>
             {/* «CONTINUAR CON VENTA» YA NO SE ESCONDE CON UNA CÉDULA REPETIDA.
                 Se escondía (decisión del 2026-10-18) porque crearía la cuenta
@@ -426,9 +440,9 @@ export function NewClientForm({
               variant="outline"
               className="h-10 w-full"
               disabled={enviando}
-              onClick={() => guardar("venta")}
+              onClick={() => guardar("ficha")}
             >
-              Continuar con venta
+              {enviando ? "Guardando…" : "Registrar y finalizar"}
             </Button>
           </>
         )}

@@ -1,4 +1,4 @@
-import { formatBs, formatBsAmount, formatDisplayCurrency } from "@/lib/exchange-rate/format";
+import { formatBs, formatDisplayCurrency, formatPlainAmount, roundBs } from "@/lib/exchange-rate/format";
 import { formatCurrency } from "@/lib/format";
 
 // EL PRECIO DE UN PRODUCTO EN CADA MONEDA.
@@ -107,13 +107,16 @@ export function priceIn(
   // cerrado; su ausencia es un candado abierto.
   overrides: Partial<Record<PriceCurrency, number>> = {},
 ): PriceInCurrency {
+  // A price in bolivars keeps four decimals (owner's decision of 2026-11-17, see `BS_DECIMALS`);
+  // every other currency keeps two.
+  const round = currency === "VES" ? roundBs : redondear;
   const manual = overrides[currency];
   if (manual != null && manual > 0) {
-    return { currency, amount: redondear(manual), origin: "manual" };
+    return { currency, amount: round(manual), origin: "manual" };
   }
 
   if (currency === base.currency) {
-    return { currency, amount: redondear(base.amount), origin: "base" };
+    return { currency, amount: round(base.amount), origin: "base" };
   }
 
   const bsPorBase = bolivaresPorUnidad(base.currency, rates);
@@ -124,7 +127,7 @@ export function priceIn(
 
   return {
     currency,
-    amount: redondear((base.amount * bsPorBase) / bsPorDestino),
+    amount: round((base.amount * bsPorBase) / bsPorDestino),
     origin: "derived",
   };
 }
@@ -618,7 +621,7 @@ export function formatPriceAmount(amount: number, currency: PriceCurrency): stri
     case "EUR":
       return formatDisplayCurrency(amount, currency);
     default:
-      return `${formatBsAmount(amount)} ${String(currency)}`;
+      return `${formatPlainAmount(amount)} ${String(currency)}`;
   }
 }
 

@@ -20,7 +20,15 @@ import { ReportesFacturacion } from "@/components/dashboard/reportes-facturacion
 import { cargarFacturacion } from "@/lib/reports/facturacion";
 import { ReportesInventario } from "@/components/dashboard/reportes-inventario";
 import { cargarInventario } from "@/lib/reports/inventario";
-import { cargarCierreDelMes, ultimoMesCerrado } from "@/lib/reports/cierre-del-mes";
+import {
+  cargarCierreDelDia,
+  cargarCierreDelMes,
+  cargarVentasDelDia,
+  hoyDelNegocio,
+  ultimoMesCerrado,
+} from "@/lib/reports/cierre-del-mes";
+import { redirect } from "next/navigation";
+import { ALIAS_DE_SECCION, SECCIONES, type Seccion } from "@/lib/reports/secciones";
 import { cargarProveedores } from "@/lib/reports/proveedores";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { ReportesProveedores } from "@/components/dashboard/reportes-proveedores";
@@ -80,14 +88,32 @@ export default async function ReportesPage({
     hasta?: string;
     cliente?: string;
     tab?: string;
+    // What a WhatsApp button carries instead of `#seccion` (see `ReportesAncla`).
+    seccion?: string;
+    // Opens a sheet on arrival (the assistant's links). Read by the sheets, through
+    // `useHojaDesdeLaUrl`; listed so the redirect below carries it.
+    abrir?: string;
     // Los pone la ruta de descarga al volver aquí tras un fallo. Ver
     // `app/api/reportes/movimientos/route.ts`.
     export?: string;
     motivo?: string;
   }>;
 }) {
-  const { periodo, desde, hasta, cliente, producto, proveedor, tab, export: exportado, motivo } =
-    await searchParams;
+  const parametros = await searchParams;
+  const { periodo, desde, hasta, cliente, producto, proveedor, tab, seccion, export: exportado, motivo } =
+    parametros;
+
+  // A WHATSAPP ADDRESS WHOSE BLOCK MOVED is sent on to where the block is now, with the rest of
+  // its query (`periodo=7d` above all). Before anything is loaded: the old tab would be read
+  // for nothing. See `ALIAS_DE_SECCION`.
+  const alias = seccion ? ALIAS_DE_SECCION[seccion as Seccion] : undefined;
+  if (alias) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(parametros)) if (typeof v === "string") q.set(k, v);
+    q.set("tab", SECCIONES[alias].tab);
+    q.set("seccion", alias);
+    redirect(`/reportes?${q.toString()}`);
+  }
   // Cualquier valor desconocido cae en el de por defecto en vez de reventar:
   // estos parámetros van en una URL que el dueño puede compartir o teclear
   // mal, y un informe no vale una pantalla caída.
@@ -206,17 +232,41 @@ export default async function ReportesPage({
         })
       : null;
 
-  // «Cierre de …» in Inventario: the last CLOSED month, whatever range is picked, and the same
-  // computation the `cierre_mensual` WhatsApp sends. A failure costs the card, never the tab.
-  const cierreDelMes =
-    apartado === "inventario"
-      ? await cargarCierreDelMes(supabase, user!.id, ownerCountry, ultimoMesCerrado(new Date(), ownerCountry)).catch(
-          (e: unknown) => {
-            console.error("[reportes] cierre del mes:", e instanceof Error ? e.message : e);
-            return null;
-          },
-        )
-      : null;
+  // «Cierre del día» and «Cierre de …», at the top of Facturación since the owner's request of
+  // 2026-11-17 (the month was in Inventario until then). The month is the last CLOSED one and
+  // the same computation the `cierre_mensual` WhatsApp sends; the day is today so far at the
+  // business. Both ignore the range picked above. A failure costs the card, never the tab.
+  //
+  // NOT WITH A CLIENT PICKED: both are the whole business, and under «Mostrando solo Ana» a
+  // business-wide figure reads as hers.
+  const ahora = new Date();
+  const mesCerrado = ultimoMesCerrado(ahora, ownerCountry);
+  const hoy = hoyDelNegocio(ahora, ownerCountry);
+  const conCierres = apartado === "facturacion" && !selected;
+  const fallaDelCierre = (que: string) => (e: unknown) => {
+    console.error(`[reportes] ${que}:`, e instanceof Error ? e.message : e);
+    return null;
+  };
+  // THE FOUR TYPES OF EACH CLOSE (owner's request of 2026-11-17) are the Facturación cards'
+  // own arithmetic over the close's span, through the same loader with `soloTransacciones`:
+  // one rule for «De contado», «Abonos», «Fiados» and «Devoluciones» everywhere on the screen.
+  const desgloseDe = (desdeUtc: string, hastaExclusivoUtc: string) =>
+    cargarFacturacion({
+      supabase,
+      ownerId: user!.id,
+      rango: { desde: new Date(desdeUtc), hasta: new Date(new Date(hastaExclusivoUtc).getTime() - 1) },
+      dosLibros: ownerRate !== null,
+      soloTransacciones: true,
+    });
+  const [cierreDelMes, cierreDelDia, ventasDelDia, desgloseDelMes, desgloseDelDia] = conCierres
+    ? await Promise.all([
+        cargarCierreDelMes(supabase, user!.id, ownerCountry, mesCerrado).catch(fallaDelCierre("cierre del mes")),
+        cargarCierreDelDia(supabase, user!.id, ownerCountry, hoy).catch(fallaDelCierre("cierre del día")),
+        cargarVentasDelDia(supabase, user!.id, ownerCountry, hoy).catch(fallaDelCierre("ventas del día")),
+        desgloseDe(mesCerrado.desdeUtc, mesCerrado.hastaExclusivoUtc).catch(fallaDelCierre("desglose del mes")),
+        desgloseDe(hoy.desdeUtc, hoy.hastaExclusivoUtc).catch(fallaDelCierre("desglose del día")),
+      ])
+    : [null, null, null, null, null];
 
   const productoElegido =
     (productosParaBuscar ?? []).find((p) => p.id === producto)?.name ?? null;
@@ -256,7 +306,7 @@ export default async function ReportesPage({
       <ScreenHeader
         title="Reportes"
         subtitle={`Comportamiento de clientes y productos ${periodoTexto}.`}
-        action={<ReportesDescargar />}
+        action={<ReportesDescargar mesDelCierre={mesCerrado.monthName} />}
         search={
           // ── EL BUSCADOR SOLO EN FACTURACION ─────────────────────────
           //
@@ -365,7 +415,17 @@ export default async function ReportesPage({
       })()}
 
       {apartado === "facturacion" && facturacion ? (
-        <ReportesFacturacion datos={facturacion} periodoTexto={periodoTexto} tasas={tasas} />
+        <ReportesFacturacion
+          datos={facturacion}
+          periodoTexto={periodoTexto}
+          tasas={tasas}
+          cierreDelDia={cierreDelDia}
+          desgloseDelDia={desgloseDelDia}
+          ventasDelDia={ventasDelDia ?? []}
+          cierreDelMes={cierreDelMes}
+          desgloseDelMes={desgloseDelMes}
+          country={ownerCountry}
+        />
       ) : null}
 
       {/* LOS OTROS DOS APARTADOS DICEN QUÉ VAN A ENSEÑAR, y no se dibujan
@@ -390,8 +450,6 @@ export default async function ReportesPage({
           datos={inventario}
           periodoTexto={periodoTexto}
           tasas={tasas}
-          cierre={cierreDelMes}
-          country={ownerCountry}
         />
       ) : null}
       {apartado === "proveedores" && proveedores ? (

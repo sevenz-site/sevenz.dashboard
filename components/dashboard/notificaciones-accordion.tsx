@@ -16,7 +16,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { guardarAvisosWhatsapp } from "@/app/(app)/profile/actions";
+import { guardarAvisosWhatsapp, guardarConsejosSevenz } from "@/app/(app)/profile/actions";
 import { TEXTO_AVISOS_WHATSAPP_V2, aceptaAvisosWhatsapp } from "@/lib/whatsapp-opt-in";
 import type { Owner } from "@/lib/types";
 
@@ -39,6 +39,25 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
   const [abierto, setAbierto] = useState(false);
   const [confirmandoBaja, setConfirmandoBaja] = useState(false);
   const [guardando, startTransition] = useTransition();
+  // «Consejos de Sevenz» (2026-11-17): its own switch and its own transition, so saving one
+  // never greys out the other.
+  const [consejos, setConsejos] = useState(!owner.product_tips_opt_out_at);
+  const [guardandoConsejos, startConsejos] = useTransition();
+
+  function cambiarConsejos(siguiente: boolean) {
+    // No confirmation, unlike the WhatsApp notices: switching off tips loses nothing about his
+    // own business, and a question in the way of leaving is what turns tips into spam.
+    setConsejos(siguiente);
+    startConsejos(async () => {
+      const r = await guardarConsejosSevenz(siguiente);
+      if (r.error) {
+        setConsejos(!siguiente);
+        toast.error(r.error);
+        return;
+      }
+      toast.success(siguiente ? "Consejos de Sevenz activados." : "Consejos de Sevenz desactivados.");
+    });
+  }
 
   function guardar(siguiente: boolean) {
     // Optimista: el interruptor se mueve al instante y vuelve si el servidor
@@ -114,6 +133,28 @@ export function NotificacionesAccordion({ owner }: { owner: Owner }) {
               {owner.whatsapp?.trim()
                 ? `Los recibirás en el ${owner.whatsapp}.`
                 : "Escribe tu WhatsApp arriba y guarda antes de activarlos."}
+            </p>
+
+            {/* «CONSEJOS DE SEVENZ», the inactivity nudges (MS-53). Owner's decision of
+                2026-11-17, «Switch nuevo»: apart from the notices above, so turning tips off
+                keeps the Monday summary. It covers WhatsApp and email at once. */}
+            <div className="flex items-start justify-between gap-4 border-t pt-3">
+              <Label htmlFor="consejos-sevenz" className="text-sm font-normal">
+                Consejos de Sevenz
+              </Label>
+              <div className="flex shrink-0 items-center gap-2">
+                {guardandoConsejos ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> : null}
+                <Switch
+                  id="consejos-sevenz"
+                  checked={consejos}
+                  onCheckedChange={cambiarConsejos}
+                  disabled={guardandoConsejos}
+                />
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Si llevas días sin registrar ventas durante tu prueba, cada 3 semanas te enviamos por
+              WhatsApp y por correo ideas para sacarle provecho a Sevenz.
             </p>
           </div>
         </CollapsibleContent>

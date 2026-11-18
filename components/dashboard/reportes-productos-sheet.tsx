@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useHojaDesdeLaUrl } from "@/components/dashboard/use-hoja-desde-la-url";
 import { track } from "@/lib/mixpanel";
 import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import Link from "next/link";
@@ -143,8 +144,11 @@ export function ReportesProductosSheet({
   explicacion = "La ganancia es la diferencia entre el precio de venta menos el precio de costo multiplicado por las unidades que vendiste",
   vacio,
   tasas,
+  claveDeUrl,
   children,
 }: {
+  /** `?abrir=` value that opens this sheet on arrival (the assistant's links). */
+  claveDeUrl?: string;
   titulo: string;
   /** La banda gris bajo el buscador. Solo la dibuja «Productos disponibles». */
   encabezado?: { titulo: string; sub: string };
@@ -175,6 +179,7 @@ export function ReportesProductosSheet({
   children: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
+  const [abierta, setAbierta] = useHojaDesdeLaUrl(claveDeUrl ?? "");
 
   const visibles = useMemo(() => {
     const q = foldForSearch(query.trim());
@@ -187,8 +192,10 @@ export function ReportesProductosSheet({
 
   return (
     <Sheet
-      onOpenChange={(abierta) => {
-        if (abierta) track("Report Sheet Opened", { hoja: titulo });
+      open={abierta}
+      onOpenChange={(abrir) => {
+        if (abrir) track("Report Sheet Opened", { hoja: titulo });
+        setAbierta(abrir);
       }}
     >
       <SheetTrigger asChild>{children}</SheetTrigger>

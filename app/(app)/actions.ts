@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { refreshStockAlerts } from "@/lib/stock-alerts";
 import { countUnreadNotifications } from "@/lib/notifications/unread-count";
 import type { LedgerCurrency, MovementCurrencyCode } from "@/lib/types";
+import { roundBs } from "@/lib/exchange-rate/format";
 
 // ── WHERE THE SESSION ENDS: THIS DEVICE OR ALL OF THEM ──────────────────
 //
@@ -409,7 +410,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
       amount: Math.round(delLibro.reduce((s, l) => s + Number(l.amount), 0) * 100) / 100,
       entryCurrency: todasEnBs ? ("VES" as const) : null,
       entryAmount: todasEnBs
-        ? Math.round(lineas.reduce((s, l) => s + Number(l.entry_amount), 0) * 100) / 100
+        ? roundBs(lineas.reduce((s, l) => s + Number(l.entry_amount), 0))
         : null,
       cruzaLibros,
     };

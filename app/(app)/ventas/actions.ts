@@ -17,6 +17,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { BloqueCrudo, ProductoPublico } from "@/lib/products/public-pricing";
 import { bloqueDesdeRpc, escalonParaCantidad, precioEnMoneda } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { isMethodForBook, type PaymentMethod } from "@/lib/payments/methods";
 import { costoParaCongelar } from "@/lib/reports/ganancia";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { claveDeFila, filasDeContado, type VentaDeContado } from "@/lib/ventas-de-contado";
@@ -925,6 +926,10 @@ export type PagoDeVentaEntrada = {
   entryAmount?: number | null;
   photoPath?: string | null;
   description?: string | null;
+  // How the money arrived (migration 214, owner's request of 2026-11-17). Optional: a browser
+  // still on the code from before it sends none, and the payment is stored without one, which
+  // the Reportes chart counts as «Sin registrar». A value outside the book's list is refused.
+  paymentMethod?: PaymentMethod | null;
 };
 
 // EL PLAZO DEL RESTO QUE QUEDA FIADO, por moneda. Va por moneda porque una
@@ -1269,6 +1274,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     rateUsed: number | null;
     photoPath: string | null;
     description: string | null;
+    paymentMethod: PaymentMethod | null;
   }[] = [];
 
   for (const pago of entrada.pagos) {
@@ -1318,6 +1324,12 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       return rechazar("invalid_amount", "Revisa el monto del pago.");
     }
 
+    // THE METHOD MUST BELONG TO THIS BOOK'S LIST: a Colombian payment cannot arrive by Zelle, nor
+    // a Venezuelan one by Nequi. The database's check only knows the whole list.
+    if (pago.paymentMethod != null && !isMethodForBook(pago.paymentMethod, pago.currency)) {
+      return rechazar("payment_method_invalid", "Elige el método de pago otra vez.");
+    }
+
     const enElLibro = redondear(pago.amount);
     pagosResueltos.push({
       currency: pago.currency,
@@ -1327,6 +1339,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       rateUsed,
       photoPath: pago.photoPath ?? null,
       description: pago.description?.trim() ? pago.description.trim().slice(0, 500) : null,
+      paymentMethod: pago.paymentMethod ?? null,
     });
     pagado.set(pago.currency, redondear((pagado.get(pago.currency) ?? 0) + enElLibro));
   }
@@ -1500,6 +1513,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         rate_used: p.rateUsed,
         photo_path: p.photoPath,
         description: p.description,
+        payment_method: p.paymentMethod,
       })),
     );
     if (errorPagos) {

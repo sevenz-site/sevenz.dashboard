@@ -13,6 +13,11 @@ import { SECCIONES, type Seccion } from "@/lib/reports/secciones";
 // `seccion` AND NOT `#seccion`: a fragment does not survive signing in, because the browser
 // never sends it to the server. `ReportesAncla` reads either.
 //
+// WHEN A BLOCK MOVES, THE ADDRESS HERE STAYS AS META HAS IT and the Reportes page sends it on
+// (`ALIAS_DE_SECCION` in `lib/reports/secciones.ts`). Since 2026-11-17: `margen` (cierre_mensual)
+// lands on Facturación's «Cierre de …», and `transacciones` (ventas_resumen) on «Ventas de
+// contado». `qa:destinos-plantillas` 9 checks the aliases.
+//
 // `periodo=7d` because the message says «últimos 7 días» and Reportes opens on 30 by default:
 // otherwise the owner taps a figure and reads a different one.
 

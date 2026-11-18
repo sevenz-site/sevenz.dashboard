@@ -10,7 +10,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import { Button } from "@/components/ui/button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { AbonoCompartir } from "@/components/dashboard/abono-compartir";
-import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
+import { formatBs, formatBsHoy, roundBs } from "@/lib/exchange-rate/format";
 import { formatDocumentId, formatReceiptDateTime } from "@/lib/format";
 import { telefonoLegible } from "@/lib/phone";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
@@ -137,7 +137,7 @@ export default async function AbonoRegistradoPage({
       const bs = lineas
         .filter((l) => l.entry_currency === "VES" && l.entry_amount != null)
         .reduce((s, l) => s + Number(l.entry_amount), 0);
-      entregadoEnBs = bs > 0 ? Math.round(bs * 100) / 100 : null;
+      entregadoEnBs = bs > 0 ? roundBs(bs) : null;
 
       // ── Y ADEMÁS, CUÁNTOS DE ESOS BOLÍVARES FUE A CADA LIBRO ────────
       //
@@ -157,7 +157,7 @@ export default async function AbonoRegistradoPage({
         sumaBs.set(k, (sumaBs.get(k) ?? 0) + Number(l.entry_amount));
       }
       bsPorMoneda = new Map(
-        [...sumaBs.entries()].map(([k, v]) => [k, Math.round(v * 100) / 100]),
+        [...sumaBs.entries()].map(([k, v]) => [k, roundBs(v)]),
       );
     }
   }

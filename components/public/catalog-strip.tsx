@@ -68,6 +68,10 @@ export function CatalogStrip({
   // *«incrementa sus paddings horizontales a 40px»*. Solo ahí: la franja del
   // saldo y la del catálogo se quedan como están, porque él pidió esta.
   //
+  // NO ONE USES IT SINCE 2026-11-17: the owner asked the receipt's strip to align left with
+  // the rest of the screen («debe alinearse a la izquierda»). Kept, with its arithmetic below,
+  // in case a screen with wide gutters needs it again.
+  //
   // LA CUENTA, porque los números no son arbitrarios: quien monta esto ya le
   // da 16px (el `px-4` de su `main`), así que la sección añade 24 para
   // llegar a 40. Y el carrusel pasa de `-mx-4 px-4` a `-mx-10 px-10` para

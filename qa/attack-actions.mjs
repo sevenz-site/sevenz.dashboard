@@ -443,6 +443,9 @@ try {
     { clave: P("actions.ts#recordImportNotification"), fase: 2, ataques: [["un anónimo la llama", null, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]]], control: [A.cookie, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]] },
     { clave: P("profile/actions.ts#changePassword"), fase: 2, ataques: [["un anónimo la llama", null, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]]], control: [A.cookie, () => [null, fd({ new_password: "zzZZ1234!x", confirm_password: "zzZZ1234!x" })]] },
     { clave: P("profile/actions.ts#guardarAvisosWhatsapp"), fase: 2, ataques: [["un anónimo la llama", null, () => [false, "zz"]]], control: [A.cookie, () => [false, "zz"]] },
+    // «Consejos de Sevenz» (migration 217). The control runs with A's cookie, so a missing
+    // column or grant shows up as a failed control.
+    { clave: P("profile/actions.ts#guardarConsejosSevenz"), fase: 2, ataques: [["un anónimo la llama", null, () => [false]]], control: [A.cookie, () => [true]] },
     // Payment methods (migration 179, 2026-11-02). The controls run with A's
     // own cookie, so a missing grant on the new table shows up here as a
     // failed control -- the `108` lesson -- and not only as a blocked attack.

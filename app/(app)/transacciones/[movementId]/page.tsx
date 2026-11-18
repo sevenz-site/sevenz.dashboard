@@ -8,6 +8,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { DetalleDeTransaccion } from "@/components/dashboard/detalle-de-transaccion";
+import { metodoUnico } from "@/components/dashboard/metodo-de-pago-fila";
 import { DetalleAcciones, DetalleBotones } from "@/components/dashboard/detalle-acciones";
 import { VentaAcciones } from "@/components/dashboard/venta-acciones";
 import { libroDeVenta } from "@/lib/ventas-de-contado";
@@ -24,6 +25,7 @@ import type { PaymentLine } from "@/components/dashboard/payment-summary";
 import type { LedgerCurrency, Movement } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { IconoVolver } from "@/components/dashboard/screen-chrome";
+import { roundBs } from "@/lib/exchange-rate/format";
 
 export const metadata = { title: "Detalle de transacción — Sevenz" };
 
@@ -277,12 +279,20 @@ export default async function TransaccionPage({
         // 2026-10-24, en CLAUDE.md. Sin ellos esta tarjeta convertía
         // `amount × tasa` y devolvía una cifra que nadie escribió: Bs. 1.000
         // entregados al comprar salían como «Bs. 1.003,02».
-        .select("amount, currency, entry_currency, entry_amount")
+        .select("amount, currency, entry_currency, entry_amount, payment_method")
         .eq("sale_id", m.sale_id);
       const delLibro = (pagos ?? []).filter(
         (p) => (p.currency ?? "COP") === (m.currency ?? "COP"),
       );
       abonoInicial = delLibro.reduce((suma, p) => suma + Number(p.amount), 0);
+      // The return's cash question opens on the method of what was paid at the sale in this
+      // book («El de la venta», owner's decision of 2026-11-17). A fiado taken entirely on
+      // credit has none and opens on «Efectivo».
+      if (contextoDeDevolucion) {
+        contextoDeDevolucion.saleMethod = metodoUnico(
+          delLibro.map((p) => p.payment_method as string | null),
+        );
+      }
       // LOS BOLÍVARES TECLEADOS DE ESE LIBRO, y solo si TODOS sus pagos se
       // tecletaron así: con uno en bolívares y otro en divisa no hay una cifra
       // tecleada que describa la suma, y entonces manda la conversión, que al
@@ -290,9 +300,10 @@ export default async function TransaccionPage({
       abonoInicialBs =
         delLibro.length > 0 &&
         delLibro.every((p) => p.entry_currency === "VES" && p.entry_amount != null)
-          ? Math.round(
-              delLibro.reduce((suma, p) => suma + Number(p.entry_amount), 0) * 100,
-            ) / 100
+          ? // Four decimals, as the client's view sums them (`get_shared_balance`, migration
+            // 216). Rounded to two until the v0.10.0 checklist, so a typed Bs. 1.000,1234 read
+            // «Bs. 1.000,1200» here and «Bs. 1.000,1234» on the client's link.
+            roundBs(delLibro.reduce((suma, p) => suma + Number(p.entry_amount), 0))
           : null;
     }
 
@@ -637,6 +648,7 @@ export default async function TransaccionPage({
         amount={Number(m.amount)}
         currency={m.currency}
         description={m.description}
+        paymentMethod={m.payment_method ?? null}
         ownerNote={m.owner_note}
         plazoDias={m.plazo_dias}
         cuotas={m.cuotas}

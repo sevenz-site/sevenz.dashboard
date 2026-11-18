@@ -1,5 +1,6 @@
 import { PublicEventOnMount } from "@/components/public/public-event";
 import { ZonaDelNegocioProvider } from "@/components/fecha";
+import { MetodoDePagoFila } from "@/components/dashboard/metodo-de-pago-fila";
 import Link from "next/link";
 import { CodigoDeTransaccion } from "@/components/dashboard/codigo-de-transaccion";
 import { notFound } from "next/navigation";
@@ -217,6 +218,7 @@ export default async function VentaDeContadoDelClientePage({
         </div>
 
         <Grupo>
+          <MetodoDePagoFila metodo={venta.payment_method} bookCurrency={moneda} />
           <dt className="text-xs leading-5 text-muted-foreground">Descripción</dt>
           <dd className="text-sm break-words">{venta.description || "—"}</dd>
         </Grupo>

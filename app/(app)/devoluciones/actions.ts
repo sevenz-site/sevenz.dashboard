@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isMethodForBook, type PaymentMethod } from "@/lib/payments/methods";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
@@ -25,12 +26,16 @@ export type ReturnInput = {
   fiados: { fiado_id: string; amount: number }[];
   aFavor: number;
   efectivo: number;
+  // How the cash went back (migration 214, owner's decision of 2026-11-17). Only stored when
+  // `efectivo` is above zero; checked against the book of the line being returned.
+  metodo?: PaymentMethod | null;
   // Which attempt this is. Only for the funnels.
   analitica?: FlowInput;
 };
 
 const REFUSALS: Record<string, string> = {
   sin_sesion: "Tu sesión se cerró. Vuelve a entrar.",
+  metodo_invalido: "Elige otra vez cómo le devolviste el dinero.",
   cuenta_pausada: MENSAJE_CUENTA_PAUSADA,
   cantidad_invalida: "Revisa la cantidad.",
   fiado_ajeno: "No encontramos ese fiado.",
@@ -67,6 +72,18 @@ const REASON_OF_RPC_CODE: Record<string, ReturnRejectionReason> = {
   tiene_fiado: "has_fiado",
   sin_cliente: "no_client",
 };
+
+// THE REFUND METHOD BELONGS TO THE LINE'S BOOK: a Colombian return cannot go back by Zelle. The
+// line's currency is read here, from the owner's own session, before anything is written; the
+// database's check only knows the whole list. No method, or no cash going back: nothing to check.
+async function metodoValido(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: { lineId: string; efectivo: number; metodo?: PaymentMethod | null },
+): Promise<boolean> {
+  if (!(input.efectivo > 0) || input.metodo == null) return true;
+  const { data: linea } = await supabase.from("sale_lines").select("currency").eq("id", input.lineId).maybeSingle();
+  return isMethodForBook(input.metodo, (linea?.currency as string | null | undefined) ?? null);
+}
 
 type ReturnResult = { ok: true; movementId: string } | { ok: false; error: string };
 
@@ -149,6 +166,9 @@ export async function registrarDevolucion(
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
     return rechazar("invalid_quantity", REFUSALS.cantidad_invalida);
   }
+  if (!(await metodoValido(supabase, input))) {
+    return rechazar("refund_method_invalid", REFUSALS.metodo_invalido);
+  }
 
   const { data, error } = await supabase.rpc("registrar_devolucion", {
     p_movement_id: input.movementId,
@@ -157,6 +177,7 @@ export async function registrarDevolucion(
     p_fiados: input.fiados,
     p_a_favor: input.aFavor,
     p_efectivo: input.efectivo,
+    p_metodo: input.efectivo > 0 ? (input.metodo ?? null) : null,
   });
 
   if (error) {
@@ -220,6 +241,9 @@ export async function registrarDevolucionDeContado(
   if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
     return rechazar("invalid_quantity", REFUSALS.cantidad_invalida);
   }
+  if (!(await metodoValido(supabase, input))) {
+    return rechazar("refund_method_invalid", REFUSALS.metodo_invalido);
+  }
 
   const { data, error } = await supabase.rpc("registrar_devolucion_contado", {
     p_sale_id: input.saleId,
@@ -228,6 +252,7 @@ export async function registrarDevolucionDeContado(
     p_fiados: input.fiados,
     p_a_favor: input.aFavor,
     p_efectivo: input.efectivo,
+    p_metodo: input.efectivo > 0 ? (input.metodo ?? null) : null,
   });
 
   if (error) {

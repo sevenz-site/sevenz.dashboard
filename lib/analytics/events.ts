@@ -58,6 +58,7 @@ export type SaleRejectionReason =
   | "payment_currency_invalid"
   | "rate_missing"
   | "invalid_amount"
+  | "payment_method_invalid"
   | "overpayment"
   | "walk_in_debt"
   | "walk_in_credit"
@@ -83,11 +84,13 @@ export type PaymentRejectionReason =
   | "split_invalid"
   | "mixed_currencies"
   | "duplicate_fiado"
+  | "payment_method_invalid"
   | "db_error";
 
 export type ReturnRejectionReason =
   | "paused_account"
   | "invalid_quantity"
+  | "refund_method_invalid"
   | "not_found"
   | "no_products"
   | "sale_deleted"
@@ -387,6 +390,10 @@ export type EventProps = {
   };
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };
+  // «Consejos de Sevenz», the inactivity nudges (2026-11-17). `source: "email_link"` is the
+  // unsubscribe link in the email, which has no session and files under the owner it was
+  // signed for.
+  "Product Tips Changed": { enabled: boolean; source: "settings" | "email_link" };
   "Owner Notices Prompt Shown": { ask_number: number };
   "Owner Notices Scope Notice Shown": Record<string, never>;
   "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "code" | "other" };
@@ -440,6 +447,8 @@ export type EventProps = {
   // gets a real shape the day it is touched, as the skill asks. ────────────
   "AI Report Failed": Loose;
   "AI Report Rated": Loose;
+  // Owner's request of 2026-11-17: a link per recommendation. See reportes-asistente.tsx.
+  "Assistant Link Clicked": { enlace: string; posicion: number };
   "Business Contacted On WhatsApp": Loose;
   "Catalog Opened From Share Link": Loose;
   "Catalog Order Received": Loose;

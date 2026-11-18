@@ -18,20 +18,24 @@ const env = Object.fromEntries(
 if (!env.NEXT_PUBLIC_SUPABASE_URL.includes("vzqppwrwnmlbrxizskdh")) throw new Error("no es dev");
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const M = JSON.parse(readFileSync(new URL("../demo-manifest.json", import.meta.url), "utf8"));
-const { data: demo } = await admin.from("products").select("owner_id").eq("id", M.productos.harina).single();
-const OWNER = demo.owner_id;
+const OWNER = M.ownerId;
+// READ by name, never deleted by it: the manifest's id for this product went stale when the
+// seed product was recreated on 2026-11-15. Everything below writes and restores by this id.
+const { data: harina, error: eHarina } = await admin.from("products").select("id").eq("owner_id", OWNER).eq("name", "Harina de maíz 1 kg").single();
+if (eHarina) throw new Error(`harina: ${eHarina.message}`);
+const HARINA = harina.id;
 const S = "registrar-una-devolucion";
 const DIALOG_BTN = (t) => `js:[...document.querySelectorAll('[data-slot=dialog-content] button')].find(b=>b.textContent.trim().startsWith(${JSON.stringify(t)}))`;
 
 // THE SHELF IS PUT BACK BY HAND at the end: deleting the sale gives back what it
 // took, and the unit returned would stay on top of that.
-const { data: antes } = await admin.from("products").select("stock_opening").eq("id", M.productos.harina).single();
+const { data: antes } = await admin.from("products").select("stock_opening").eq("id", HARINA).single();
 const RAW = fileURLToPath(new URL("../raw-portadas", import.meta.url)).split(String.fromCharCode(92)).join("/");
 
 const { data: c } = await admin.from("clients").insert({ owner_id: OWNER, name: "Pedro Salas" }).select("id").single();
 try {
   const { data: v } = await admin.from("sales").insert({ owner_id: OWNER, client_id: c.id, created_by: OWNER }).select("id").single();
-  await admin.from("sale_lines").insert({ sale_id: v.id, product_id: M.productos.harina, name: "Harina de maíz 1 kg", quantity: 3, unit_price: 2, currency: "USD", tier: "retail" });
+  await admin.from("sale_lines").insert({ sale_id: v.id, product_id: HARINA, name: "Harina de maíz 1 kg", quantity: 3, unit_price: 2, currency: "USD", tier: "retail" });
   const { data: f } = await admin.from("movements").insert({ client_id: c.id, created_by: OWNER, type: "charge", amount: 6, currency: "USD", sale_id: v.id, source: "manual" }).select("id").single();
   await admin.from("movements").insert({ client_id: c.id, created_by: OWNER, type: "payment", amount: 5, currency: "USD", applies_to_movement_id: f.id, source: "manual" });
   await admin.rpc("recalc_client_running_balance", { p_client_id: c.id });
@@ -44,23 +48,33 @@ try {
   await pick("Registrar devolución");
   await sleep(1200);
   await shot(S, 3, "js:document.querySelector('[data-slot=dialog-content]')", { crop: 0, pad: 0, blur: false });
+  console.log("diálogo:", await js("document.querySelector('[data-slot=dialog-content]').innerText"));
+  // v0.10.0 (migration 214): «¿Cómo le devolviste el dinero?» sits above the buttons whenever
+  // one of them hands cash back. The walk picks «Pago móvil» and presses «Devolver», so the
+  // return's detail reads «Devuelto por Pago móvil». It pressed «Registrar saldo a favor»
+  // until then, which ignores the method.
+  const METODO = "js:document.getElementById('devolucion-metodo')";
+  await openMenu(METODO);
+  await pick("Pago móvil");
+  await sleep(600);
+  await shot(S, 4, `${METODO}.parentElement`, { pad: 6, blur: false });
   // One popup since 2026-11-04: the step is its buttons, not a second screen.
-  await shot(S, 4, "js:document.querySelector('[data-slot=dialog-content] button[data-variant=default], [data-slot=dialog-content] .flex.flex-col.gap-4')", { pad: 6, blur: false });
-  await click(DIALOG_BTN("Registrar saldo a favor"), { wait: 1000 });
+  await shot(S, 5, DIALOG_BTN("Devolver"), { pad: 6, blur: false });
+  await click(DIALOG_BTN("Devolver"), { wait: 1000 });
   await waitFor("location.search.includes('registrada=1')", 40000);
   await sleep(2500);
-  await shot(S, 5, null, { crop: 0 });
+  await shot(S, 6, null, { crop: 0 });
   await call({ op: "shot", file: `${RAW}/${S}.png`, target: null, crop: 0 });
   await go(`/transacciones/${f.id}`, 6000);
-  await shot(S, 6, "js:[...document.querySelectorAll('span')].find(e=>e.textContent.trim()==='Devueltos: 1')", { pad: 8 });
+  await shot(S, 7, "js:[...document.querySelectorAll('span')].find(e=>e.textContent.trim()==='Devueltos: 1')", { pad: 8 });
   await go(`/clients/${c.id}`, 7000);
   await js("[...document.querySelectorAll('main li')].find(l=>l.innerText.includes('Devolución'))?.scrollIntoView({block:'center',behavior:'instant'})");
-  await shot(S, 7, "js:[...document.querySelectorAll('main li')].find(l=>l.innerText.includes('Devolución'))", { pad: 8 });
+  await shot(S, 8, "js:[...document.querySelectorAll('main li')].find(l=>l.innerText.includes('Devolución'))", { pad: 8 });
 } finally {
   await admin.from("sale_returns").delete().eq("client_id", c.id);
   await admin.from("movements").update({ applies_to_movement_id: null }).eq("client_id", c.id);
   await admin.from("movements").delete().eq("client_id", c.id);
   await admin.from("sales").delete().eq("client_id", c.id);
   await admin.from("clients").delete().eq("id", c.id);
-  await admin.from("products").update({ stock_opening: antes.stock_opening }).eq("id", M.productos.harina);
+  await admin.from("products").update({ stock_opening: antes.stock_opening }).eq("id", HARINA);
 }

@@ -22,24 +22,33 @@ await click("Ir a pago", { wait: 2500 });
 await shot(S, 7, "Pagar");
 await click("Pagar", { wait: 1800 });
 await shot(S, 8, "De contado", { scope: DIALOG });
+// v0.10.0 (migration 214): «Método de pago» under the amount, whenever something is paid now.
+// It opens on «Pago móvil» because the amount comes typed in bolívares.
+await shot(S, 9, "js:document.getElementById('pago-metodo-USD').parentElement", { scope: DIALOG, pad: 6 });
 await click("Fiado o crédito", { scope: DIALOG, wait: 1200 });
-await shot(S, 9, "Fiado o crédito", { scope: DIALOG });
-await shot(S, 10, "js:document.querySelector('[role=dialog] input[placeholder=\"00\"]').closest('div.flex, div')", { scope: DIALOG });
-await shot(S, 11, "7 días", { scope: DIALOG });
+await shot(S, 10, "Fiado o crédito", { scope: DIALOG });
+await shot(S, 11, "js:document.querySelector('[role=dialog] input[placeholder=\"00\"]').closest('div.flex, div')", { scope: DIALOG });
+await shot(S, 12, "7 días", { scope: DIALOG });
 await js("[...document.querySelectorAll('[role=dialog] button')].filter(b=>b.textContent.trim()==='Pagar').pop().scrollIntoView({block:'center'})");
-await shot(S, 12, "js:[...document.querySelectorAll('[role=dialog] button')].filter(b=>b.textContent.trim()==='Pagar').pop()");
+await shot(S, 13, "js:[...document.querySelectorAll('[role=dialog] button')].filter(b=>b.textContent.trim()==='Pagar').pop()");
 await js("[...document.querySelectorAll('[role=dialog] button')].filter(b=>b.textContent.trim()==='Pagar').pop().click()");
 await sleep(1500);
-await shot(S, 13, "Continuar", { crop: 0 });
+await shot(S, 14, "Continuar", { crop: 0 });
 await click("Continuar", { wait: 2000 });
-await shot(S, 14, "Buscar cliente");
+await shot(S, 15, "Buscar cliente");
 await type("Buscar cliente", "Julia", { wait: 1500 });
-await shot(S, 15, "Julia Ramírez", { blur: false });
+await shot(S, 16, "Julia Ramírez", { blur: false });
 await click("Julia Ramírez", { wait: 1500 });
-await shot(S, 16, "acepta recibir avisos");
-await shot(S, 17, "Finalizar", { crop: 0 });
+await shot(S, 17, "acepta recibir avisos");
+await shot(S, 18, "Finalizar", { crop: 0 });
 if (process.argv.includes("--finalizar")) {
   await click("Finalizar", { wait: 1000 });
   await waitFor("document.body.innerText.includes('registrada con éxito')"); await sleep(1500);
-  await shot(S, 18, "Compartir", { crop: 0 });
+  // The bottom bar is back on the success screens (2026-10-24) and, at rest, sits on top of
+  // «Compartir»: the ring landed on the bar. Bring the button to the middle first.
+  await js("[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Compartir')?.scrollIntoView({block:'center',behavior:'instant'})");
+  await sleep(500);
+  await shot(S, 19, "Compartir", { crop: 0 });
+  // Printed for the clean-up: the sale is removed BY ID afterwards.
+  console.log("url final:", await js("location.pathname + location.search"));
 }

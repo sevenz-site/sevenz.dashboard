@@ -89,6 +89,8 @@ export type SharedVentaDeContado = {
   entry_amount?: number | null;
   rate_used?: number | null;
   description?: string | null;
+  // Migration 214: the method, when every payment of this book used the same one.
+  payment_method?: string | null;
 };
 
 const PAGE_SIZE = 10;

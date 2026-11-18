@@ -1,3 +1,5 @@
+import type { PaymentMethod } from "@/lib/payments/methods";
+
 // THE ORDER BEING TURNED INTO A SALE, LINE BY LINE, WHILE THE SHOPKEEPER
 // WALKS THE FLOW.
 //
@@ -69,6 +71,7 @@ const CADUCIDAD_MS = 2 * 60 * 60 * 1000;
 // with different terms meant one of the two terms was dropped on the way into
 // `registrarVenta`, whose credit has always been per currency. Asking once per
 // currency is what makes that impossible rather than merely unlikely.
+
 export type PagoDeMoneda = {
   // What goes into this currency's ledger TODAY.
   amount: number;
@@ -82,6 +85,9 @@ export type PagoDeMoneda = {
   usarPrevista: boolean;
   photoPath: string | null;
   description: string;
+  // How the money arrived (migration 214). Optional: a draft saved before 2026-11-17 has none,
+  // and its payment is then registered without a method.
+  paymentMethod?: PaymentMethod | null;
 };
 
 // WHAT «EDITAR» CHANGED ON A LINE, which is quantity and currency and

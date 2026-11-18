@@ -33,6 +33,9 @@ export type Movement = {
   transaction_code?: string | null;
   needs_review: boolean;
   photo_path: string | null;
+  // How an abono's money arrived (migration 214). Optional: queries that do not ask for it, and
+  // every payment recorded before 2026-11-17, leave it out or null.
+  payment_method?: string | null;
   plazo_dias: number | null;
   // How many cuotas the fiado was agreed in (migration `118`). null = single
   // payment, and that is every row stored before 2026-10-16. Only a charge with
@@ -156,6 +159,9 @@ export type Owner = {
   // When the one-time notice «tu resumen semanal ahora incluye ventas y productos» was shown
   // (migration 202, v0.6.0). Null until then.
   whatsapp_scope_notice_at: string | null;
+  // When he switched off «Consejos de Sevenz», the inactivity nudges (migration 217). Null, or
+  // absent before 217 runs, means he gets them.
+  product_tips_opt_out_at?: string | null;
   created_at: string;
 };
 

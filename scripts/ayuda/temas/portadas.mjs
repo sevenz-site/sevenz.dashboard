@@ -18,7 +18,8 @@ const want = (s) => !only.length || only.includes(s);
 if (want("registrar-un-fiado")) { await go("/ventas/nueva", 7000); await snap("registrar-un-fiado"); }
 if (want("registrar-un-abono")) {
   await go(`/abonos/nuevo?cliente=${M.clientes.julia}&desde=cliente`, 6000);
-  await type("js:document.querySelector('input[placeholder=\"00\"]')", "20", { wait: 1500 });
+  // $4 since v0.10.0: Julia owes less than the $20 this typed, and the screen refuses more.
+  await type("js:document.querySelector('input[placeholder=\"00\"]')", "4", { wait: 1500 });
   await snap("registrar-un-abono");
 }
 if (want("atender-un-pedido")) { await go("/productos/ordenes", 5000); await snap("atender-un-pedido"); }

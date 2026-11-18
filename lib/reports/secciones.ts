@@ -32,8 +32,20 @@ import type { Apartado } from "@/lib/reports/apartados";
 
 export const SECCIONES = {
   // ── Facturación ──────────────────────────────────────────────────────
-  cartera: { tab: "facturacion", titulo: "Cartera" },
+  // The order of the screen since the owner's frame of 2026-11-17 (2189:28237).
+  "cierre-del-dia": { tab: "facturacion", titulo: "Cierre del día" },
+  "cierre-del-mes": { tab: "facturacion", titulo: "Cierre del mes" },
+  // `cartera` KEEPS ITS ADDRESS though the block now reads «Por cobrar» (owner's request of
+  // 2026-11-17): the `negocio_resumen` WhatsApp button lands on `seccion=cartera`, an address
+  // Meta approved and nobody can edit.
+  cartera: { tab: "facturacion", titulo: "Por cobrar" },
+  "ventas-de-contado": { tab: "facturacion", titulo: "Ventas de contado" },
   transacciones: { tab: "facturacion", titulo: "Transacciones" },
+  abonos: { tab: "facturacion", titulo: "Abonos" },
+  fiados: { tab: "facturacion", titulo: "Fiados" },
+  devoluciones: { tab: "facturacion", titulo: "Devoluciones" },
+  pedidos: { tab: "facturacion", titulo: "Pedidos" },
+  "metodos-de-pago": { tab: "facturacion", titulo: "Métodos de pago" },
   plazos: { tab: "facturacion", titulo: "Plazos de pago" },
   "mejores-pagadores": { tab: "facturacion", titulo: "Mejores pagadores" },
   // ── Inventario ───────────────────────────────────────────────────────
@@ -61,3 +73,23 @@ export function hrefDeSeccion(
   for (const [k, v] of Object.entries(extra ?? {})) if (v) q.set(k, v);
   return `/reportes?${q.toString()}#${seccion}`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// WHERE A WHATSAPP ADDRESS LANDS WHEN ITS BLOCK MOVED
+//
+// A template's button URL is approved by Meta and cannot be edited (`lib/whatsapp/destinos.ts`).
+// When a block moves, the address stays and the page sends it on. ONLY THE `?seccion=` FORM:
+// that is the one only WhatsApp writes (a fragment does not survive signing in); links inside
+// the app use `#seccion`, built by `hrefDeSeccion`, and keep meaning what they say.
+//
+//   · `margen` → `cierre-del-mes`. `cierre_mensual` («Ver mi margen») was pointed at the margin
+//     because the month close lived under it; on 2026-11-17 the owner moved the close to
+//     Facturación, and the button has to follow the figure its message states.
+//   · `transacciones` → `ventas-de-contado`. `ventas_resumen` («Ver mis ventas») landed on a
+//     chart of how many things were recorded, never on an amount; owner's decision of
+//     2026-11-17 («Ventas de contado»), the closest block to what the message says.
+// ═══════════════════════════════════════════════════════════════════════
+export const ALIAS_DE_SECCION: Partial<Record<Seccion, Seccion>> = {
+  margen: "cierre-del-mes",
+  transacciones: "ventas-de-contado",
+};

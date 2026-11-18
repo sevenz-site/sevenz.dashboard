@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { getRateHistory, type RateHistoryPoint } from "@/lib/exchange-rate/rate-history";
 import { cn } from "@/lib/utils";
+import { BS_DECIMALS } from "@/lib/exchange-rate/format";
 
 const HISTORY_DAYS = 90;
 
@@ -41,7 +42,11 @@ function formatDate(ymd: string): string {
   return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-const bs = new Intl.NumberFormat("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Four decimals, the bolivar's rule since 2026-11-17 (`BS_DECIMALS` in lib/exchange-rate/format.ts).
+const bs = new Intl.NumberFormat("es-VE", {
+  minimumFractionDigits: BS_DECIMALS,
+  maximumFractionDigits: BS_DECIMALS,
+});
 
 // Same formatter shape for the percentage: toFixed() would render "0.36" with
 // an English decimal point right next to "2,85" with a Spanish comma, in the
@@ -84,9 +89,9 @@ function DeltaCell({ row, currency }: { row: Row; currency: LedgerCurrency }) {
   if (delta === null || pctValue === null) {
     return <span className="text-muted-foreground">—</span>;
   }
-  // Rounded before comparing: a change of 0.004 Bs. displays as "0,00", and
+  // Rounded before comparing: a change of 0.00004 Bs. displays as "0,0000", and
   // painting that green would claim a rise the number on screen doesn't show.
-  const rounded = Number(delta.toFixed(2));
+  const rounded = Number(delta.toFixed(BS_DECIMALS));
   const sign = rounded > 0 ? "+" : "";
   return (
     <span
@@ -215,7 +220,10 @@ export function RateHistoryTable({ currency = "USD" }: { currency?: LedgerCurren
           below the table's natural width and pushes the whole panel sideways
           instead of scrolling inside itself. */}
       <div className="max-h-[280px] min-w-0 overflow-auto rounded-lg border">
-        <Table className="text-xs [&_td]:px-1.5 [&_td]:py-1.5 [&_th]:px-1.5">
+        {/* 2px of side padding on a phone, 6px from `sm`: with four decimals (2026-11-17) the three
+            bolivar columns grew two digits each, and at 375px the table came out 347px wide in a
+            341px box, hiding the end of «Var. USD» behind a sideways scroll. */}
+        <Table className="text-xs [&_td]:px-0.5 [&_td]:py-1.5 [&_th]:px-0.5 sm:[&_td]:px-1.5 sm:[&_th]:px-1.5">
           <TableHeader className="sticky top-0 z-10 bg-background">
             <TableRow>
               <TableHead>Fecha</TableHead>

@@ -89,5 +89,6 @@ export function topeEnBolivares(
 ): number | null {
   const porUnidad = destino === "USD" ? tasa?.usd : tasa?.eur;
   if (!porUnidad || porUnidad <= 0) return null;
-  return Math.floor(deuda * porUnidad * 100) / 100;
+  // Four decimals since 2026-11-17 (`BS_DECIMALS`), still DOWN for the same reason.
+  return Math.floor(deuda * porUnidad * 10_000) / 10_000;
 }

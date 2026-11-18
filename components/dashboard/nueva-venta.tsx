@@ -446,6 +446,7 @@ export function NuevaVenta({
           entryAmount: c.registro?.entryAmount ?? null,
           photoPath: c.registro?.photoPath ?? null,
           description: c.registro?.description ?? "",
+          paymentMethod: c.registro?.paymentMethod ?? null,
         })),
       saldoAFavor: cuentas
         .filter((c) => c.saldoUsado > 0)

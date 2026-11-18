@@ -1,6 +1,7 @@
 import type { FactsForTheModel } from "@/lib/reports/assistant/facts";
 import { hechosEnTexto } from "@/lib/reports/assistant/prompt";
 import { MAX_CHARS, noteLength, type AssistantNote } from "@/lib/reports/assistant/fallback";
+import { comoEnlace, enlaceRespaldado, type Enlace } from "@/lib/reports/assistant/links";
 
 // ═══════════════════════════════════════════════════════════════════════
 // NINGUNA CIFRA LLEGA A LA PANTALLA SIN ESTAR EN LOS HECHOS
@@ -74,9 +75,28 @@ export function validarNota(bruto: unknown, f: FactsForTheModel): Veredicto {
   }
   const o = bruto as Record<string, unknown>;
   const summary = typeof o.summary === "string" ? o.summary.trim() : "";
-  const recommendations = Array.isArray(o.recommendations)
-    ? o.recommendations.filter((r): r is string => typeof r === "string").map((r) => r.trim()).filter(Boolean)
+  // EACH RECOMMENDATION IS `{texto, enlace}` since 2026-11-17 (the assistant's links), and a
+  // bare string is still read: an older prompt's answer, or a model that ignored the shape,
+  // loses its link, not its text. A link the facts do not back, or that is not in the list,
+  // becomes null -- never a reason to throw the note away.
+  const crudas: { texto: string; enlace: Enlace | null }[] = Array.isArray(o.recommendations)
+    ? o.recommendations
+        .map((r) => {
+          if (typeof r === "string") return { texto: r.trim(), enlace: null };
+          if (typeof r === "object" && r !== null) {
+            const x = r as Record<string, unknown>;
+            const enlace = comoEnlace(x.enlace);
+            return {
+              texto: typeof x.texto === "string" ? x.texto.trim() : "",
+              enlace: enlace && enlaceRespaldado(enlace, f) ? enlace : null,
+            };
+          }
+          return { texto: "", enlace: null };
+        })
+        .filter((r) => r.texto)
     : [];
+  const recommendations = crudas.map((r) => r.texto);
+  const links = crudas.map((r) => r.enlace);
 
   if (!summary) {
     return { ok: false, motivo: "validation", detalle: "sin resumen" };
@@ -88,7 +108,7 @@ export function validarNota(bruto: unknown, f: FactsForTheModel): Veredicto {
     return { ok: false, motivo: "validation", detalle: `${recommendations.length} recomendaciones` };
   }
 
-  const note: AssistantNote = { summary, recommendations };
+  const note: AssistantNote = { summary, recommendations, links };
   if (noteLength(note) > MAX_CHARS) {
     return { ok: false, motivo: "validation", detalle: `${noteLength(note)} caracteres` };
   }

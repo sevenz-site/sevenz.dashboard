@@ -29,6 +29,8 @@ import { ChevronDown, Search, Trash2 } from "lucide-react";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
+import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
+import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -49,7 +51,7 @@ import {
   absorbPinnedCents,
   type FiadoParaRepartirMulti,
 } from "@/lib/abonos/reparto";
-import { formatBs, conHoy, formatBsHoy } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy, formatBsHoy, roundBs } from "@/lib/exchange-rate/format";
 import {
   formatPriceAmount,
   parseAmount,
@@ -154,6 +156,9 @@ export function AbonoReparto({
   const [montoEditado, setMonto] = useState<string | null>(null);
   const [enBolivaresEditado, setEnBolivares] = useState<boolean | null>(null);
   const [aManoEditado, setAMano] = useState<Record<string, number> | null>(null);
+  // THE METHOD OF THE WHOLE BILL, or null while untouched (owner's request of 2026-11-17). It is
+  // not kept in the session draft: the screen opens again on the default, which is a tap away.
+  const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(null);
 
   // ── EL MONTO SE AGRUPA MIENTRAS SE TECLEA ─────────────────────────────
   //
@@ -306,6 +311,10 @@ export function AbonoReparto({
     numeroDeLibros: libros.length,
     porLinea: modoSeleccion,
   });
+  // The default follows the unit the bill is counted in: bolívares, Pago móvil; the book's own
+  // currency, Efectivo. See `defaultMethod`.
+  const metodo: PaymentMethod =
+    metodoElegido ?? defaultMethod(libro, totalInBolivars ? "VES" : libro);
 
   // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
   // con la tasa que él mismo sella, que es la que se guarda; estas son para
@@ -584,11 +593,11 @@ export function AbonoReparto({
     let repartido = 0;
     for (let j = 0; j < conImporte.length; j += 1) {
       if (j === conImporte.length - 1) {
-        return Math.round((montoNum - repartido) * 100) / 100;
+        return roundBs(montoNum - repartido);
       }
-      const v = Math.round(montoNum * (pesoDe(conImporte[j].movementId) / peso) * 100) / 100;
+      const v = roundBs(montoNum * (pesoDe(conImporte[j].movementId) / peso));
       if (j === i) return v;
-      repartido = Math.round((repartido + v) * 100) / 100;
+      repartido = roundBs(repartido + v);
     }
     return null;
   };
@@ -769,6 +778,7 @@ export function AbonoReparto({
         aManoBs,
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
+        paymentMethod: metodo,
       });
       if (!r.ok) {
         setError(r.error);
@@ -1458,6 +1468,17 @@ export function AbonoReparto({
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* «MÉTODO DE PAGO», ONCE FOR THE WHOLE BILL: one payment split across fiados arrived one
+          way. Above the bar and not inside it, like any other field of the screen. */}
+      {fiados.length > 0 ? (
+        <MetodoDePagoField
+          id="reparto-metodo"
+          bookCurrency={libro}
+          value={metodo}
+          onValueChange={setMetodoElegido}
+        />
+      ) : null}
 
       {fiados.length > 0 ? (
         <StickyActions>

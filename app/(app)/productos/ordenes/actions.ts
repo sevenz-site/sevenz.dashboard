@@ -1,6 +1,7 @@
 "use server";
 
 import { flowContext, type FlowInput } from "@/lib/analytics/amounts";
+import type { PaymentMethod } from "@/lib/payments/methods";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 // LAS DOS SALEN DE `lib/` DESDE EL 2026-10-26, cuando `eliminarVenta` --que
@@ -92,6 +93,9 @@ export type PagoDeMonedaEntrada = {
   usarPrevista: boolean;
   photoPath: string | null;
   description: string;
+  // How the money arrived (migration 214). Optional for a draft saved before 2026-11-17;
+  // `registrarVenta` checks it against the book.
+  paymentMethod?: PaymentMethod | null;
 };
 
 export type RegistroDePedidoEntrada = {
@@ -284,6 +288,7 @@ async function registrarElPedido(
             entryAmount: entrada.pago.entryAmount,
             photoPath: entrada.pago.photoPath,
             description: entrada.pago.description || null,
+            paymentMethod: entrada.pago.paymentMethod ?? null,
           },
         ]
       : [];

@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { ChevronUp, ThumbsDown, ThumbsUp } from "lucide-react";
 import { track } from "@/lib/mixpanel";
 import { calificarAsistente } from "@/app/(app)/reportes/actions";
 import { cn } from "@/lib/utils";
 import { partirPorImportes } from "@/lib/reports/assistant/importes";
+import { ENLACES, type Enlace } from "@/lib/reports/assistant/links";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL ASISTENTE — frame `1804:15424`
@@ -58,6 +60,8 @@ import { partirPorImportes } from "@/lib/reports/assistant/importes";
 type Nota = {
   summary: string;
   recommendations: string[];
+  /** Same index as `recommendations`; absent or null: no link (`lib/reports/assistant/links.ts`). */
+  links?: (Enlace | null)[];
   degraded: boolean;
   rating: "useful" | "not_useful" | null;
   empty: boolean;
@@ -157,12 +161,36 @@ export function ReportesAsistente() {
                     <p className="mt-4 font-semibold">Recomendaciones:</p>
                     {/* `ms-[18px]` Y `list-disc` SON DEL FRAME, no una elección:
                         la viñeta y su sangría están especificadas. */}
-                    <ul className="list-disc">
-                      {nota.recommendations.map((r) => (
-                        <li key={r} className="ms-[18px]">
-                          <ConImportes frase={r} />
-                        </li>
-                      ))}
+                    {/* THE BLANK LINE BETWEEN ITEMS is the frame of 2026-11-17 (2189:28630). */}
+                    <ul className="flex list-disc flex-col gap-4">
+                      {nota.recommendations.map((r, i) => {
+                        const enlace = nota.links?.[i] ?? null;
+                        return (
+                          <li key={r} className="ms-[18px]">
+                            <ConImportes frase={r} />
+                            {/* «VER CLIENTES», «VER PRODUCTOS» after the sentence, underlined like
+                                the frame: owner's request of 2026-11-17. The address is built
+                                here from a closed list; see `links.ts`. */}
+                            {enlace ? (
+                              <>
+                                {" "}
+                                <Link
+                                  href={ENLACES[enlace].href}
+                                  // «¿Las recomendaciones del asistente llevan a actuar?» -- owner's
+                                  // request of 2026-11-17 put a door on each one; if nobody walks
+                                  // through, the recommendations are being read as decoration and
+                                  // the ladder in `fallback.ts` should be revisited. Filed under the
+                                  // owner, from his own browser: a floor, not a count.
+                                  onClick={() => track("Assistant Link Clicked", { enlace, posicion: i + 1 })}
+                                  className="underline underline-offset-2"
+                                >
+                                  {ENLACES[enlace].etiqueta}
+                                </Link>
+                              </>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </>
                 ) : null}

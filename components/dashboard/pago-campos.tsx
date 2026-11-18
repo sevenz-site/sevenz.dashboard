@@ -38,6 +38,8 @@ import { conHoy } from "@/lib/exchange-rate/format";
 import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
+import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
+import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { formatCalendarDate } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
@@ -120,6 +122,10 @@ export type Registro = {
   // `movements.photo_path` del cargo si quedó deuda.
   photoPath: string | null;
   description: string;
+  // How the money arrived (migration 214). `null` when nothing is paid today: a fiado with no
+  // money down has no method, and the field is not drawn. Optional because a catalogue order's
+  // draft saved before 2026-11-17 comes back without it.
+  paymentMethod?: PaymentMethod | null;
 };
 
 // LAS CUOTAS, TAL COMO LAS CALCULA LA BASE. Migración `118`: «el vencimiento
@@ -315,6 +321,13 @@ export function PagoCampos({
   const [plazo, setPlazo] = useState(inicial?.plazo ?? DEFAULT_PLAZO_PAGO);
   const [cuotas, setCuotas] = useState(inicial?.cuotas ?? "1");
   const [descripcion, setDescripcion] = useState(inicial?.description ?? "");
+  // THE METHOD THE SHOPKEEPER PICKED, or null while he has not touched the field. While null, the
+  // field shows the default for the currency being typed: Pago móvil for bolívares, Efectivo for
+  // dollars or euros (owner's decision of 2026-11-17). Once he picks one, changing the currency
+  // does not undo his choice: «en euro o dólares puede seleccionar pago móvil».
+  const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(
+    inicial?.paymentMethod ?? null,
+  );
 
   // LAS DOS CIFRAS SON DOS HECHOS DISTINTOS, y la segunda se CALCULA:
   //
@@ -399,6 +412,11 @@ export function PagoCampos({
   // que un «-5» escrito a mano pasaría como un pago negativo. Esa puerta se
   // queda cerrada.
   const listo = enElLibro >= 0 && !deMas;
+
+  // NO MONEY TODAY, NO METHOD: a fiado with nothing paid has nothing that arrived.
+  const hayCobro = enElLibro > 0;
+  const metodo: PaymentMethod =
+    metodoElegido ?? defaultMethod(moneda, monedaEntrega === "VES" ? "VES" : moneda);
 
   const plazoDias =
     plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
@@ -690,6 +708,17 @@ export function PagoCampos({
         </div>
       </div>
 
+      {/* «MÉTODO DE PAGO», under the amount it describes (owner's request of 2026-11-17). Only
+          when something is paid today: a fiado with nothing down has no method to ask for. */}
+      {hayCobro ? (
+        <MetodoDePagoField
+          id={`pago-metodo-${moneda}`}
+          bookCurrency={moneda}
+          value={metodo}
+          onValueChange={setMetodoElegido}
+        />
+      ) : null}
+
       {/* ── LA RAMA DEL CRÉDITO ────────────────────────────────────── */}
       {!esContado ? (
         <>
@@ -796,6 +825,7 @@ export function PagoCampos({
             usarPrevista,
             photoPath,
             description: descripcion.trim(),
+            paymentMethod: hayCobro ? metodo : null,
           })
         }
       >

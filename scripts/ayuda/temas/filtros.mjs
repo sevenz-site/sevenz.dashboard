@@ -17,8 +17,9 @@ const env = Object.fromEntries(
 if (!env.NEXT_PUBLIC_SUPABASE_URL.includes("vzqppwrwnmlbrxizskdh")) throw new Error("no es dev");
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const M = JSON.parse(readFileSync(new URL("../demo-manifest.json", import.meta.url), "utf8"));
-const { data: demo } = await admin.from("products").select("owner_id").eq("id", M.productos.harina).single();
-const OWNER = demo.owner_id;
+// From the manifest: it used to be read off the harina product, whose manifest id went stale
+// when the seed product was recreated on 2026-11-15.
+const OWNER = M.ownerId;
 const S = "filtrar-el-historial";
 const RAW = fileURLToPath(new URL("../raw-portadas", import.meta.url)).split(String.fromCharCode(92)).join("/");
 

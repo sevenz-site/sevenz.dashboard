@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readAllByIds, readAllPages } from "@/lib/supabase/read-all";
+import { methodLabel } from "@/lib/payments/methods";
 
 // THE CLOSE OF A MONTH: WHAT WAS SOLD AND WHAT IT LEFT, IN ONE PLACE.
 //
@@ -333,4 +334,263 @@ function devolucionDesdeFila(
     amount: Number(d.amount),
     unitCost: costoDeSuLinea == null ? null : Number(costoDeSuLinea),
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE CLOSE OF THE DAY — owner's request of 2026-11-17 (frame 2189:28141)
+//
+// «Cierre del día» is TODAY SO FAR at the business («Hoy hasta ahora», his answer the same
+// day): it moves with every sale and says little at eight in the morning, and that is the
+// figure he asked for. Same arithmetic as the month (`calcularCierre`, through the same
+// loader), so the two cards cannot count a sale or a return differently.
+// ═══════════════════════════════════════════════════════════════════════
+
+const MONTHS_SHORT = ["ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sept.", "oct.", "nov.", "dic."];
+
+export type DiaDelNegocio = {
+  year: number;
+  /** 1 to 12. */
+  month: number;
+  day: number;
+  /** «17 nov. 2026», the frame's shape («00 sept. 0000»). */
+  etiqueta: string;
+  /** First instant of the day at the business, UTC. */
+  desdeUtc: string;
+  /** First instant of the NEXT day at the business, UTC. Never included. */
+  hastaExclusivoUtc: string;
+};
+
+/** Today at the business, with its bounds in UTC. */
+export function hoyDelNegocio(now: Date, country: string | null): DiaDelNegocio {
+  const f = fechaLocal(now, country);
+  const desde = new Date(Date.UTC(f.year, f.month - 1, f.day) - offsetOf(country) * 3_600_000);
+  const hasta = new Date(desde.getTime() + 86_400_000);
+  return {
+    year: f.year,
+    month: f.month,
+    day: f.day,
+    etiqueta: `${f.day} ${MONTHS_SHORT[f.month - 1]} ${f.year}`,
+    desdeUtc: desde.toISOString(),
+    hastaExclusivoUtc: hasta.toISOString(),
+  };
+}
+
+export type CierreDelDia = Omit<CierreDelMes, "mes"> & { dia: DiaDelNegocio };
+
+/** The close of one day, read with the owner's client. See `cargarCierreDelMes`. */
+export async function cargarCierreDelDia(
+  supabase: SupabaseClient,
+  ownerId: string,
+  country: string | null,
+  dia: DiaDelNegocio,
+): Promise<CierreDelDia> {
+  // The loader only reads the bounds; the month fields are filled so the type holds.
+  const { mes: _mes, ...resto } = await cargarCierreDelMes(supabase, ownerId, country, {
+    year: dia.year,
+    month: dia.month,
+    monthName: MONTHS[dia.month - 1],
+    desdeUtc: dia.desdeUtc,
+    hastaExclusivoUtc: dia.hastaExclusivoUtc,
+  });
+  void _mes;
+  return { ...resto, dia };
+}
+
+// ── THE DAY'S TRANSACTIONS, ONE ROW EACH («Por venta», his answer of 2026-11-17) ────────────
+//
+// What «Ver todo» opens. One row per sale AND book, the way the card counts them (a sale paid
+// in dollars and euros is one in each book). Since his second answer the same day it holds
+// EVERY transaction of the day, like the card's breakdown: «Ventas registradas … deben incluir
+// todas las transacciones porque es el comportamiento del día». So the abonos (one row per
+// payment, a split abono being one payment) and the fiados written without a sale are rows
+// too, next to the sales and the returns.
+
+export type FilaDelDia = {
+  /** `sale:<id>:<book>` or `return:<id>`. */
+  clave: string;
+  /** ISO instant, for the hour. */
+  cuando: string;
+  cliente: string;
+  tipo: "De contado" | "Fiado" | "Devolución" | "Abono";
+  /** «Aceite vegetal 1 L ×1, Arroz ×2». */
+  detalle: string;
+  libro: CierreLedger;
+  /** Negative for a return. */
+  total: number;
+  href: string;
+};
+
+export async function cargarVentasDelDia(
+  supabase: SupabaseClient,
+  ownerId: string,
+  country: string | null,
+  dia: DiaDelNegocio,
+): Promise<FilaDelDia[]> {
+  const books = ledgersOfCountry(country);
+  const ventas = await readAllPages<Record<string, unknown>>((from, to) =>
+    supabase
+      .from("sales")
+      .select("id, created_at, clients(name, is_walk_in)", { count: "exact" })
+      .eq("owner_id", ownerId)
+      .is("deleted_at", null)
+      .gte("created_at", dia.desdeUtc)
+      .lt("created_at", dia.hastaExclusivoUtc)
+      .order("id")
+      .range(from, to),
+  );
+  const ids = ventas.map((v) => v.id as string);
+  const [lineas, cargos] = ids.length
+    ? await Promise.all([
+        readAllByIds<Record<string, unknown>>(ids, (batch, from, to) =>
+          supabase
+            .from("sale_lines")
+            .select("id, sale_id, name, quantity, unit_price, currency", { count: "exact" })
+            .in("sale_id", batch)
+            .order("id")
+            .range(from, to),
+        ),
+        readAllByIds<Record<string, unknown>>(ids, (batch, from, to) =>
+          supabase
+            .from("movements")
+            .select("id, sale_id, currency", { count: "exact" })
+            .eq("type", "charge")
+            .is("deleted_at", null)
+            .in("sale_id", batch)
+            .order("id")
+            .range(from, to),
+        ),
+      ])
+    : [[], []];
+
+  const nombre = (c: unknown) => {
+    const cl = (Array.isArray(c) ? c[0] : c) as { name?: string; is_walk_in?: boolean } | null;
+    return cl?.is_walk_in ? "Mostrador" : (cl?.name ?? "Cliente");
+  };
+  const cantidad = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ","));
+
+  const filas: FilaDelDia[] = [];
+  for (const v of ventas) {
+    const suyas = lineas.filter((l) => l.sale_id === v.id);
+    for (const libro of books) {
+      const delLibro = suyas.filter((l) => l.currency === libro);
+      if (!delLibro.length) continue;
+      // `movements` spells the Colombian book NULL; `sale_lines` spells it 'COP'.
+      const cargo = cargos.find((c) => c.sale_id === v.id && ((c.currency as string | null) ?? "COP") === libro);
+      filas.push({
+        clave: `sale:${v.id}:${libro}`,
+        cuando: v.created_at as string,
+        cliente: nombre(v.clients),
+        tipo: cargo ? "Fiado" : "De contado",
+        detalle: delLibro.map((l) => `${l.name} ×${cantidad(Number(l.quantity))}`).join(", "),
+        libro,
+        total: round2(delLibro.reduce((s, l) => s + Number(l.quantity) * Number(l.unit_price), 0)),
+        href: cargo ? `/transacciones/${cargo.id}` : `/transacciones/venta/${v.id}/${libro.toLowerCase()}`,
+      });
+    }
+  }
+
+  const devueltas = await readAllPages<Record<string, unknown>>((from, to) =>
+    supabase
+      .from("sale_returns")
+      .select("id, created_at, product_name, quantity, amount, currency, clients(name, is_walk_in)", { count: "exact" })
+      .eq("owner_id", ownerId)
+      .is("deleted_at", null)
+      .gte("created_at", dia.desdeUtc)
+      .lt("created_at", dia.hastaExclusivoUtc)
+      .order("id")
+      .range(from, to),
+  );
+  // A return's detail is its `movements` row, keyed by `payment_group_id` (migration 185).
+  const suyos = devueltas.length
+    ? await readAllByIds<Record<string, unknown>>(
+        devueltas.map((d) => d.id as string),
+        (batch, from, to) =>
+          supabase
+            .from("movements")
+            .select("id, payment_group_id", { count: "exact" })
+            .eq("type", "return")
+            .in("payment_group_id", batch)
+            .order("id")
+            .range(from, to),
+      )
+    : [];
+  for (const d of devueltas) {
+    const libro = ((d.currency as string | null) ?? "COP") as CierreLedger;
+    if (!books.includes(libro)) continue;
+    const mov = suyos.find((m) => m.payment_group_id === d.id);
+    filas.push({
+      clave: `return:${d.id}`,
+      cuando: d.created_at as string,
+      cliente: nombre(d.clients),
+      tipo: "Devolución",
+      detalle: `${d.product_name} ×${cantidad(Number(d.quantity))}`,
+      libro,
+      total: -round2(Number(d.amount)),
+      href: mov ? `/transacciones/${mov.id}` : "/reportes",
+    });
+  }
+
+  // ── ABONOS AND FIADOS WITHOUT A SALE ─────────────────────────────────────────────────────
+  // `movements` carries no `owner_id`: the owner is reached through its client (`!inner`), on
+  // top of RLS, the explicit check CLAUDE.md asks for.
+  const movimientos = await readAllPages<Record<string, unknown>>((from, to) =>
+    supabase
+      .from("movements")
+      .select(
+        "id, type, amount, currency, created_at, sale_id, payment_group_id, paid_with_credit, payment_method, description, clients!inner(name, is_walk_in, owner_id)",
+        { count: "exact" },
+      )
+      .eq("clients.owner_id", ownerId)
+      .in("type", ["payment", "charge"])
+      .is("deleted_at", null)
+      .gte("created_at", dia.desdeUtc)
+      .lt("created_at", dia.hastaExclusivoUtc)
+      .order("id")
+      .range(from, to),
+  );
+  // A split abono writes one line per fiado with the same `payment_group_id`: one payment,
+  // one row, its lines added up.
+  const abonos = new Map<string, FilaDelDia>();
+  for (const m of movimientos) {
+    const libro = ((m.currency as string | null) ?? "COP") as CierreLedger;
+    if (!books.includes(libro)) continue;
+    if (m.type === "payment") {
+      const clave = `payment:${(m.payment_group_id as string | null) ?? m.id}:${libro}`;
+      const previa = abonos.get(clave);
+      if (previa) {
+        previa.total = round2(previa.total + Number(m.amount));
+        continue;
+      }
+      abonos.set(clave, {
+        clave,
+        cuando: m.created_at as string,
+        cliente: nombre(m.clients),
+        tipo: "Abono",
+        // Its payment method when it has one (migration 214), the line the row would otherwise
+        // spend repeating «Abono».
+        detalle:
+          methodLabel(m.payment_method as string | null, libro) ?? ((m.description as string | null)?.trim() || "Abono"),
+        libro,
+        total: round2(Number(m.amount)),
+        href: `/transacciones/${m.id}`,
+      });
+    } else if (m.type === "charge" && !m.sale_id && !m.paid_with_credit) {
+      // A fiado born from a sale is already its sale's row; this is the one written by hand
+      // (or an old debt), the rest of what «Fiados» counts.
+      filas.push({
+        clave: `charge:${m.id}`,
+        cuando: m.created_at as string,
+        cliente: nombre(m.clients),
+        tipo: "Fiado",
+        detalle: (m.description as string | null)?.trim() || "Fiado",
+        libro,
+        total: round2(Number(m.amount)),
+        href: `/transacciones/${m.id}`,
+      });
+    }
+  }
+  filas.push(...abonos.values());
+
+  // Newest first, like every history in the app.
+  return filas.sort((a, b) => (a.cuando < b.cuando ? 1 : a.cuando > b.cuando ? -1 : 0));
 }

@@ -470,6 +470,41 @@ export async function guardarAvisosWhatsapp(
   return { error: null };
 }
 
+// «CONSEJOS DE SEVENZ»: the inactivity nudges, by WhatsApp and by email (MS-53). Owner's
+// decision of 2026-11-17, «Switch nuevo»: its own switch, so turning the tips off leaves the
+// Monday summary and the Thursday notice alone. The approved templates end with «Puedes
+// desactivar estos avisos en Mi negocio», and this is that.
+//
+// A date and not a boolean, the same shape as `whatsapp_opt_out_at`: null means he gets them.
+// Turning them back on clears it. The email's unsubscribe link writes the same column.
+export async function guardarConsejosSevenz(activar: boolean): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { error } = await supabase
+    .from("owners")
+    .update({ product_tips_opt_out_at: activar ? null : new Date().toISOString() })
+    // Explicit, as CLAUDE.md asks, though RLS already limits it to his own row.
+    .eq("id", user.id);
+
+  if (error) {
+    console.error("guardarConsejosSevenz:", error);
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
+
+  // «¿Los consejos de Sevenz molestan?» -- the owner's fear of 2026-11-06, «mi temor es que
+  // seamos muy invasivos y caigamos en spam». If owners switch them off soon after the first
+  // nudges, the cadence or the copy is wrong and gets reopened before Meta's quality rating
+  // moves. Filed under the owner. The email's unsubscribe link sends the same event with
+  // `source: "email_link"` (lib/inactivity-nudge/unsubscribe.ts).
+  trackServer("Product Tips Changed", user.id, { enabled: activar, source: "settings" }, user.email);
+  revalidatePath("/profile");
+  return { error: null };
+}
+
 // Deja constancia de que el diálogo se enseñó. Se llama AL MOSTRARLO, no al
 // contestarlo: si se anotara al contestar, recargar la pantalla antes de
 // responder lo volvería a sacar, y otra vez, y otra. Anotar al aparecer lo

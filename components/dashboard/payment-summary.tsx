@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
 import { NOMBRE_DE_MONEDA } from "@/components/dashboard/detail-rows";
-import { formatBs, conHoy } from "@/lib/exchange-rate/format";
+import { formatBs, conHoy, roundBs } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { Fecha } from "@/components/fecha";
 import { FilaDeTotal } from "@/components/dashboard/fila-de-total";
@@ -132,7 +132,7 @@ export function PaymentSummary({
   const bsPorLinea = currency ? lines.map(bolivaresDeLaLinea) : lines.map(() => null);
   const bsTotal =
     currency && bsPorLinea.every((b) => b != null)
-      ? Math.round(bsPorLinea.reduce<number>((sum, b) => sum + (b ?? 0), 0) * 100) / 100
+      ? roundBs(bsPorLinea.reduce<number>((sum, b) => sum + (b ?? 0), 0))
       : null;
   const chipArriba = lines.length === 1 ? estadoDeLaLinea(lines[0], createdAt) : null;
   const flag = currency ? (

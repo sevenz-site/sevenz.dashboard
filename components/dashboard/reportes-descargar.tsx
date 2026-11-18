@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Download, FileUser, PackageSearch, Truck } from "lucide-react";
+import { CalendarCheck, CalendarDays, Download, FileUser, PackageSearch, Truck } from "lucide-react";
 import { track } from "@/lib/mixpanel";
 import {
   DropdownMenu,
@@ -85,7 +85,7 @@ import { aISO, rangoDe } from "@/lib/reports/rango";
  * entera de nada. Medir en la ruta contaría también cualquier reintento del
  * navegador, que en una descarga no es raro.
  */
-export function ReportesDescargar() {
+export function ReportesDescargar({ mesDelCierre }: { mesDelCierre: string }) {
   const params = useSearchParams();
 
   // EL RANGO QUE SE DESCARGA ES EL QUE ESTÁ PUESTO, siempre, y por eso se
@@ -158,6 +158,29 @@ export function ReportesDescargar() {
           >
             <FileUser aria-hidden="true" />
             Descargar facturación
+          </a>
+        </DropdownMenuItem>
+        {/* ── THE TWO CLOSES — owner's request of 2026-11-17 ─────────────
+            «Descargar» in the header opens the options to download (his words), and the two
+            closes at the top of Facturación join them, as a CSV like the rest («Excel, como
+            el de hoy»). NOT THE RANGE PICKED: a close is its own span -- today so far, and
+            the last closed month -- exactly as its card says. */}
+        <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
+          <a
+            href="/api/reportes/cierre?que=dia"
+            onClick={() => track("Report Export Downloaded", { que: "cierre_dia", desde: "menu" })}
+          >
+            <CalendarCheck aria-hidden="true" />
+            Descargar cierre del día
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="h-9 gap-2.5 px-2.5 whitespace-nowrap">
+          <a
+            href="/api/reportes/cierre?que=mes"
+            onClick={() => track("Report Export Downloaded", { que: "cierre_mes", desde: "menu" })}
+          >
+            <CalendarDays aria-hidden="true" />
+            Descargar cierre de {mesDelCierre}
           </a>
         </DropdownMenuItem>
         {/* ── UNA OPCIÓN POR APARTADO — encargo del dueño el 2026-10-29 ──

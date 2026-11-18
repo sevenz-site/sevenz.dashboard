@@ -2,10 +2,24 @@
 // data renders the VES symbol inconsistently across environments (Bs.S vs
 // VES vs Bs.) — the design doc's examples always show the literal "Bs. "
 // prefix, so that's what every surface should match exactly.
+//
+// FOUR DECIMALS, EVERYWHERE A BOLIVAR IS WRITTEN. Owner's decision of 2026-11-17: «Calculadora
+// y montos en bolívares debe tener 4 decimales en toda la app porque así lo exige la ley», and,
+// asked as a choice, «Todo, y se teclean 4»: rates, equivalents and typed amounts, in the
+// owner's and the client's view, and the fields accept four. It was two until that day.
+// Dollars, euros and pesos keep two: this is the bolivar's rule, not the app's.
+export const BS_DECIMALS = 4;
+
 const bsNumberFormatter = new Intl.NumberFormat("es-VE", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
+  minimumFractionDigits: BS_DECIMALS,
+  maximumFractionDigits: BS_DECIMALS,
 });
+
+// The one rounding for a bolivar figure, so every sum and split lands on the same four decimals
+// the formatter prints. Rounded to two, a typed Bs. 1.000,1234 would come back as 1.000,12.
+export function roundBs(amount: number): number {
+  return Math.round(amount * 10_000) / 10_000;
+}
 
 export function formatBs(amount: number): string {
   return `Bs. ${bsNumberFormatter.format(amount)}`;
@@ -32,7 +46,7 @@ export function alDiaDelPago(figura: string): string {
   return `${figura} al día del pago`;
 }
 
-// Same "es-VE", 2-decimal formatting as formatBs, without the "Bs. " prefix —
+// Same "es-VE", 4-decimal formatting as formatBs, without the "Bs. " prefix —
 // for surfaces (like an amount input) that show the number on its own.
 export function formatBsAmount(amount: number): string {
   return bsNumberFormatter.format(amount);
@@ -65,6 +79,13 @@ const displayNumberFormatter = new Intl.NumberFormat("es-VE", {
 });
 
 const DISPLAY_SYMBOL: Record<"USD" | "EUR", string> = { USD: "$", EUR: "€" };
+
+// A number with two decimals and the same separators, for a currency that is not the bolivar
+// and has no symbol here: USDT, or a free-text currency the shopkeeper typed. Until 2026-11-17
+// these borrowed `formatBsAmount`, which was harmless while both had two decimals.
+export function formatPlainAmount(amount: number): string {
+  return displayNumberFormatter.format(amount);
+}
 
 export function formatDisplayCurrency(amount: number, currency: "USD" | "EUR"): string {
   // EL SIGNO VA DELANTE DEL SÍMBOLO: «-$1.234,56», no «$-1.234,56». Lo que

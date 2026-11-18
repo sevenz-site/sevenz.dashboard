@@ -3,6 +3,7 @@
 import { track } from "@/lib/mixpanel";
 import { useSearchEvent } from "@/lib/analytics/use-search-event";
 import { useMemo, useState } from "react";
+import { useHojaDesdeLaUrl } from "@/components/dashboard/use-hoja-desde-la-url";
 import Link from "next/link";
 import { ChevronRight, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -210,7 +211,8 @@ export function PlazosSheet({
   // LA HOJA PASA A ESTAR CONTROLADA para poder CERRARLA al tocar «Registrar».
   // Sin esto quedaban dos hojas apiladas y, al volver, la de plazos seguia
   // abierta detras de una pantalla que ya no tiene nada que ver con ella.
-  const [abierta, setAbierta] = useState(false);
+  // Opens on arrival with `?abrir=<clave>`: the assistant's «Ver clientes» (2026-11-17).
+  const [abierta, setAbierta] = useHojaDesdeLaUrl(clave);
   const [registrando, setRegistrando] = useState(false);
   // SE CONGELA AL ABRIR, no en cada render: `new Date()` dentro del cuerpo
   // haría que «hace 25 días» se recalculara en cada tecla del buscador. No

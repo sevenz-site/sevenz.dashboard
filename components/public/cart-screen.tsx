@@ -1142,8 +1142,11 @@ function Enviado({
           que el cliente guarda o reenvía—. Con una tienda de productos
           colgando debajo, la firma dejaba de ser el final de nada.
 
-          40px A LOS LADOS, también suyo: `wideGutters`. La cuenta está en el
-          propio `CatalogStrip`.
+          ALIGNED LEFT WITH THE REST OF THE RECEIPT, owner's request of 2026-11-17: «debe
+          alinearse a la izquierda». It displaces his request of 2026-10-26, «incrementa sus
+          paddings horizontales a 40px» (`wideGutters`): the title and the first card started
+          24px to the right of every other block of the screen. Now they start at its 16px, and
+          the rail still bleeds to the edge, as on the balance.
 
           ES EL MISMO COMPONENTE que la franja del saldo —no una copia—
           porque las dos enseñan lo mismo y el día que una cambie la otra
@@ -1170,7 +1173,6 @@ function Enviado({
       <CatalogStrip
         catalogToken={token}
         titulo="Otros productos"
-        wideGutters
         products={relacionados.filter((p) => !yaComprados.includes(p.id))}
       />
 

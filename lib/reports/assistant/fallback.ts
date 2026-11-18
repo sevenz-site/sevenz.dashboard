@@ -1,5 +1,6 @@
 import { formatDinero } from "@/lib/reports/ganancia";
 import type { FactsForTheModel, MoneyByLedger } from "@/lib/reports/assistant/facts";
+import type { Enlace } from "@/lib/reports/assistant/links";
 
 // ═══════════════════════════════════════════════════════════════════════
 // THE SUMMARY WITHOUT THE MODEL
@@ -53,7 +54,15 @@ import type { FactsForTheModel, MoneyByLedger } from "@/lib/reports/assistant/fa
 // somebody's real debts.
 // ═══════════════════════════════════════════════════════════════════════
 
-export type AssistantNote = { summary: string; recommendations: string[] };
+export type AssistantNote = {
+  summary: string;
+  recommendations: string[];
+  /**
+   * Where each recommendation leads, same index, or null (owner's request of 2026-11-17: «Ver
+   * clientes», «Ver productos»). Absent in a note stored before that day: no links, no error.
+   */
+  links?: (Enlace | null)[];
+};
 
 /**
  * The owner's cap: *«Máximo 450 caracteres incluyendo espacio»*.
@@ -75,7 +84,8 @@ export function trimToBudget(n: AssistantNote): AssistantNote {
   while (recs.length && noteLength({ summary: n.summary, recommendations: recs }) > MAX_CHARS) {
     recs.pop();
   }
-  return { summary: n.summary, recommendations: recs };
+  // The links travel with their recommendation: cut one, cut its link.
+  return { summary: n.summary, recommendations: recs, links: n.links?.slice(0, recs.length) };
 }
 
 // ── LOS DOS PLURALES, Y HACEN FALTA LOS DOS ───────────────────────────
@@ -148,6 +158,7 @@ export function buildFallbackNote(f: FactsForTheModel): AssistantNote {
   }
 
   const recs: string[] = [];
+  const links: (Enlace | null)[] = [];
 
   // ── 1 · QUE NO PIERDA LO QUE YA PRESTÓ ────────────────────────────
   if (f.clients.critical > 0) {
@@ -155,17 +166,20 @@ export function buildFallbackNote(f: FactsForTheModel): AssistantNote {
       `Empieza por ${losCuantos(f.clients.critical, "el cliente", "los N clientes")} en estado ` +
         `crítico: ${f.clients.critical === 1 ? "lleva" : "llevan"} más de 30 días sin abonar.`,
     );
+    links.push("criticos");
   } else if (f.clients.overdue > 0) {
     recs.push(
       `${f.clients.overdue === 1 ? "Avísale" : "Avísales"} por WhatsApp a ` +
         `${losCuantos(f.clients.overdue, "el cliente", "los N clientes")} con el plazo vencido.`,
     );
+    links.push("vencido");
   }
   if (f.clients.flagged > 0 && recs.length < 3) {
     recs.push(
       `Acuerda un nuevo compromiso de pago con ` +
         `${losCuantos(f.clients.flagged, "el cliente", "los N clientes")} que marcaste como mala paga.`,
     );
+    links.push("malas-pagas");
   }
 
   // ── 2 · QUE NO SE LE PARE LA CAJA ─────────────────────────────────
@@ -174,11 +188,13 @@ export function buildFallbackNote(f: FactsForTheModel): AssistantNote {
       `Repón ${losCuantos(f.stock.bestSellersRunningLow, "el producto", "los N productos")} más ` +
         `${f.stock.bestSellersRunningLow === 1 ? "vendido que está" : "vendidos que están"} por agotarse.`,
     );
+    links.push("por-agotarse");
   } else if (f.stock.outOfStock > 0 && recs.length < 3) {
     recs.push(
       `Revisa ${losCuantos(f.stock.outOfStock, "la referencia agotada", "las N referencias agotadas")} ` +
         `de tu catálogo.`,
     );
+    links.push("agotadas");
   }
 
   // ── 3 · QUE VENDA MÁS ─────────────────────────────────────────────
@@ -187,6 +203,7 @@ export function buildFallbackNote(f: FactsForTheModel): AssistantNote {
       `Registra ${losCuantos(f.unhandledOrders, "el pedido", "los N pedidos")} del catálogo que ` +
         `${f.unhandledOrders === 1 ? "sigue" : "siguen"} sin atender.`,
     );
+    links.push("pedidos");
   }
 
   // ── 4 · QUE NO PIERDA CLIENTES BUENOS ─────────────────────────────
@@ -196,9 +213,14 @@ export function buildFallbackNote(f: FactsForTheModel): AssistantNote {
         ? `Uno de tus mejores pagadores lleva más de 30 días sin comprarte: escríbele.`
         : `${f.dormantGoodPayers} de tus mejores pagadores llevan más de 30 días sin comprarte: escríbeles.`,
     );
+    links.push("mejores-pagadores");
   }
 
-  return trimToBudget({ summary: buildSummary(f, recs.length === 0), recommendations: recs.slice(0, 3) });
+  return trimToBudget({
+    summary: buildSummary(f, recs.length === 0),
+    recommendations: recs.slice(0, 3),
+    links: links.slice(0, 3),
+  });
 }
 
 /**

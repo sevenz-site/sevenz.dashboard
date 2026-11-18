@@ -9,6 +9,7 @@ import { getRateHealth } from "@/lib/admin/rate-health";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
 import { sendPendingAccountReady } from "@/lib/whatsapp/account-ready";
 import { sendTrialEndingNotices } from "@/lib/whatsapp/trial-ending";
+import { sendInactivityNudges } from "@/lib/whatsapp/inactivity-nudge";
 
 export const runtime = "nodejs";
 
@@ -93,7 +94,13 @@ export async function GET(request: Request) {
 
   try {
     // El resumen se intenta siempre: la clave semanal decide si sale o no.
-    const resumen = await enviarResumenSemanal();
+    // `quietMondays` comes back with the owners whose Monday plan stayed silent (2026-11-17).
+    const quietMondays = new Set<string>();
+    const resumen = await enviarResumenSemanal(quietMondays);
+
+    // THE INACTIVITY NUDGES (MS-53), Mondays only and right after the Monday batch, because
+    // «is this Monday free» is that batch's answer. Never throws.
+    const avisosInactividad = dia === 1 ? await sendInactivityNudges(quietMondays) : null;
 
     // Lo que necesita atención, de jueves en adelante. Antes del jueves no se
     // intenta para que no salga el lunes junto al resumen — las dos llevan
@@ -132,6 +139,7 @@ export async function GET(request: Request) {
       recordatorios,
       cuentasListas,
       pruebaPorVencer,
+      avisosInactividad,
       bloqueadasHoy,
     };
 
