@@ -36,8 +36,9 @@ const set = (selector, value) =>
 const HEX = "document.querySelector('input[placeholder=\"#272727\"]')";
 const TEXTAREA = "document.getElementById('catalog-welcome')";
 const DESCRIPTION = "document.getElementById('brand-description')";
-const SWITCH =
-  "(()=>{const l=[...document.querySelectorAll('label')].find(l=>/Mostrar mi dirección/.test(l.textContent)); return (l.htmlFor&&document.getElementById(l.htmlFor))||l.closest('div').querySelector('button,[role=switch],input[type=checkbox]')})()";
+// The address box left this screen on 2026-11-18 (it is in Mi negocio now). With
+// --finalizar the demo shows its address for the customer's picture, set here and put back
+// in `finally` with the rest of the branding.
 
 try {
   await go(`/productos`, 6000);
@@ -84,23 +85,20 @@ try {
   await sleep(800);
   await shot(S, 5, `js:${TEXTAREA}.closest('div').parentElement`);
 
-  const on = await js(`(()=>{const s=${SWITCH}; return s.getAttribute('aria-checked')==='true'||s.checked===true||s.dataset.state==='checked'})()`);
-  if (!on) await click(`js:${SWITCH}`, { wait: 800 });
-  await shot(S, 6, `js:${SWITCH}.closest('div').parentElement`);
-
-  await shot(S, 7, "Ver cómo queda");
+  await shot(S, 6, "Ver cómo queda");
   await click("Ver cómo queda", { wait: 3000 });
-  await shot(S, 8, "js:document.querySelector('[role=dialog]')", { crop: 0 });
+  await shot(S, 7, "js:document.querySelector('[role=dialog]')", { crop: 0 });
   await escape();
   await sleep(800);
 
-  await shot(S, 9, "Guardar cambios");
+  await shot(S, 8, "Guardar cambios");
   if (FINAL) {
     await click("Guardar cambios", { wait: 4000 });
+    await svc.from("owners").update({ catalog_show_address: true }).eq("id", M.ownerId);
     await go(`/c/${M.catalogToken}`, 6000);
     await clearPopups();
     await sleep(500);
-    await shot(S, 10, null, { crop: 0 });
+    await shot(S, 9, null, { crop: 0 });
     // The topic's cover for the /ayuda index, taken here and not in `portadas.mjs`: it
     // needs the branding saved, and only this script saves it and puts it back.
     const RAW = fileURLToPath(new URL("../raw-portadas", import.meta.url)).split(String.fromCharCode(92)).join("/");
