@@ -8,7 +8,14 @@ import { CatalogBrandingForm } from "@/components/dashboard/catalog-branding-for
 // A FAILED READ IS SAID, not drawn as an empty form: an empty form saved by mistake would
 // wipe the owner's colour, cover and message. The likeliest cause is an environment where
 // migration 210 or 211 has not run yet, and the real error goes to the server log only.
-export default async function PersonalizarCatalogoPage() {
+export default async function PersonalizarCatalogoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ desde?: string }>;
+}) {
+  // Entered from Mi negocio (2026-11-18), the back arrow returns there; from the ⋮ menu of
+  // Catálogo, to Catálogo. Anything else in `desde` falls back to Catálogo.
+  const fromProfile = (await searchParams).desde === "negocio";
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const supabase = await getRequestClient();
@@ -41,6 +48,8 @@ export default async function PersonalizarCatalogoPage() {
       welcome={owner.catalog_welcome ?? null}
       description={owner.brand_description ?? null}
       showAddress={Boolean(owner.catalog_show_address)}
+      backHref={fromProfile ? "/profile" : "/productos"}
+      backLabel={fromProfile ? "Volver a Mi negocio" : "Volver a Catálogo"}
     />
   );
 }

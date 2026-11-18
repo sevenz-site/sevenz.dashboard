@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ import type { Owner } from "@/lib/types";
 import { OWNER_COUNTRY_DIAL_CODE } from "@/lib/countries";
 import { useFieldErrors, useFormRef } from "@/hooks/use-field-errors";
 import { required } from "@/lib/form-validation";
+import { CATALOG_BRANDING_ROUTE } from "@/lib/products/routes";
 
 const initialState: ProfileState = { error: null, success: false };
 
@@ -67,6 +69,12 @@ export function BusinessSettingsForm({
   const [isDirty, setIsDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether the catalogue shows the address, moved here from «Personalizar catálogo» on
+  // 2026-11-18 at the owner's request: it sits under the address it is about. It follows
+  // the field as it is typed, so an empty address cannot leave the box ticked.
+  const [addressText, setAddressText] = useState(owner.address ?? "");
+  const [showAddress, setShowAddress] = useState(Boolean(owner.catalog_show_address) && Boolean(owner.address?.trim()));
+  const hasAddress = addressText.trim() !== "";
   const { errors, validate, recheck } = useFieldErrors({
     business_name: required,
     first_name: required,
@@ -240,18 +248,75 @@ export function BusinessSettingsForm({
           </p>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="address">Dirección de negocio (opcional)</Label>
-          <Input id="address" name="address" defaultValue={owner.address ?? ""} placeholder="Escribe dirección" />
-        </div>
-
+        {/* RIF/NIT went above the address on 2026-11-18 (owner's request), so the address,
+            its catalogue box and «Personalizar catálogo» read as one block. */}
         <div className="flex flex-col gap-2">
           {/* Lowercase "(opcional)" like every other optional field; the frame
               says "(Opcional)". Owner's decision, 2026-11-02. */}
           <Label htmlFor="tax_id">RIF/NIT (opcional)</Label>
           <Input id="tax_id" name="tax_id" defaultValue={owner.tax_id ?? ""} placeholder="Escribe RIF o NIT" />
         </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="address">Dirección de negocio (opcional)</Label>
+          <Input
+            id="address"
+            name="address"
+            defaultValue={owner.address ?? ""}
+            placeholder="Escribe dirección"
+            onChange={(e) => setAddressText(e.target.value)}
+          />
+          {/* THE CATALOGUE BOX, moved from «Personalizar catálogo» on 2026-11-18 (owner's
+              request: «Debajo de la dirección agrega el check para mostrar dirección en
+              catálogo y elimínala de la sección de personalizar el catálogo»). Same copy as
+              it had there. Disabled while the address is empty, and the server saves it off
+              then too: a ticked box over no address would promise something the catalogue
+              cannot show. `catalog_show_address_sent` tells the server this form carries
+              the box, so a tab opened before this change does not switch it off by saving. */}
+          <input type="hidden" name="catalog_show_address_sent" value="1" />
+          <label className="flex items-center gap-2.5 rounded-[8px] border bg-background p-3 text-sm leading-5 has-[button:disabled]:opacity-60">
+            <Checkbox
+              name="catalog_show_address"
+              value="1"
+              checked={showAddress && hasAddress}
+              disabled={!hasAddress}
+              onCheckedChange={(v) => {
+                setShowAddress(v === true);
+                markDirty();
+              }}
+            />
+            Mostrar mi dirección en el catálogo
+          </label>
+          <p className="text-xs leading-[17px] text-muted-foreground">
+            No se muestra en tu catálogo hasta que marques la casilla.
+          </p>
+        </div>
       </form>
+
+      {/* «PERSONALIZAR CATÁLOGO», added on 2026-11-18 (owner's request), right under the
+          address as he placed it, and outside the <form> for the reason this file's header
+          gives. A card with its button, like the ones of «Seguridad de la cuenta». It goes
+          through `guard`, so unsaved changes above get the usual «¿Salir sin guardar?»
+          instead of being lost. `?desde=negocio` makes that screen's back arrow return
+          here. The ⋮ menu of Catálogo keeps its own way in. */}
+      <section className="flex flex-col gap-2 rounded-[10px] border p-4">
+        <div className="flex items-start gap-2">
+          <div className="flex flex-1 flex-col">
+            <h2 className="text-sm font-semibold">Personalizar catálogo</h2>
+            <p className="text-xs text-muted-foreground">
+              Color, portada y mensaje de bienvenida de tu catálogo.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-fit text-base font-semibold"
+            onClick={() => guard(() => router.push(`${CATALOG_BRANDING_ROUTE}?desde=negocio`))}
+          >
+            Personalizar
+          </Button>
+        </div>
+      </section>
 
       <PaymentMethodsCard initialMethods={paymentMethods} />
 

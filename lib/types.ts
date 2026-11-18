@@ -136,6 +136,8 @@ export type Owner = {
   address: string | null;
   tax_id: string | null;
   logo_path: string | null;
+  // Migration 210: whether the catalogue shows `address`. Off by default.
+  catalog_show_address?: boolean | null;
   plan: OwnerPlan;
   payment_info: string | null;
   country: OwnerCountry;
