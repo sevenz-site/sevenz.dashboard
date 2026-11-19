@@ -63,6 +63,10 @@ export async function updateSession(request: NextRequest) {
     // Every other event from `/s` and `/c`. Same reason, and the route guards itself:
     // a code from a closed list in, nothing readable out.
     request.nextUrl.pathname === "/api/public-event" ||
+    // The USDT price for the client's calculator on `/s/[token]` (2026-11-19). Without
+    // this line it answers 307 and the USDT tab never appears, silently. The route
+    // guards itself: a balance-link token in, a price or null out, behind a limiter.
+    request.nextUrl.pathname === "/api/share-usdt" ||
     // «No fui yo» (C2 of PL-22): the owner taps it on a phone with no session, and when the
     // thief is the one signed in, that is the session it ends. The page guards itself: a
     // one-use token in, three fixed sentences out, and nothing closes on a GET.

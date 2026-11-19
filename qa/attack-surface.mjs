@@ -587,6 +587,10 @@ export const MANIFEST = {
     "/api/consejos/baja": "public",
     "/api/share-catalog": "public",
     "/api/public-event": "public",
+    // The USDT price for the client's calculator on /s/[token] (2026-11-19). A balance-link
+    // token in, `{ usdt }` out; an unknown token gets the same null as «no price». Reads the
+    // 60-second cache shared with /api/usdt, behind 120 calls per link per hour.
+    "/api/share-usdt": "public",
   },
 
   buckets: {

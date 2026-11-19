@@ -28,6 +28,18 @@ export const PUBLIC_EVENTS = {
     props: { transaction_type: ["fiado", "old_debt", "payment", "return", "cash_sale"] },
   },
   client_signup_tapped: { event: "Client Signup Link Tapped", surface: "balance", props: {} },
+  // The rate calculator on the balance link (2026-11-19). Business question, the
+  // owner's: «¿los clientes calculan antes de pagar?». Read next to the payments
+  // recorded for the same clients: many openings and no more payments means the
+  // obstacle was never the arithmetic. One event per opening, not per session --
+  // someone who opens it twice before paying is the signal. `prefilled` is the
+  // balance it opened with, `none` for a client with nothing owed. A floor, not a
+  // count: it is sent from the client's browser.
+  balance_calculator_opened: {
+    event: "Client Calculator Opened",
+    surface: "balance",
+    props: { prefilled: ["USD", "EUR", "none"] },
+  },
   catalog_opened: { event: "Catalog Link Opened", surface: "catalog", props: { from_balance: "boolean" } },
   catalog_product_opened: {
     event: "Catalog Product Opened",
