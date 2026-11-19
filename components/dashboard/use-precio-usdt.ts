@@ -37,9 +37,21 @@ import type { UsdtP2p } from "@/lib/exchange-rate/usdt-p2p";
 // manejador de evento, nunca en el cuerpo del efecto — que es la forma que
 // ya usa el resto de este repo y la que la regla `set-state-in-effect`
 // acepta, porque un setState síncrono dentro de un efecto encadena renders.
-async function traerPrecio(): Promise<UsdtP2p | null> {
+//
+// TWO DOORS, ONE ANSWER (2026-11-19). The owner's calculator asks `/api/usdt`,
+// which needs a session. The client's, on `/s/[token]`, has no session and
+// asks `/api/share-usdt` with the link's token instead. Both read the same
+// server cache and answer the same `{ usdt }` shape.
+async function traerPrecio(shareToken?: string): Promise<UsdtP2p | null> {
   try {
-    const res = await fetch("/api/usdt", { cache: "no-store" });
+    const res = shareToken
+      ? await fetch("/api/share-usdt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: shareToken }),
+          cache: "no-store",
+        })
+      : await fetch("/api/usdt", { cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as { usdt: UsdtP2p | null };
     return data.usdt;
@@ -50,7 +62,7 @@ async function traerPrecio(): Promise<UsdtP2p | null> {
   }
 }
 
-export function usePrecioUsdt(abierto: boolean) {
+export function usePrecioUsdt(abierto: boolean, shareToken?: string) {
   const [precio, setPrecio] = useState<UsdtP2p | null>(null);
   // La edad es ESTADO y se recalcula al recibir, no durante el render.
   //
@@ -92,20 +104,20 @@ export function usePrecioUsdt(abierto: boolean) {
       if (!cancelado) aplicar(nuevo);
     };
 
-    traerPrecio().then(recibir);
+    traerPrecio(shareToken).then(recibir);
 
     // `visibilitychange` cubre la reanudación de la PWA y el volver a la
     // pestaña en escritorio. Solo mientras la calculadora está abierta: si
     // está cerrada no hay nada que refrescar.
     const alVolver = () => {
-      if (document.visibilityState === "visible") traerPrecio().then(recibir);
+      if (document.visibilityState === "visible") traerPrecio(shareToken).then(recibir);
     };
     document.addEventListener("visibilitychange", alVolver);
     return () => {
       cancelado = true;
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [abierto, aplicar]);
+  }, [abierto, aplicar, shareToken]);
 
   return { precio, edadSegundos };
 }

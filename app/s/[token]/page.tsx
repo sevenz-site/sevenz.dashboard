@@ -20,6 +20,9 @@ import { ExchangeRateBalanceDisplay } from "@/components/exchange-rate-balance-d
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import type { PriceCurrency } from "@/lib/products/price";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
+import { ClientRateCalculator } from "@/components/public/client-rate-calculator";
+import { rateStatusFor, todayInCaracas } from "@/lib/exchange-rate/rate-status";
+import { isFreshFetch } from "@/lib/exchange-rate/ensure-fresh";
 import {
   getBalanceLabel,
   CLIENT_STATUS_BADGE_CLASS,
@@ -392,6 +395,59 @@ export default async function SharedBalancePage({
     ? { rate: rateContext.effectiveRate }
     : null;
 
+  // THE CALCULATOR'S STAMP: «Tasa BCV del 19 nov 2026» (frame `2213:24379`).
+  //
+  // `get_shared_balance` sends the rate but not its date, and changing that
+  // function means drop + create plus the deploy-order rule for the one page
+  // every client opens. So the date is read here, from the same
+  // `get_current_bcv_rate()` the balance function reads, with the service
+  // client (that function is not granted to anon).
+  //
+  // ONLY IF IT IS THE SAME RATE. A fetch can land between the two reads; then
+  // this row's date belongs to a rate the cards are not using, and the stamp
+  // falls back to a bare «Tasa BCV» rather than putting a date on the wrong
+  // number.
+  //
+  // NOT REFRESHED HERE. The owner's screens refresh a stale rate on load; this
+  // public page never writes, so a rate fetched more than 20 minutes ago counts
+  // as unconfirmed and, if it is older than today, the calculator says when it
+  // was last checked instead of claiming the BCV took the day off. Same rule
+  // and same function as the owner's (`rate-status.ts`).
+  //
+  // CUSTOM rates: `026` reset them all and `profile/actions.ts` forces
+  // BCV_AUTO, but a row could still say CUSTOM. Then the cards' rate is not
+  // the BCV's, the stamp would lie, and the calculator is not drawn at all.
+  const calculadora = await (async () => {
+    if (!rateContext) return null;
+    const { effectiveRate, officialRate } = rateContext;
+    if (effectiveRate.usd !== officialRate.usd || effectiveRate.eur !== officialRate.eur) return null;
+    let rateDate: string | null = null;
+    let fetchedAt: string | null = null;
+    try {
+      const { data: actual, error: actualError } = await createServiceClient()
+        .rpc("get_current_bcv_rate")
+        .maybeSingle();
+      if (actualError) console.error("[sharedBalance] rate date failed:", actualError.message);
+      const fila = actual as { usd: number; eur: number; rate_date: string | null; fetched_at: string } | null;
+      if (fila && Number(fila.usd) === Number(officialRate.usd) && Number(fila.eur) === Number(officialRate.eur)) {
+        rateDate = fila.rate_date ?? null;
+        fetchedAt = fila.fetched_at ?? null;
+      }
+    } catch (rateError) {
+      console.error(
+        "[sharedBalance] rate date threw:",
+        rateError instanceof Error ? rateError.message : rateError,
+      );
+    }
+    const confirmed = isFreshFetch(fetchedAt);
+    return {
+      rate: effectiveRate,
+      rateDate,
+      rateFetchedAt: fetchedAt,
+      rateStatus: rateStatusFor(rateDate, todayInCaracas(), confirmed),
+    };
+  })();
+
   // LA MISMA FUNCIÓN QUE USA LA PANTALLA DEL TENDERO, a propósito: el chip que
   // el cliente ve no puede contradecir al que ve el dueño sobre la misma
   // cuenta.
@@ -642,6 +698,30 @@ export default async function SharedBalancePage({
                 mainClassName="text-3xl"
               />
             </BalanceRowCard>
+            {/* THE CALCULATOR, right under the balances it calculates from
+              (owner's request of 2026-11-19, frame `2213:24205`). It opens with
+              what the client owes written in, so only books with a debt go in
+              `saldo`: a balance in their favour has nothing to pay. Rounded to
+              cents, which is what the card above prints. */}
+            {/* «Calculadora» as a section title, added by the owner to frame
+              `2213:24205` on 2026-11-19 (node `2216:25412`): same 20px SemiBold
+              as «Pendiente», so the same classes as the other titles here. */}
+            {calculadora ? (
+              <h2 className="mt-1 text-xl font-semibold">Calculadora</h2>
+            ) : null}
+            {calculadora ? (
+              <ClientRateCalculator
+                token={token}
+                rate={calculadora.rate}
+                rateDate={calculadora.rateDate}
+                rateStatus={calculadora.rateStatus}
+                rateFetchedAt={calculadora.rateFetchedAt}
+                saldo={{
+                  ...(shared.balance_usd > 0 ? { USD: Math.round(shared.balance_usd * 100) / 100 } : {}),
+                  ...(shared.balance_eur > 0 ? { EUR: Math.round(shared.balance_eur * 100) / 100 } : {}),
+                }}
+              />
+            ) : null}
           </>
         ) : (
           <BalanceRowCard label={getBalanceLabel(shared.balance)} libro={estadosDeLibro[libroDe(null)]}>

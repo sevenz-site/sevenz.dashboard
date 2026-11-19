@@ -436,6 +436,10 @@ export type EventProps = {
   "Balance Link Opened": PublicContext;
   "Client Transaction Opened": PublicContext & { transaction_type?: string };
   "Client Signup Link Tapped": PublicContext;
+  // BUSINESS QUESTION, the owner's of 2026-11-19: «¿los clientes calculan antes
+  // de pagar?». If clients open it a lot and payments do not go up, the problem
+  // was never the arithmetic. `prefilled` says which balance it opened with.
+  "Client Calculator Opened": PublicContext & { prefilled?: string };
   "Catalog Link Opened": PublicContext & { from_balance?: boolean };
   "Catalog Product Opened": PublicContext & { product_id?: string; from_balance?: boolean };
   "Catalog Product Added": PublicContext & { product_id?: string; cart_lines?: number };
