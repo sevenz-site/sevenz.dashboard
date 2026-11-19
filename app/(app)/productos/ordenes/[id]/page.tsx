@@ -38,6 +38,7 @@ import {
   type CatalogOrderItemRow,
 } from "@/lib/orders/catalog-orders";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { getBolivarRates } from "@/lib/products/catalog";
 import type { BolivarRates, PriceTier } from "@/lib/products/price";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
@@ -565,9 +566,12 @@ export default async function OrdenPage({
                 </div>
                 {bsPorUnidad != null ? (
                   <span className="text-xs font-medium text-muted-foreground tabular-nums">
-                    {/* «Hoy», como lo escriben los frames: el total está
-                        cerrado y su valor en bolívares no. */}
-                    {formatPriceAmount(t.amount * bsPorUnidad, "VES")} Hoy
+                    {/* «hoy», because the total is sealed and its value in
+                        bolívares is not. Written by `formatBsHoy`, lowercase and
+                        after the figure: the app's one spelling since the
+                        owner's decision of 2026-11-06. The frames wrote «Hoy»
+                        and were corrected to the app, not the other way round. */}
+                    {formatBsHoy(t.amount * bsPorUnidad)}
                   </span>
                 ) : null}
               </div>
