@@ -6,9 +6,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
+import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CatalogBrandHeader } from "@/components/public/catalog-brand-header";
 import { createClient } from "@/lib/supabase/client";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
@@ -42,6 +42,14 @@ import { saveCatalogBranding } from "@/app/(app)/productos/personalizar/actions"
 //     para generación de creación de contenido de marketing». 500 characters, line breaks,
 //     no links. Placed under the colour, the other private field; no frame draws it, so
 //     its place and its two lines of copy are mine and said in the report.
+//
+// REVISED ON 2026-11-18, at the owner's request: «Debajo de la dirección agrega el check para
+// mostrar dirección en catálogo y elimínala de la sección de personalizar el catálogo». The
+// whole «Dirección» block left this screen, his choice that day («Quitar el bloque entero»):
+// the address and its box live in Mi negocio now, which also links here. «Ver cómo queda»
+// still shows the address when the saved box says so. And the back row became
+// `ScreenBackRow`, icon only, the Notificaciones header (his words: «debe ser mismo estilo
+// del header de notificaciones, solo icon y sin texto»), back to where the owner came from.
 
 type Props = {
   ownerId: string;
@@ -52,7 +60,11 @@ type Props = {
   coverPath: string | null;
   welcome: string | null;
   description: string | null;
+  // The SAVED value; it is set in Mi negocio since 2026-11-18. Only the preview reads it.
   showAddress: boolean;
+  // Where the back arrow goes: Mi negocio when entered from there, Catálogo otherwise.
+  backHref: string;
+  backLabel: string;
 };
 
 // «MC» for «Mini abasto El Chino», as the frame draws a business with no logo yet: the
@@ -78,7 +90,6 @@ export function CatalogBrandingForm(props: Props) {
   const [uploading, setUploading] = useState(false);
   const [welcome, setWelcome] = useState(props.welcome ?? "");
   const [description, setDescription] = useState(props.description ?? "");
-  const [showAddress, setShowAddress] = useState(props.showAddress && Boolean(props.address));
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const chosen = normalizeHex(colorText);
@@ -88,7 +99,7 @@ export function CatalogBrandingForm(props: Props) {
   const welcomeLength = [...welcome].length;
   const descriptionCheck = checkDescription(description);
   const descriptionLength = [...description].length;
-  const hasAddress = Boolean(props.address && props.address.trim());
+  const shownAddress = props.showAddress && props.address?.trim() ? props.address : null;
 
   // An upload nobody saved, about to be replaced or dropped: nothing will ever point at it.
   // Best effort -- failing to remove it costs a few KB, and the nightly cleanup takes it.
@@ -134,7 +145,6 @@ export function CatalogBrandingForm(props: Props) {
         coverPath,
         welcome,
         description,
-        showAddress: showAddress && hasAddress,
       });
       if (!result.ok) {
         toast.error(result.error);
@@ -151,10 +161,8 @@ export function CatalogBrandingForm(props: Props) {
   return (
     <div className="flex min-h-full flex-col">
       {/* ── TÍTULO, nodes `2115:21826` / `2115:21924` ─────────────────────── */}
-      <div className="flex flex-col gap-1 pt-1 pb-2">
-        <Link href="/productos" className="w-fit text-sm leading-5 text-muted-foreground hover:text-foreground">
-          ← Catálogo
-        </Link>
+      <ScreenBackRow href={props.backHref} label={props.backLabel} soloEnTelefono={false} />
+      <div className="flex flex-col gap-1 pt-4 pb-2">
         <h1 className="text-2xl leading-[35px] font-semibold">Personalizar catálogo</h1>
         <p className="text-sm leading-5 text-muted-foreground md:max-w-[560px]">
           Así te ven tus clientes cuando abren tu catálogo.
@@ -286,30 +294,6 @@ export function CatalogBrandingForm(props: Props) {
           {!welcomeCheck.ok ? <p className="text-xs leading-[17px] text-destructive">{welcomeCheck.error}</p> : null}
         </div>
 
-        {/* ── DIRECCIÓN, nodes `2115:21854` / `2115:21907` ──────────────────── */}
-        <div className="flex flex-col gap-2">
-          <span className="text-sm leading-5 font-medium">Dirección</span>
-          <div className="flex flex-col gap-2.5">
-            <p className="text-base leading-[22px] break-words md:text-[15px]">
-              {hasAddress ? props.address : <span className="text-muted-foreground">Todavía no tienes dirección.</span>}
-            </p>
-            <label className="flex items-center gap-2.5 rounded-[8px] border bg-background p-3 text-sm leading-5 has-[button:disabled]:opacity-60">
-              <Checkbox
-                checked={showAddress}
-                disabled={!hasAddress}
-                onCheckedChange={(v) => setShowAddress(v === true)}
-              />
-              Mostrar mi dirección en el catálogo
-            </label>
-            <Link href="/profile" className="w-fit text-[13px] leading-[19px] font-medium underline-offset-2 hover:underline">
-              {hasAddress ? "Cambiarla en Mi negocio" : "Agregarla en Mi negocio"}
-            </Link>
-          </div>
-          <p className="text-xs leading-[17px] text-muted-foreground">
-            Sale de Mi negocio. No se muestra hasta que marques la casilla.
-          </p>
-        </div>
-
         {/* ── LOGO, nodes `2115:21861` / `2115:21914` ──────────────────────── */}
         <div className="flex flex-col gap-2">
           <span className="text-sm leading-5 font-medium">Logo</span>
@@ -362,7 +346,7 @@ export function CatalogBrandingForm(props: Props) {
               title={props.businessName || "Catálogo"}
               coverUrl={coverPreview}
               welcome={welcomeCheck.ok ? welcomeCheck.text : null}
-              address={showAddress && hasAddress ? props.address : null}
+              address={shownAddress}
             />
           </div>
           <p className="px-4 py-4 text-xs leading-[17px] text-muted-foreground">

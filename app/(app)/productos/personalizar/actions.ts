@@ -28,8 +28,10 @@ import { WELCOME_MAX } from "@/lib/catalog/welcome";
 // client. RLS («owners update own row») is the second line, not the only one (CLAUDE.md,
 // «Explicit ownership checks in server actions»).
 //
-// The address itself is not written here: it belongs to «Mi negocio». This screen only
-// decides whether the catalogue shows it.
+// The address is not written here: it belongs to «Mi negocio». Since 2026-11-18 neither is
+// whether the catalogue shows it -- that box moved under the address, at the owner's request,
+// and `updateBusinessSettings` saves it. A tab opened before that may still send
+// `showAddress`; it is ignored, so saving from it changes nothing about the address.
 //
 // ── THE EVENTS: «Catalog Customized» and «Catalog Customization Rejected» ─────────────
 //
@@ -54,7 +56,8 @@ export type CatalogBrandingInput = {
   welcome: string;
   // Private: never in the catalogue (211). Optional so an older open tab still saves.
   description?: string;
-  showAddress: boolean;
+  // Ignored since 2026-11-18: the box is saved from Mi negocio. Kept so an older tab still saves.
+  showAddress?: boolean;
 };
 
 type RejectReason = EventProps["Catalog Customization Rejected"]["reason"];
@@ -130,7 +133,6 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
       catalog_cover_path: coverPath,
       catalog_welcome: welcome.text,
       brand_description: description.text,
-      catalog_show_address: Boolean(input.showAddress),
     })
     .eq("id", user.id);
   if (error) {
@@ -153,7 +155,6 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     previousCover !== coverPath && "cover",
     (before?.catalog_welcome ?? null) !== welcome.text && "welcome",
     (before?.brand_description ?? null) !== description.text && "description",
-    Boolean(before?.catalog_show_address) !== Boolean(input.showAddress) && "show_address",
   ].filter((x): x is string => Boolean(x));
   trackServer(
     "Catalog Customized",
@@ -165,7 +166,8 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
       welcome_length: welcome.text ? [...welcome.text].length : 0,
       has_description: Boolean(description.text),
       description_length: description.text ? [...description.text].length : 0,
-      show_address: Boolean(input.showAddress),
+      // The saved value, read from the row: since 2026-11-18 this screen no longer sets it.
+      show_address: Boolean(before?.catalog_show_address),
       changed,
     },
     user.email,

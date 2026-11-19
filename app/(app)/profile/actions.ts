@@ -84,6 +84,10 @@ export async function updateBusinessSettings(
   const lastName = String(formData.get("last_name") ?? "").trim();
   const address = String(formData.get("address") ?? "").trim();
   const taxId = String(formData.get("tax_id") ?? "").trim();
+  // The catalogue box (2026-11-18, moved here from «Personalizar catálogo»). Written only
+  // when the form says it carries it, and never ON over an empty address.
+  const showAddressSent = formData.get("catalog_show_address_sent") === "1";
+  const showAddress = showAddressSent && Boolean(address) && formData.get("catalog_show_address") === "1";
   const logoPath = String(formData.get("logo_path") ?? "").trim();
   const country = String(formData.get("country") ?? "CO");
 
@@ -128,7 +132,7 @@ export async function updateBusinessSettings(
   // be cleaned up once the new value is saved.
   const { data: before } = await supabase
     .from("owners")
-    .select("logo_path, whatsapp, business_name, first_name, last_name, address, tax_id")
+    .select("logo_path, whatsapp, business_name, first_name, last_name, address, tax_id, catalog_show_address")
     .eq("id", user.id)
     .single();
 
@@ -157,6 +161,7 @@ export async function updateBusinessSettings(
       address: address || null,
       tax_id: taxId || null,
       ...logoUpdate,
+      ...(showAddressSent ? { catalog_show_address: showAddress } : {}),
       // `payment_info` is no longer written from here: since migration 179
       // payment methods live in `owner_payment_methods`, one row each, saved
       // by their own actions below. Writing `formData.get("payment_info")`
@@ -194,6 +199,7 @@ export async function updateBusinessSettings(
     (before?.address ?? "") !== address && "dirección",
     (before?.tax_id ?? "") !== taxId && "documento fiscal",
     "logo_path" in logoUpdate && (before?.logo_path ?? null) !== logoUpdate.logo_path && "logo",
+    showAddressSent && Boolean(before?.catalog_show_address) !== showAddress && "dirección en el catálogo",
   ].filter(Boolean);
   if (changed.length > 0) {
     await logSecurityAudit(user.id, "business_profile_changed", "owner", { fields: changed }).catch((e) =>
@@ -211,6 +217,10 @@ export async function updateBusinessSettings(
       has_whatsapp: Boolean(before?.whatsapp),
       has_address: Boolean(address),
       has_tax_id: Boolean(taxId),
+      // Since 2026-11-18 the box is saved here and not in «Personalizar catálogo»: DOES THE
+      // OWNER SHOW WHERE THE SHOP IS? Read from what was just written, or from the row when
+      // an older tab did not send it.
+      shows_address_in_catalog: showAddressSent ? showAddress : Boolean(before?.catalog_show_address),
     },
     user.email,
   );

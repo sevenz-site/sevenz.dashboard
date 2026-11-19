@@ -372,6 +372,7 @@ export type EventProps = {
     has_whatsapp: boolean;
     has_address: boolean;
     has_tax_id: boolean;
+    shows_address_in_catalog: boolean;
   };
   "Business Profile Rejected": { reason: "required_field" | "invalid_whatsapp" | "invalid_country" | "logo_gone" | "db_error" };
   // CT-170: «Personalizar catálogo». Yes / no per part and what changed; never a value.
