@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { aplicarEdicionDeLinea, type LineaDelPedidoParaEditar } from "@/lib/orders/editar-linea";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
+import {
+  edicionDeLinea,
+  esLineaAgregada,
+  quitarLineaAgregada,
+} from "@/lib/orders/borrador-de-registro";
 import { formatCantidad } from "@/lib/products/cantidad";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
@@ -103,7 +108,7 @@ export function OrderLineStepper({
   const router = useRouter();
   const [quitando, startQuitar] = useTransition();
   const borrador = useBorrador(pedidoId);
-  const editada = borrador?.editadas?.[lineaId];
+  const editada = edicionDeLinea(borrador, lineaId);
   const cantidad = editada?.quantity ?? cantidadPedida;
   // La moneda de la línea también puede estar editada: se respeta, o un
   // cambio de cantidad devolvería la línea a su moneda original sin avisar.
@@ -170,6 +175,15 @@ export function OrderLineStepper({
         onClick={() => {
           if (cantidad > MINIMO) {
             guardar(cantidad - 1);
+            return;
+          }
+          // A PRODUCT ADDED ON STEP 1/3 LEAVES THE DRAFT, NOT THE ORDER: it was
+          // never in `catalog_order_items`, so the server action below would
+          // find nothing to soft-delete. There is no «Restaurar» for it either;
+          // putting it back is one tap on «Agregar producto».
+          if (esLineaAgregada(lineaId)) {
+            quitarLineaAgregada(pedidoId, lineaId);
+            router.refresh();
             return;
           }
           startQuitar(async () => {

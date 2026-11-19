@@ -38,6 +38,8 @@ export function ProductSheet({
   producto,
   rates,
   monedasPermitidas,
+  rotuloDeMonedaFija,
+  monedaExtra,
   onAgregar,
   umbralDeStock,
 }: {
@@ -56,6 +58,10 @@ export function ProductSheet({
   };
   rates: BolivarRates | null;
   monedasPermitidas: PriceCurrency[];
+  /** See `ProductDetail.rotuloDeMonedaFija`: «Moneda del pedido» from an order. */
+  rotuloDeMonedaFija?: string;
+  /** See `ProductDetail.monedaExtra`. */
+  monedaExtra?: PriceCurrency;
   onAgregar: (linea: { quantity: number; currency: PriceCurrency }) => void;
 }) {
   const foto = producto.photoPath || null;
@@ -133,6 +139,8 @@ export function ProductSheet({
             rates={rates}
             stock={producto.stock}
             monedasPermitidas={monedasPermitidas}
+            rotuloDeMonedaFija={rotuloDeMonedaFija}
+            monedaExtra={monedaExtra}
             alAgregar={({ quantity, currency }) => {
               onAgregar({ quantity, currency });
               onOpenChange(false);

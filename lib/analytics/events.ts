@@ -322,6 +322,9 @@ export type EventProps = {
     sale_id: string;
     currency: string;
     currencies_left: number;
+    // Products the shopkeeper added on step 1/3 that the customer did not order
+    // (2026-11-19). 0 on every sale before that day.
+    added_lines: number;
   };
   "Order Registration Rejected": FlowContext & { order_id: string; currency: string };
   "Order Status Changed": { order_id: string; action: "discard" | "restore" };

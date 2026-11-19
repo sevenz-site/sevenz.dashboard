@@ -27,6 +27,7 @@ import {
   type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
+import { totalDelBloque } from "@/lib/orders/bloques-de-moneda";
 import { useZonaDelNegocio } from "@/components/fecha";
 import {
   formatPriceAmount,
@@ -148,22 +149,11 @@ export function OrderCurrencyPaymentForm({
   const [avisando, setAvisando] = useState(false);
 
   const borradorDeLineas = useBorrador(pedidoId);
-  const total =
-    Math.round(
-      lineas.reduce((suma, l) => {
-        if (l.productId == null) return suma;
-        const edicion = borradorDeLineas?.editadas?.[l.id];
-        if (edicion && String(edicion.currency) !== String(moneda)) return suma;
-        // MISMA CUENTA QUE `OrderTotalCard`, incluido el precio de la
-        // edición: este número es el TECHO de lo que se deja cobrar, así que
-        // si se quedara con el precio sellado el tendero no podría cobrar la
-        // venta que la pantalla de al lado le está enseñando.
-        return (
-          suma +
-          (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario)
-        );
-      }, 0) * 100,
-    ) / 100;
+  // THE SAME FUNCTION AS `OrderTotalCard`, edited prices and added products
+  // included: this number is the CEILING of what may be charged, so a ceiling
+  // below the card's figure would stop the shopkeeper charging the sale the
+  // card above is showing.
+  const total = totalDelBloque(lineas, moneda, borradorDeLineas);
   const router = useRouter();
 
   // THE DRAFT IS READ THROUGH `useSyncExternalStore`, the house pattern of

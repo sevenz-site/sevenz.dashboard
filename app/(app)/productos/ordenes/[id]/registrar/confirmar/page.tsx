@@ -19,6 +19,11 @@ import { StockBadge } from "@/components/stock-badge";
 import { loadLowStockThreshold } from "@/lib/products/low-stock-threshold";
 import { OrderLineStepper } from "@/components/dashboard/order-line-stepper";
 import { productoParaVentaPorId } from "@/app/(app)/ventas/actions";
+import { OrderLineCard } from "@/components/dashboard/order-line-card";
+import {
+  OrderAddedLines,
+  OrderAddProductButton,
+} from "@/components/dashboard/order-add-product";
 
 // STEP `2/4 Confirmar pedido` — frame `1652:12831`, read with the desktop
 // bridge on 2026-10-25.
@@ -164,84 +169,87 @@ export default async function ConfirmarBloquePage({
         // El frame lo rotula «Disponible», que es lo que el tendero entiende.
         const stock = producto?.stock_opening ?? null;
 
+        // THE CARD'S SHAPE IS `OrderLineCard` since 2026-11-19, shared with the
+        // products added on this step. Each slot holds exactly what used to be
+        // written inline here.
         return (
-          <div key={linea.id} className="flex flex-col gap-2 rounded-xl border bg-card p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                {/* ── EL NOMBRE Y EL STOCK, EN LA MISMA FILA ──────────────
-                    El frame dibuja un «Product Header» con el nombre y, a su
-                    lado, un `chip_info` que dice «Disponible: 00». Aquí el
-                    stock era una línea de texto suelta debajo, y el dueño lo
-                    reportó el 2026-10-26 con la captura.
-
-                    ES EL MISMO CHIP QUE LA HOJA «Editar pedido», no uno
-                    nuevo: es el mismo dato del mismo producto a un toque de
-                    distancia, y dos dibujos distintos de la misma cifra se
-                    leen como dos cifras.
-
-                    SIN STOCK NO HAY CHIP. `stock_opening` es nulo en un
-                    producto que no lo lleva, y un chip que dijera
-                    «Disponible: —» afirma que se midió y salió vacío. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium">{linea.nombre}</p>
-                  {/* EL CHIP ES AHORA `StockBadge`, el mismo de las otras
-                      siete pantallas. Lo que había aquí era una pastilla
-                      verde rellena, sin borde y con su propia tonalidad --un
-                      tercer dibujo de la misma cifra-- y decía verde para
-                      CUALQUIER cantidad, cero incluido. */}
-                  {producto != null ? (
-                    <StockBadge quantity={stock} threshold={umbralDeStock} />
-                  ) : null}
-                </div>
-                {producto == null ? (
-                  // LA LÍNEA QUE NO VA A ENTRAR, dicha aquí y no al final. La
-                  // decisión del dueño del 2026-10-24 es «se excluye esa línea
-                  // y se avisa»; avisar tres pantallas después, cuando la
-                  // venta ya está escrita, no es avisar.
-                  <p className="text-sm text-destructive">
-                    Este producto ya no está en tu catálogo, así que no entrará
-                    en la venta.
-                  </p>
-                ) : null}
-                <CantidadDeLinea
+          <OrderLineCard
+            key={linea.id}
+            nombre={linea.nombre}
+            // ── EL NOMBRE Y EL STOCK, EN LA MISMA FILA ──────────────────
+            // El frame dibuja un «Product Header» con el nombre y, a su lado,
+            // un `chip_info` que dice «Disponible: 00». Aquí el stock era una
+            // línea de texto suelta debajo, y el dueño lo reportó el
+            // 2026-10-26 con la captura.
+            //
+            // ES EL MISMO CHIP QUE LA HOJA «Editar pedido», no uno nuevo: es
+            // el mismo dato del mismo producto a un toque de distancia, y dos
+            // dibujos distintos de la misma cifra se leen como dos cifras.
+            //
+            // SIN STOCK NO HAY CHIP. `stock_opening` es nulo en un producto
+            // que no lo lleva, y un chip que dijera «Disponible: —» afirma que
+            // se midió y salió vacío.
+            //
+            // EL CHIP ES AHORA `StockBadge`, el mismo de las otras siete
+            // pantallas. Lo que había aquí era una pastilla verde rellena, sin
+            // borde y con su propia tonalidad --un tercer dibujo de la misma
+            // cifra-- y decía verde para CUALQUIER cantidad, cero incluido.
+            chip={
+              producto != null ? (
+                <StockBadge quantity={stock} threshold={umbralDeStock} />
+              ) : null
+            }
+            // LA LÍNEA QUE NO VA A ENTRAR, dicha aquí y no al final. La
+            // decisión del dueño del 2026-10-24 es «se excluye esa línea y se
+            // avisa»; avisar tres pantallas después, cuando la venta ya está
+            // escrita, no es avisar.
+            aviso={
+              producto == null ? (
+                <p className="text-sm text-destructive">
+                  Este producto ya no está en tu catálogo, así que no entrará
+                  en la venta.
+                </p>
+              ) : null
+            }
+            cantidad={
+              <CantidadDeLinea
+                pedidoId={pedido.id}
+                lineaId={linea.id}
+                cantidadPedida={linea.cantidadPedida}
+              />
+            }
+            // ── «−» Y «+» DEBAJO DEL NOMBRE — frame `1389:8388` ────────
+            // Encargo del dueno el 2026-10-28.
+            //
+            // EN SU PROPIA FILA Y NO AL LADO DEL IMPORTE, que fue mi primer
+            // intento y se vio en pantalla: las tres cajas miden 128px, y con
+            // el nombre y el importe en la misma fila a 375px el nombre se
+            // partia en dos lineas y la columna de la izquierda quedaba
+            // estrujada. El frame ya lo resuelve asi -- su fila de arriba lleva
+            // foto, nombre y stepper, y el importe baja a la fila del subtotal.
+            //
+            // SOLO SI EL PRODUCTO SIGUE EN EL CATALOGO: sin el no hay precio
+            // con el que recalcular, y esa linea ya dice en rojo que no entra
+            // en la venta.
+            stepper={
+              edicionDe.get(linea.id) ? (
+                <OrderLineStepper
                   pedidoId={pedido.id}
                   lineaId={linea.id}
                   cantidadPedida={linea.cantidadPedida}
+                  moneda={bloque.moneda}
+                  producto={edicionDe.get(linea.id)!.p.producto}
+                  rates={edicionDe.get(linea.id)!.rates}
+                  lineasDelPedido={lineasDelPedido}
+                  // LA ULTIMA LINEA VIVA DEL PEDIDO NO SE QUITA, y la cuenta es
+                  // sobre el PEDIDO entero y no sobre este bloque de moneda:
+                  // quitar la unica linea de euros teniendo dolares vivos es
+                  // legitimo. El servidor lo vuelve a comprobar.
+                  sePuedeQuitar={lineasDelPedido.length > 1}
                 />
-                {/* ── «−» Y «+» DEBAJO DEL NOMBRE — frame `1389:8388` ────
-                    Encargo del dueno el 2026-10-28.
-
-                    EN SU PROPIA FILA Y NO AL LADO DEL IMPORTE, que fue mi
-                    primer intento y se vio en pantalla: las tres cajas miden
-                    128px, y con el nombre y el importe en la misma fila a
-                    375px el nombre se partia en dos lineas y la columna de la
-                    izquierda quedaba estrujada. El frame ya lo resuelve asi
-                    -- su fila de arriba lleva foto, nombre y stepper, y el
-                    importe baja a la fila del subtotal.
-
-                    SOLO SI EL PRODUCTO SIGUE EN EL CATALOGO: sin el no hay
-                    precio con el que recalcular, y esa linea ya dice en rojo
-                    que no entra en la venta. */}
-                {edicionDe.get(linea.id) ? (
-                  <div className="pt-2">
-                    <OrderLineStepper
-                      pedidoId={pedido.id}
-                      lineaId={linea.id}
-                      cantidadPedida={linea.cantidadPedida}
-                      moneda={bloque.moneda}
-                      producto={edicionDe.get(linea.id)!.p.producto}
-                      rates={edicionDe.get(linea.id)!.rates}
-                      lineasDelPedido={lineasDelPedido}
-                      // LA ULTIMA LINEA VIVA DEL PEDIDO NO SE QUITA, y la
-                      // cuenta es sobre el PEDIDO entero y no sobre este
-                      // bloque de moneda: quitar la unica linea de euros
-                      // teniendo dolares vivos es legitimo. El servidor lo
-                      // vuelve a comprobar.
-                      sePuedeQuitar={lineasDelPedido.length > 1}
-                    />
-                  </div>
-                ) : null}
-              </div>
+              ) : null
+            }
+            importe={
               <ImporteDeLinea
                 pedidoId={pedido.id}
                 lineaId={linea.id}
@@ -251,8 +259,8 @@ export default async function ConfirmarBloquePage({
                 rates={rates}
                 hayProducto={producto != null}
               />
-            </div>
-
+            }
+          >
             {comentario ? (
               <div className="rounded-lg bg-muted/50 p-3">
                 <p className="text-xs font-medium text-muted-foreground">
@@ -285,9 +293,20 @@ export default async function ConfirmarBloquePage({
                 />
               );
             })()}
-          </div>
+          </OrderLineCard>
         );
       })}
+
+      {/* THE PRODUCTS ADDED WITH «Agregar producto», after the ordered ones
+          (frame `2211:22439`, owner's request of 2026-11-19). The browser
+          draws them: they live in the draft, which this page cannot read. */}
+      <OrderAddedLines
+        pedidoId={pedido.id}
+        moneda={bloque.moneda}
+        rates={rates}
+        umbralDeStock={umbralDeStock}
+        lineasDelPedido={lineasDelPedido}
+      />
 
       {quitadasDeEsteBloque ? (
         <OrderCurrencyRestoreCard
@@ -305,13 +324,33 @@ export default async function ConfirmarBloquePage({
           campos, pero el componente es el mismo para todo el flujo y copiar
           sus clases a mano es justo cómo se rompió la segunda vez. */}
       <StickyActions>
-        <Button className="h-10 w-full" asChild>
-          <Link
-            href={`/productos/ordenes/${pedido.id}/registrar/pago?moneda=${bloque.moneda}`}
-          >
-            Confirmar y continuar
-          </Link>
-        </Button>
+        {/* THE TWO BUTTONS, STACKED AND 8px APART — frame `2210:22299`, and on
+            the web too: the owner chose option A on 2026-11-19 (frame
+            `2211:22604`), so there is no breakpoint here. Wrapped in their own
+            column because `StickyActions` spaces its children 16px apart, and
+            the frame groups these two as one pair. Both live INSIDE it, so
+            with the keyboard up neither stays glued to the bottom edge. */}
+        <div className="flex flex-col gap-2">
+          <Button className="h-10 w-full" asChild>
+            <Link
+              href={`/productos/ordenes/${pedido.id}/registrar/pago?moneda=${bloque.moneda}`}
+            >
+              Confirmar y continuar
+            </Link>
+          </Button>
+          <OrderAddProductButton
+            pedidoId={pedido.id}
+            moneda={bloque.moneda}
+            ownerId={ownerId}
+            umbralDeStock={umbralDeStock}
+            lineasDelBloque={bloque.lineas.map((l) => ({
+              id: l.id,
+              productId: l.productId,
+              cantidadPedida: l.cantidadPedida,
+            }))}
+            lineasDelPedido={lineasDelPedido}
+          />
+        </div>
       </StickyActions>
     </div>
   );

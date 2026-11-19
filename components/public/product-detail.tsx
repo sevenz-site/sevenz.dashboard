@@ -109,6 +109,8 @@ export function ProductDetail({
   volverAlCatalogo,
   alAgregar,
   monedasPermitidas,
+  rotuloDeMonedaFija,
+  monedaExtra,
 }: {
   token: string;
   productId: string;
@@ -179,6 +181,19 @@ export function ProductDetail({
   // bolívares ni USDT. Sin ella, esta pantalla ofrecería una moneda que la
   // venta rechaza al guardar.
   monedasPermitidas?: PriceCurrency[];
+  // WHY THERE IS ONE CURRENCY AND NO CHOICE, said on the currency row instead of
+  // its amount. Set only by the order's «Agregar al pedido» (frame `2211:22392`,
+  // 2026-11-19): «Paga en USD · Moneda del pedido». The amount is already two
+  // rows up, on the tier, so the row's job there is to say the currency is fixed.
+  rotuloDeMonedaFija?: string;
+  // A CURRENCY OFFERED EVEN IF THE TIER DOES NOT ENABLE IT, as long as it has a
+  // price (pinned, base, or converted with today's rate). Only the order's
+  // «Agregar al pedido» and its added lines' «Cambiar» pass it (2026-11-19):
+  // the product enters in the order block's currency, which the owner's frame
+  // converts when the product is priced in another one. Without it, opening
+  // «Cambiar» on such a line would silently select another currency. The
+  // customer's catalogue never passes it.
+  monedaExtra?: PriceCurrency;
   // NO `baseCurrency` NOR `currencies` AS PROPS SINCE MIGRATION 114. Both
   // belong to the TIER now and travel inside each `BloquePrecio`, so this
   // screen cannot hold one base while showing two tiers' prices -- which is
@@ -203,7 +218,13 @@ export function ProductDetail({
   const bloque = escalon === "wholesale" ? producto.wholesale : producto.retail;
   const monedas = useMemo(
     () => {
-      const todas = monedasDelBloque(bloque, rates);
+      const delBloque = monedasDelBloque(bloque, rates);
+      const todas =
+        monedaExtra &&
+        !delBloque.includes(monedaExtra) &&
+        precioEnMoneda(bloque, monedaExtra, rates) != null
+          ? [...delBloque, monedaExtra]
+          : delBloque;
       // SIN FILTRO, LO DE SIEMPRE: el cliente paga en lo que el producto
       // ofrezca, bolívares y USDT incluidos.
       if (!monedasPermitidas) return todas;
@@ -215,7 +236,7 @@ export function ProductDetail({
       // servidor rechaza es mover el fallo a más tarde, no evitarlo.
       return todas.filter((c) => monedasPermitidas.includes(c));
     },
-    [bloque, rates, monedasPermitidas],
+    [bloque, rates, monedasPermitidas, monedaExtra],
   );
 
   // LA MONEDA ELEGIDA NO ES UN ESTADO INDEPENDIENTE, y eso evita un fallo que
@@ -476,14 +497,20 @@ export function ProductDetail({
                       {ETIQUETA_MONEDA[c] ?? `Paga en ${c}`}
                     </span>
                   </span>
-                  <span className="shrink-0 text-right text-sm tabular-nums">
-                    {p.texto}
-                    {p.bs ? (
-                      <span className="block text-xs text-muted-foreground">
-                        {p.bs}
-                      </span>
-                    ) : null}
-                  </span>
+                  {rotuloDeMonedaFija && !hayQueElegir ? (
+                    <span className="shrink-0 text-right text-xs text-muted-foreground">
+                      {rotuloDeMonedaFija}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-right text-sm tabular-nums">
+                      {p.texto}
+                      {p.bs ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {p.bs}
+                        </span>
+                      ) : null}
+                    </span>
+                  )}
                 </Fila>
               );
             })}

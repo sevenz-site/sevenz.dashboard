@@ -1,5 +1,10 @@
 import type { CatalogOrderItemRow } from "@/lib/orders/catalog-orders";
-import type { LineaEditada } from "@/lib/orders/borrador-de-registro";
+import {
+  edicionDeLinea,
+  lineasAgregadasEn,
+  type BorradorDeRegistro,
+  type LineaEditada,
+} from "@/lib/orders/borrador-de-registro";
 import type { PriceCurrency } from "@/lib/products/price";
 
 // THE ORDER, GROUPED THE WAY IT IS NOW REGISTERED: BY CURRENCY.
@@ -96,6 +101,46 @@ export function bloquesDeMoneda(
       const ib = orden.indexOf(b.moneda);
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
+}
+
+// ── WHAT ONE BLOCK CHARGES, WITH THE DRAFT APPLIED ───────────────────
+//
+// The order lines as the server drew them, corrected by «Editar» / «−» «+»
+// (`editadas`), minus the ones moved to another currency, plus the products
+// added on step 1/3 that now sit in this currency (2026-11-19).
+//
+// ONE FUNCTION BECAUSE FOUR PLACES ASK: «Total a pagar» on steps 1/3 and 2/3,
+// the ceiling of what the payment form lets the shopkeeper charge, the block
+// card on `1/x Pedido`, and the «mala paga» check. Until this day the first two
+// carried the same `reduce` twice; an added product counted in one and not the
+// other would be a screen promising one figure and a ceiling allowing another.
+//
+// AN ADDED LINE WITH NO PRICE (no rate to convert with when it was added) adds
+// nothing here; the server refuses that sale with its own message rather than
+// this inventing a number.
+export type LineaSelladaDelBloque = {
+  id: string;
+  productId: string | null;
+  cantidad: number;
+  precioUnitario: number;
+};
+
+export function totalDelBloque(
+  lineas: readonly LineaSelladaDelBloque[],
+  moneda: string,
+  borrador: BorradorDeRegistro | null,
+): number {
+  let suma = 0;
+  for (const l of lineas) {
+    if (l.productId == null) continue;
+    const edicion = edicionDeLinea(borrador, l.id);
+    if (edicion && String(edicion.currency) !== String(moneda)) continue;
+    suma += (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario);
+  }
+  for (const a of lineasAgregadasEn(borrador, moneda)) {
+    suma += a.quantity * (a.unitPrice ?? 0);
+  }
+  return Math.round(suma * 100) / 100;
 }
 
 // A BLOCK WITH NOTHING LEFT TO SELL. Every one of its products has gone from

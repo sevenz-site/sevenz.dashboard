@@ -1307,6 +1307,136 @@ try {
     );
   }
 
+  // ═══ 19. UN PRODUCTO AGREGADO EN EL PASO 1/3 ═════════════════════════
+  //
+  // Owner's request of 2026-11-19: «Agregar producto» on step 1/3 adds a
+  // product the customer did not order. His decisions that day, and what each
+  // row below proves:
+  //   · It enters the SALE only: `catalog_order_items` must not change (19c).
+  //   · The price never travels from the browser: the payload below carries a
+  //     `unitPrice` of 0.01 on purpose, and the sale must charge the catalogue's
+  //     price anyway (19b).
+  //   · Stock and frozen cost go the same way as any sale line (19d, 19e).
+  //
+  // Everything runs through the owner's session, like the rest of this suite.
+  {
+    const { data: prodAgregado, error: eAg } = await admin
+      .from("products")
+      .insert({
+        owner_id: ve.id,
+        name: `${MARCA} agregado`,
+        base_currency: "USD",
+        price_retail: 3,
+        published_retail: true,
+        cost: 1.5,
+        cost_currency: "USD",
+        stock_opening: 10,
+      })
+      .select("id")
+      .single();
+    if (eAg) throw new Error(`products agregado: ${eAg.message}`);
+    creados.productos.push(prodAgregado.id);
+
+    const pedidoAg = await nuevoPedido("con agregado", [lineaViva]);
+    const { data: itemsAntes } = await admin
+      .from("catalog_order_items")
+      .select("id, product_id, quantity, unit_price, currency, deleted_at")
+      .eq("order_id", pedidoAg.id)
+      .order("id");
+
+    // 2 × 5 (sealed) + 2 × 3 (added, catalogue price) = 16, paid in full.
+    const rAg = await registrar(
+      {
+        ...entradaDe(pedidoAg.id, "USD", pagoDeMoneda({ amount: 16 }), clienteNuevo("19191919")),
+        agregadas: [
+          // `unitPrice` IS AN ATTACK, not a field: the action's type has none, and
+          // whatever arrives in it must be ignored.
+          { productId: prodAgregado.id, quantity: 2, currency: "USD", unitPrice: 0.01 },
+          // A line in ANOTHER currency must stay out of this call.
+          { productId: prodEur.id, quantity: 1, currency: "EUR" },
+        ],
+      },
+      pedidoAg.id,
+    );
+    if (rAg.ok && rAg.clientId) creados.clientes.push(rAg.clientId);
+    check(
+      "19a. el pedido con un producto agregado se registra, pagado entero por 16",
+      rAg.ok === true,
+      rAg.ok ? rAg.saleId : rAg.error,
+    );
+
+    const { data: lineasAg } = await admin
+      .from("sale_lines")
+      .select("product_id, unit_price, quantity, currency, unit_cost, stock_taken")
+      .eq("sale_id", rAg.ok ? rAg.saleId : VACIO);
+    const agregada = (lineasAg ?? []).find((l) => l.product_id === prodAgregado.id);
+    check(
+      "19b. la venta lleva la línea agregada con el precio del SERVIDOR (3), no el 0,01 que mandó el navegador",
+      (lineasAg ?? []).length === 2 &&
+        agregada != null &&
+        Number(agregada.unit_price) === 3 &&
+        Number(agregada.quantity) === 2 &&
+        agregada.currency === "USD",
+      `${(lineasAg ?? []).length} líneas · agregada ${agregada ? `${agregada.quantity} × ${agregada.unit_price} ${agregada.currency}` : "NO ESTÁ"}`,
+    );
+    check(
+      "19b2. la línea en EUROS no entra en la venta de dólares",
+      !(lineasAg ?? []).some((l) => l.product_id === prodEur.id),
+      (lineasAg ?? []).map((l) => l.currency).join(", "),
+    );
+
+    const { data: itemsDespues } = await admin
+      .from("catalog_order_items")
+      .select("id, product_id, quantity, unit_price, currency, deleted_at")
+      .eq("order_id", pedidoAg.id)
+      .order("id");
+    check(
+      "19c. el pedido que ve el cliente NO cambia: `catalog_order_items` igual antes y después",
+      JSON.stringify(itemsAntes) === JSON.stringify(itemsDespues) && (itemsDespues ?? []).length === 1,
+      `${(itemsAntes ?? []).length} → ${(itemsDespues ?? []).length} líneas`,
+    );
+    check(
+      "19d. la línea agregada congela su costo (1,5)",
+      agregada != null && Number(agregada.unit_cost) === 1.5,
+      `unit_cost = ${agregada?.unit_cost}`,
+    );
+    const { data: stockAg } = await admin
+      .from("products")
+      .select("stock_opening")
+      .eq("id", prodAgregado.id)
+      .single();
+    check(
+      "19e. el inventario del producto agregado baja como en cualquier venta (10 → 8)",
+      Number(stockAg?.stock_opening) === 8 && Number(agregada?.stock_taken) === 2,
+      `stock_opening = ${stockAg?.stock_opening} · stock_taken = ${agregada?.stock_taken}`,
+    );
+
+    // ── 19f. CONTROL: UN PRODUCTO QUE NO ES DEL DUEÑO ─────────────────
+    //
+    // The id comes from the browser. `registrarVenta` filters products by
+    // `owner_id`, so a foreign or invented id must refuse the whole sale and
+    // leave no client behind -- otherwise this door would be a way to sell
+    // someone else's product.
+    const pedidoAjeno = await nuevoPedido("agregado ajeno", [lineaViva]);
+    const rAjeno = await registrar(
+      {
+        ...entradaDe(pedidoAjeno.id, "USD", pagoDeMoneda({ amount: 10 }), clienteNuevo("19292929")),
+        agregadas: [{ productId: VACIO, quantity: 1, currency: "USD" }],
+      },
+      pedidoAjeno.id,
+    );
+    const { count: fichasAjenas } = await admin
+      .from("clients")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", ve.id)
+      .eq("document_id", "19292929");
+    check(
+      "19f. CONTROL: un producto agregado que no es del dueño rechaza la venta y no deja ficha",
+      rAjeno.ok === false && (fichasAjenas ?? 0) === 0,
+      rAjeno.ok ? "LA REGISTRÓ" : `${rAjeno.error} · fichas ${fichasAjenas}`,
+    );
+  }
+
 } catch (e) {
   check("la suite llegó al final", false, e.message);
 } finally {

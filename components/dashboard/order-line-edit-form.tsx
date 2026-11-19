@@ -42,6 +42,7 @@ export function OrderLineEditForm({
   monedasDelLibro,
   lineasDelPedido,
   alTerminar,
+  monedaExtra,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -69,6 +70,8 @@ export function OrderLineEditForm({
   alTerminar?: (monedaNueva: string | null) => void;
   stock: number | null;
   monedasDelLibro: PriceCurrency[];
+  /** See `ProductDetail.monedaExtra`. Passed for a product added on step 1/3. */
+  monedaExtra?: PriceCurrency;
 }) {
   const router = useRouter();
 
@@ -90,6 +93,7 @@ export function OrderLineEditForm({
       // does not take them. Without this the screen would offer a currency the
       // sale refuses at save time.
       monedasPermitidas={monedasDelLibro}
+      monedaExtra={monedaExtra}
       alAgregar={({ quantity, currency }) => {
         // ── `monedasVivas` NO ES OPCIONAL, Y ES EL ARREGLO DE UN BORDE ───
         //

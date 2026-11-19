@@ -3,6 +3,7 @@
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
+import { edicionDeLinea } from "@/lib/orders/borrador-de-registro";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -32,6 +33,11 @@ import {
 // Decisión del dueño del 2026-10-24: *«el resumen final debe decir "el
 // cliente pidió 5" y lo que se está registrando cuando difiera»*. Si no
 // difiere, el paréntesis sería ruido en todas las filas.
+//
+// IT HOLDS FOR «AGREGAR PRODUCTO» TOO. Frame `2211:22521` (2026-11-19) draws
+// «Cantidad del pedido: 4» with the stepper at 5; asked that day, the owner
+// kept this line as it is («Déjalo así»): adding a product the order already
+// has reads «Cantidad del pedido: 5 (el cliente pidió 4)», like the «+».
 // DOS COMPONENTES Y NO UNO, aunque lean lo mismo: la cantidad va en la
 // columna izquierda de la fila y el importe en la derecha, y un solo
 // componente que devolviera los dos los metería a los dos en el mismo lado.
@@ -46,7 +52,7 @@ export function CantidadDeLinea({
   cantidadPedida: number;
 }) {
   const borrador = useBorrador(pedidoId);
-  const cantidad = borrador?.editadas?.[lineaId]?.quantity ?? cantidadPedida;
+  const cantidad = edicionDeLinea(borrador, lineaId)?.quantity ?? cantidadPedida;
 
   return (
     <p className="text-sm text-muted-foreground">
@@ -79,7 +85,7 @@ export function ImporteDeLinea({
   hayProducto: boolean;
 }) {
   const borrador = useBorrador(pedidoId);
-  const edicion = borrador?.editadas?.[lineaId];
+  const edicion = edicionDeLinea(borrador, lineaId);
   const cantidad = edicion?.quantity ?? cantidadPedida;
 
   // UNA LÍNEA MOVIDA A OTRA MONEDA deja de pertenecer a este bloque. Se dice,

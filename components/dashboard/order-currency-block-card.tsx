@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { OrderCurrencyRemoveButton } from "@/components/dashboard/order-currency-remove-button";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
+import { lineasAgregadasEn } from "@/lib/orders/borrador-de-registro";
 import { formatBs } from "@/lib/exchange-rate/format";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
@@ -77,13 +78,21 @@ export function OrderCurrencyBlockCard({
   const borrador = useBorrador(pedidoId);
   const yaTieneMonto = borrador?.monedas?.[bloque.moneda] != null;
   const registrable = tieneAlgoQueCobrar(bloque);
+  // The block's total as the server drew it, plus what was added on step 1/3.
+  // ORDERED LINES ARE LEFT AS THEY WERE: this card has never applied «Editar»,
+  // and changing that is not part of the 2026-11-19 request.
+  const agregadas = lineasAgregadasEn(borrador, bloque.moneda);
+  const total =
+    Math.round(
+      (bloque.total + agregadas.reduce((s, a) => s + a.quantity * (a.unitPrice ?? 0), 0)) * 100,
+    ) / 100;
 
   // `?.amount ?? null`: `priceIn` devuelve null cuando no hay tasa para esa
   // moneda, que en un negocio colombiano es SIEMPRE —no hay bolívares que
   // enseñar— y en uno venezolano es el rato en que el BCV no contesta. Las
   // dos salen igual: sin la línea de abajo, no con un cero.
   const enBs = rates
-    ? (priceIn("VES", { amount: bloque.total, currency: bloque.moneda }, rates)
+    ? (priceIn("VES", { amount: total, currency: bloque.moneda }, rates)
         ?.amount ?? null)
     : null;
 
@@ -129,13 +138,29 @@ export function OrderCurrencyBlockCard({
             </span>
           </div>
         ))}
+        {/* THE PRODUCTS ADDED ON STEP 1/3 (owner's request of 2026-11-19),
+            after the ordered ones as on that screen. Without them this card
+            would total less than the sale it registers. They come from the
+            draft; their price is the one the step showed, and the server
+            prices them again on its own. */}
+        {agregadas.map((a) => (
+          <div key={a.id} className="flex gap-1 text-xs">
+            <span className="flex-[1.4] truncate">{a.nombre}</span>
+            <span className="flex-1 text-right tabular-nums">
+              {formatCantidad(a.quantity)}
+            </span>
+            <span className="flex-1 text-right tabular-nums">
+              {formatPriceAmount(a.quantity * (a.unitPrice ?? 0), bloque.moneda)}
+            </span>
+          </div>
+        ))}
       </div>
 
       <div className="flex items-start justify-between gap-1 border-t pt-2">
         <span className="text-base font-semibold">Total</span>
         <div className="flex flex-col items-end gap-1">
           <span className="text-base font-semibold tabular-nums">
-            {formatPriceAmount(bloque.total, bloque.moneda)}
+            {formatPriceAmount(total, bloque.moneda)}
           </span>
           {enBs != null ? (
             <span className="text-xs text-muted-foreground tabular-nums">
@@ -162,7 +187,7 @@ export function OrderCurrencyBlockCard({
             moneda={bloque.moneda}
             // CUÁNTOS SE LLEVA, para que el diálogo lo diga. «¿Seguro?» a
             // secas es una frase que se toca sin leer.
-            cuantosProductos={bloque.lineas.length}
+            cuantosProductos={bloque.lineas.length + agregadas.length}
             className="h-10 flex-1"
           />
         ) : null}
