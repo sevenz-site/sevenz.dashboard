@@ -2442,6 +2442,30 @@ despliegue de git con la última entrada. Sin esa comparación, un arreglo urgen
 anotar deja el archivo diciendo que algo no cambió cuando sí cambió, y eso se lee como
 verdad.
 
+## Un documento vivo que se sube de nuevo a Drive deja su versión anterior en la papelera
+
+**Regla del dueño, 2026-11-18**, al ver tres copias del libro de eventos en la carpeta Data:
+*«Borralos tú. Nueva regla: debes eliminar los archivos que estás reemplazando por los
+nuevos»*. Y su alcance, decidido por él ese mismo día: **«Solo documentos vivos»**.
+
+**La regla**: cuando subo a Drive la versión nueva de un **documento vivo** (uno que se
+reescribe entero y del que solo vale la última versión), la anterior va a la papelera
+**en la misma sesión, sin preguntar**, y lo digo en el informe con su enlace. Hoy el
+documento vivo es `Sevenz-Eventos-Mixpanel.xlsx`, en la carpeta Data.
+
+- **Papelera, no borrado definitivo.** Drive la guarda 30 días, y un fallo al subir no
+  deja la carpeta sin ningún libro.
+- **Primero se sube y se comprueba la nueva, después se borra la vieja.** Nunca al revés.
+- **Se borra por id**, el que devuelve la búsqueda de la carpeta, nunca por nombre: las
+  copias tienen el mismo nombre que la nueva.
+
+**Lo que NO entra, y por qué**: los PDF de liberación y los de plantillas de WhatsApp
+siguen guardando sus versiones anteriores (*«una versión nueva de un PDF es un archivo
+nuevo: el anterior no se reemplaza»*, en `../docs/LIBERACIONES.md`). Cada uno es la foto
+fija de lo que salió ese día, y `LIBERACIONES.md` enlaza a versiones concretas: borrar la
+vieja rompería esos enlaces y el historial que existen para auditar. Si algún documento
+nuevo no está claro de qué lado cae, se le pregunta al dueño.
+
 ## Después de cada liberación: la lista de lo abierto, y la ficha cerrada sin preguntar
 
 **Pedido por el dueño el 2026-10-24**: *«luego de cada liberación debes
