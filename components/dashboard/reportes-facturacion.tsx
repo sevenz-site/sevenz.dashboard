@@ -396,7 +396,6 @@ export function ReportesFacturacion({
             country={country}
             oculto={oculto}
             onAlternarOculto={alternarOculto}
-            descargarHref="/api/reportes/cierre?que=mes"
           />
         </section>
       ) : null}

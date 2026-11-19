@@ -1,9 +1,8 @@
 "use client";
 
-import { ChevronRight, CircleDollarSign, Download, Eye, EyeOff, TriangleAlert, Undo2 } from "lucide-react";
+import { ChevronRight, CircleDollarSign, Eye, EyeOff, TriangleAlert, Undo2 } from "lucide-react";
 import { IconoDeAbono, IconoDeFiado } from "@/components/dashboard/iconos-de-movimiento";
 import type { Facturacion } from "@/lib/reports/facturacion";
-import { track } from "@/lib/mixpanel";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ReportesVentasDelDiaSheet } from "@/components/dashboard/reportes-ventas-del-dia-sheet";
 import { formatPriceAmount } from "@/lib/products/price";
@@ -56,14 +55,12 @@ export function ReportesCierreDelMes({
   country,
   oculto,
   onAlternarOculto,
-  descargarHref,
 }: {
   cierre: CierreDelMes;
   desglose: DesgloseDelCierre | null;
   country: string | null;
   oculto: boolean;
   onAlternarOculto: () => void;
-  descargarHref: string;
 }) {
   return (
     <TarjetaDeCierre
@@ -79,19 +76,11 @@ export function ReportesCierreDelMes({
       onAlternarOculto={onAlternarOculto}
       // BELOW 80 % OF LINES WITH A COST, the WhatsApp does not go (spec of `cierre_mensual`).
       avisoDeWhatsapp
-      pie={
-        // A real link to a route that answers with an attachment, like «Descargar» in the
-        // header (`reportes-descargar.tsx` says why: Safari on iPhone and `Blob`).
-        <a
-          href={descargarHref}
-          // Same event as the header's options; `desde` tells the card from the menu.
-          onClick={() => track("Report Export Downloaded", { que: "cierre_mes", desde: "tarjeta" })}
-          className="flex items-center gap-1 text-xs"
-        >
-          Descargar
-          <Download className="size-4" aria-hidden />
-        </a>
-      }
+      // NO «Descargar» HERE. The card carried one from 2026-11-17 until the owner removed it on
+      // 2026-11-19: *«Eliminar botón "Descargar" en la sección de cierre mensual en reportes»*.
+      // The month still downloads from «Descargar» in the header («Descargar cierre de …»,
+      // `reportes-descargar.tsx`), which he did not ask to remove.
+      pie={null}
     />
   );
 }
@@ -271,9 +260,10 @@ function TarjetaDeCierre({
         </div>
       ) : null}
 
-      {/* The frame puts the action at the right of the card's last line. It stays even with no
-          sales: the day's sheet then says so, and a month without sales still downloads. */}
-      <div className="flex justify-end">{pie}</div>
+      {/* The frame puts the action at the right of the card's last line. The day's «Ver todo»
+          stays even with no sales: its sheet then says so. The month has no action since
+          2026-11-19, and an empty row would only add space under the card. */}
+      {pie ? <div className="flex justify-end">{pie}</div> : null}
     </div>
   );
 }
