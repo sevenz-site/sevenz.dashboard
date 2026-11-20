@@ -300,7 +300,17 @@ export function RateCalculator({
   const convertBetween = (amount: number, from: MonedaVisible, to: MonedaVisible) => {
     if (from === "USDT" || to === "USDT") {
       if (!usdt) return 0;
-      const ves = from === "USDT" ? amount * usdt : amount * (from === "USD" ? tasaEnUso.usd : tasaEnUso.eur);
+      // BOLIVARS ARE ALREADY BOLIVARS. Until 2026-11-20 this had two branches, USDT and
+      // «anything else times a BCV rate», so bolivars typed after «Invertir» on the USDT
+      // tab were multiplied by the EURO rate: Bs. 13.412,50 read as 12.613,40 USDT instead
+      // of 12,50. In production in the owner's calculator since CT-16; found by the v0.11.0
+      // checklist, typing it on the client's calculator, before it reached any client.
+      const ves =
+        from === "USDT"
+          ? amount * usdt
+          : from === "VES"
+            ? amount
+            : amount * (from === "USD" ? tasaEnUso.usd : tasaEnUso.eur);
       if (to === "USDT") return ves / usdt;
       return to === "VES" ? ves : ves / (to === "USD" ? tasaEnUso.usd : tasaEnUso.eur);
     }
