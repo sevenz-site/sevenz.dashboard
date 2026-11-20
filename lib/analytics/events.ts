@@ -425,7 +425,9 @@ export type EventProps = {
   "Install Prompt Result": { outcome: "accepted" | "dismissed" };
   "Install Steps Opened": { entry_point: "banner" | "sidebar" };
   "App Installed": Record<string, never>;
-  "App Opened Installed": Record<string, never>;
+  // install_source since 2026-11-20 (PL-48). Only "play" or "pwa": the event is sent only
+  // when the app is installed, so "browser" never reaches it.
+  "App Opened Installed": { install_source: "play" | "pwa" };
   "Tour Finished": { outcome: "completed" | "skipped"; last_step: number; steps_total: number };
   "AI Report Viewed": { degraded: boolean };
   "Unsaved Changes Answered": { choice: "stay" | "leave" | "save_and_leave"; screen: string };

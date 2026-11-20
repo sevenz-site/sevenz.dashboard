@@ -10,8 +10,18 @@ export async function proxy(request: NextRequest) {
   return updateSession(request);
 }
 
+// `.well-known/` is excluded for the Play Store app (PL-48, docs PLAY-STORE-PLAN.md §7,
+// step 1.1). Android fetches /.well-known/assetlinks.json with no session to check that
+// the app and app.sevenz.site belong together. Through updateSession, a signed-out
+// request is redirected to /login, the check fails, and the app opens with Chrome's
+// address bar on top. Nothing errors: the bar simply appears. So the file must answer
+// 200 with JSON, with no session and no redirect.
+//
+// The file holds `[]` until Play Console shows the signing fingerprints. Every one of
+// them goes in (Google's "quantum-ready" signing uses several keys), plus the upload
+// key's for local testing.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
