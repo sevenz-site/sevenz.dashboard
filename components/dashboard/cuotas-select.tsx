@@ -32,7 +32,20 @@ import { formatCadaCuantosDias } from "@/lib/format";
 // por defecto es "1" y el servidor lo guarda como null, que es el caso N=1
 // de la migración.
 
-const MAXIMO = 12;
+// UP TO 7, NOT 12. Owner's decision, 2026-11-20: *«En los registros de fiados el campo
+// "Cuotas" reducir las opciones de 12 cuotas a solo 7 cuotas»*. The list is «Pago único»
+// and 2 to 7, in both doors that mount this field: the payment step (pago-campos.tsx) and
+// the old debt of a new client (new-client-form.tsx).
+//
+// ONLY THE LIST CHANGED, ON PURPOSE. The server still accepts 2 to 36 and so does the
+// database check, so every fiado already agreed in 8 to 12 cuotas keeps its dates, its
+// table and its notices untouched. Tightening those two would reject nothing new (this
+// list is the only way in) and would be one more thing to undo if the limit moves again.
+//
+// THE ONE EDGE: a sale draft saved before this change with 8 to 12 cuotas still carries
+// that number in its hidden input. The select then shows its placeholder, the line below
+// still spells the number out, and the server saves it as chosen. Nothing is lost.
+const MAXIMO = 7;
 
 export function CuotasSelect({
   value,
