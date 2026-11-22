@@ -10,9 +10,11 @@
 //
 //   A. THE DECISION, with invented fiados and a chosen «now». No database. Every rule the owner
 //      set lives here: the window before each cuota, 7 and 15 days after, «pago» for a fiado
-//      without cuotas, the remainder of a half-paid cuota, the payment at the sale counting as
-//      the table counts it, the weekly cap in calendar days, the firm notice first and the
-//      oldest cuota first, never the firm one to a flagged client, and the business's zone.
+//      without cuotas, the remainder of a half-paid cuota, what a fiado has had paid as stored
+//      amount minus what it still owes («solución 1», 2026-11-22: an undirected payment counts,
+//      the payment at the sale does not count twice), the weekly cap in calendar days, the firm
+//      notice first and the oldest cuota first, never the firm one to a flagged client, and the
+//      business's zone.
 //
 //   B. THE WHOLE PATH IN DEV: real clients and fiados, migration 218's candidates, the send
 //      gate, the exact parameters and button, the clients' number, and idempotency. It WRITES
@@ -98,8 +100,8 @@ const longDate = (d, tz) => new Intl.DateTimeFormat("es-CO", { day: "numeric", m
     currency: over.currency === undefined ? "USD" : over.currency,
     plazo_dias: over.plazo,
     cuotas: over.cuotas ?? null,
-    abono_inicial: over.inicial ?? 0,
-    abonos: over.abonos ?? [],
+    // What the fiado still owes, as `get_open_charges_for_client` returns it. Unpaid by default.
+    pendiente: over.pendiente ?? over.amount ?? 100,
     business_name: "Bodega La Esquina",
     country: over.country ?? "VE",
     is_flagged: over.flagged ?? false,
@@ -122,16 +124,18 @@ const longDate = (d, tz) => new Intl.DateTimeFormat("es-CO", { day: "numeric", m
       n.params.installment_due === "$25,00" && n.params.due_date === "3 de diciembre",
     JSON.stringify(n?.params));
 
-  p = plan([fila({ plazo: 28, cuotas: 4, created_at: due(addDays(today, 2), 28, 4, 1), abonos: [{ fecha: due(addDays(today, -3), 28, 4, 1), amount: 25 }] })]);
-  check("A3. la misma cuota ya pagada con un abono dirigido: no sale nada", p.notices.length === 0, `${p.notices.length} avisos`);
+  p = plan([fila({ plazo: 28, cuotas: 4, created_at: due(addDays(today, 2), 28, 4, 1), pendiente: 75 })]);
+  check("A3. la misma cuota ya pagada (debe $75 de $100, dirigido o no): no sale nada", p.notices.length === 0, `${p.notices.length} avisos`);
 
-  p = plan([fila({ plazo: 28, cuotas: 4, created_at: due(addDays(today, 2), 28, 4, 1), abonos: [{ fecha: due(addDays(today, -3), 28, 4, 1), amount: 10 }] })]);
+  p = plan([fila({ plazo: 28, cuotas: 4, created_at: due(addDays(today, 2), 28, 4, 1), pendiente: 90 })]);
   check("A4. la cuota pagada a medias: «Pendiente» es lo que falta, $15,00",
     p.notices[0]?.params.installment_due === "$15,00", p.notices[0]?.params.installment_due);
 
-  p = plan([fila({ plazo: 28, cuotas: 4, inicial: 25, created_at: due(addDays(today, 2), 28, 4, 1) })]);
-  check("A5. el pago del momento de la venta cuenta como lo cuenta la tabla (opción B): la cuota 1 sale pagada",
-    p.notices.length === 0, `${p.notices.length} avisos`);
+  // Owner's own example, 2026-11-22: buys 100, pays 25 at the sale, the other 75 split in 3. The
+  // fiado is stored as 75 and owes 75: the 25 paid no cuota.
+  p = plan([fila({ plazo: 21, cuotas: 3, amount: 75, pendiente: 75, usd: 75, created_at: due(addDays(today, 2), 21, 3, 1) })]);
+  check("A5. compra 100 y paga 25: las cuotas son de los 75, y la cuota 1 de $25 SIGUE pendiente",
+    p.notices[0]?.params.installment === "cuota 1 de 3" && p.notices[0]?.params.installment_due === "$25,00", JSON.stringify(p.notices[0]?.params));
 
   p = plan([fila({ plazo: 8, created_at: due(addDays(today, 2), 8, 1, 1) })]);
   check("A6. un fiado sin cuotas dice «pago», no «cuota 1 de 1»",
@@ -190,9 +194,12 @@ try {
   check("B1. con WHATSAPP_CLIENT_NOTICES apagado no sale nada", apagado.enviados === 0 && apagado.omitidos.desactivado === 1, JSON.stringify(apagado));
   process.env.WHATSAPP_CLIENT_NOTICES = "on";
 
-  const { error: e0 } = await admin.rpc("whatsapp_cuotas_candidatas");
-  check("B0. la migración 218 está en dev", !e0, e0 ? `${e0.message} — corre supabase/218_avisos_por_cuota.sql en DEV` : "whatsapp_cuotas_candidatas responde");
-  if (e0) throw new Error("sin la 218 no se puede seguir");
+  // THE CURRENT SHAPE, not just «it answers»: the first version of 218 answered too, without
+  // `pendiente`, and every fiado then read as paid. A zero-row answer cannot show its columns,
+  // so the check asks PostgREST for the column by name.
+  const { error: e0 } = await admin.rpc("whatsapp_cuotas_candidatas").select("pendiente").limit(1);
+  check("B0. la migración 218 al día está en dev (devuelve «pendiente»)", !e0, e0 ? `${e0.message} — corre supabase/218_avisos_por_cuota.sql en DEV` : "whatsapp_cuotas_candidatas devuelve pendiente");
+  if (e0) throw new Error("sin la 218 al día no se puede seguir");
 
   const { data: ve } = await admin.from("owners").select("id,business_name").eq("country", "VE").limit(1).single();
   const { data: co } = await admin.from("owners").select("id,business_name").eq("country", "CO").limit(1).single();
@@ -203,6 +210,7 @@ try {
     { n: "pronto 1 de 4", c: "VE", plazo: 28, cuotas: 4, k: 1, off: 2 },
     { n: "pronto pagada", c: "VE", plazo: 28, cuotas: 4, k: 1, off: 2, pagado: 25 },
     { n: "pronto media", c: "VE", plazo: 28, cuotas: 4, k: 1, off: 2, pagado: 10 },
+    { n: "pagada sin dirigir", c: "VE", plazo: 28, cuotas: 4, k: 1, off: 2, pagado: 25, sinDirigir: true },
     { n: "pago unico", c: "VE", plazo: 8, k: 1, off: 2 },
     { n: "vencida 7", c: "VE", plazo: 10, k: 1, off: -7 },
     { n: "vencida 15", c: "VE", plazo: 10, k: 1, off: -15 },
@@ -237,7 +245,7 @@ try {
     if (x.pagado) {
       const { error: eP } = await admin.from("movements").insert({
         client_id: cl.id, created_by: owner, type: "payment", amount: x.pagado, currency: "USD", source: "manual",
-        applies_to_movement_id: m.id, created_at: new Date(Date.parse(createdAt) + 864e5).toISOString(),
+        applies_to_movement_id: x.sinDirigir ? null : m.id, created_at: new Date(Date.parse(createdAt) + 864e5).toISOString(),
       });
       if (eP) throw new Error(`abono ${x.n}: ${eP.message}`);
     }
@@ -276,6 +284,7 @@ try {
   check("B5. sale por el número de CLIENTES", a?.__url.includes(PHONE_ID_CLIENTS) && !a?.__url.includes(PHONE_ID_OWNERS), a?.__url);
 
   check("B6. la cuota ya pagada con un abono dirigido: nada", mios("pronto pagada").length === 0, `${mios("pronto pagada").length}`);
+  check("B6b. la cuota pagada con un abono SIN dirigir: tampoco sale (solución 1)", mios("pagada sin dirigir").length === 0, `${mios("pagada sin dirigir").length}`);
   check("B7. la cuota pagada a medias: «Pendiente» $15,00", params(uno("pronto media")).installment_due === "$15,00", params(uno("pronto media")).installment_due);
   check("B8. sin cuotas dice «pago»", params(uno("pago unico")).installment === "pago", params(uno("pago unico")).installment);
 

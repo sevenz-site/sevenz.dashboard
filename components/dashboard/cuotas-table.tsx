@@ -1,6 +1,6 @@
 import { Fecha } from "@/components/fecha";
 import { ChipDeEstado } from "@/components/dashboard/chip-de-estado";
-import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
+import { estadosDelFiado } from "@/lib/estado-del-plazo";
 
 // THE AGREED CUOTAS, ONE PER LINE, WITH THE DATE EACH ONE FALLS DUE.
 //
@@ -27,8 +27,7 @@ export function CuotasTable({
   cuotas,
   amount,
   formatearMonto,
-  abonoInicial = 0,
-  abonos = [],
+  pagado,
 }: {
   createdAt: string;
   plazoDias: number;
@@ -42,8 +41,14 @@ export function CuotasTable({
   // Por defecto cero y vacío: una superficie que no sabe lo abonado --la
   // ficha de un movimiento BORRADO, que no tiene reparto-- dibuja todas las
   // cuotas como pendientes, que es lo único que puede afirmar.
-  abonoInicial?: number;
-  abonos?: AbonoParaEstado[];
+  /**
+   * What this fiado has had paid, from `pagadoDelFiado` (stored amount minus what it still owes).
+   * REQUIRED since 2026-11-22: until then the table took «the payment at the sale plus the
+   * directed payments» and defaulted both to zero, so two of its four screens drew every cuota
+   * unpaid and the other two counted the sale's payment twice. A screen that forgets this now
+   * does not compile.
+   */
+  pagado: number;
   // THE CALLER FORMATS, and that is not indirection for its own sake: the two
   // cards that mount this table format differently on purpose -- the live
   // movement's shows the bolívar equivalent underneath, the deleted one does
@@ -57,8 +62,9 @@ export function CuotasTable({
     plazoDias,
     cuotas,
     amount,
-    abonoInicial,
-    abonos,
+    // Only the total decides each cuota's state (paid when the running total passes its
+    // threshold), so it travels as one amount and not as a list of payments.
+    abonoInicial: pagado,
   });
 
   return (

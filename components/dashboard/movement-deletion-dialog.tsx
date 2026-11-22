@@ -194,6 +194,9 @@ export function MovementDeletionDialog({
                 plazoDias={notification.plazoDias}
                 cuotas={notification.cuotas}
                 amount={notification.amount}
+                // A DELETED FIADO IS OUT OF THE LEDGER'S QUEUE, so nothing says what it had paid:
+                // the table describes what was agreed, as it did before `pagado` was required.
+                pagado={0}
                 formatearMonto={enSuMoneda}
               />
             ) : null}

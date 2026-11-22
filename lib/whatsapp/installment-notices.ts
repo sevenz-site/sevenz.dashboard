@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { formatCurrency, zonaDelNegocio } from "@/lib/format";
 import { formatDisplayCurrency } from "@/lib/exchange-rate/format";
 import { formatBalanceSummaryOfBooks } from "@/lib/exchange-rate/movement-display";
-import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
+import { estadosDelFiado, pagadoDelFiado } from "@/lib/estado-del-plazo";
 import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 
 // THE CLIENT'S NOTICES PER CUOTA: `installment_due_soon` and `overdue_debt_warning`.
@@ -22,12 +22,13 @@ import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 //                          client already flagged as «mala paga»: the message says the business
 //                          CAN flag them, and that already happened.
 //
-// WHICH CUOTA IS PAID IS DECIDED BY `estadosDelFiado`, the function that paints the «Estado»
-// column of the cuota table. Owner's choice of 2026-11-22 («B»), asked with its cost named: that
-// table counts only payments DIRECTED at the fiado and the payment made at the sale, so a client
-// who paid with an undirected payment can still be told a cuota is pending (12 of 107 open fiados
-// in dev that day). The other option, the ledger's real pending, never tells a payer they owe, but
-// makes the message and the screen disagree. He chose agreement with the screen.
+// WHICH CUOTA IS PAID IS DECIDED BY `estadosDelFiado` WITH `pagadoDelFiado`, exactly as the cuota
+// table paints its «Estado» column. Owner's choice of 2026-11-22 («B»: the message says what the
+// table says), and the same day the table itself was fixed («solución 1»): what a fiado has had
+// paid is its stored amount minus what it still owes in the ledger's queue. So an undirected
+// payment counts, and the payment made at the sale does not count twice (the fiado is already
+// stored for what was left after it). Message, table and history chip agree, and all three agree
+// with the ledger.
 //
 // ONE NOTICE PER CLIENT PER WEEK, across both templates (decision of 2026-11-19): the firm one
 // before the early one, and the oldest cuota first. Cuotas a week apart make the early notice of
@@ -57,8 +58,8 @@ export type CandidateRow = {
   currency: "USD" | "EUR" | null;
   plazo_dias: number;
   cuotas: number | null;
-  abono_inicial: number | string;
-  abonos: { fecha: string; amount: number | string }[] | null;
+  /** What this fiado still owes, from `get_open_charges_for_client` (migration 218). */
+  pendiente: number | string;
   business_name: string;
   country: string | null;
   is_flagged: boolean;
@@ -145,15 +146,13 @@ export function planInstallmentNotices(rows: CandidateRow[], now: Date): PlanRes
     const today = dayIn(now, tz);
     const n = r.cuotas && r.cuotas > 1 ? r.cuotas : 1;
     const amount = Number(r.amount);
-    const abonos: AbonoParaEstado[] = (r.abonos ?? []).map((a) => ({ fecha: a.fecha, amount: Number(a.amount) }));
 
     const { cuotas } = estadosDelFiado({
       createdAt: r.created_at,
       plazoDias: r.plazo_dias,
       cuotas: n,
       amount,
-      abonoInicial: Number(r.abono_inicial ?? 0),
-      abonos,
+      abonoInicial: pagadoDelFiado(amount, Number(r.pendiente ?? 0)),
       ahora: now,
     });
 
@@ -271,7 +270,15 @@ export async function sendInstallmentNotices(now: Date = new Date()): Promise<In
     throw new Error("No se pudo calcular a quién le toca el aviso de cuota.");
   }
 
-  const plan = planInstallmentNotices((data ?? []) as CandidateRow[], now);
+  // A DATABASE WITH THE FIRST VERSION OF 218 RETURNS NO `pendiente`, and then every fiado would
+  // read as paid and nothing would go out, with no error anywhere. Seen in dev on 2026-11-22, the
+  // day 218 changed shape before being re-run. Loud instead of silent.
+  const rows = (data ?? []) as CandidateRow[];
+  if (rows.length > 0 && !("pendiente" in rows[0])) {
+    console.error("[avisos de cuota] whatsapp_cuotas_candidatas no devuelve pendiente: la 218 de la base es la vieja");
+    throw new Error("La función de candidatos de la base no está al día (migración 218).");
+  }
+  const plan = planInstallmentNotices(rows, now);
   summary.candidatos = plan.notices.length;
   skip("tope_semanal", plan.heldByWeeklyCap);
   skip("mala_paga", plan.heldByFlag);

@@ -19,7 +19,7 @@ import { Fecha } from "@/components/fecha";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import type { SaleLineRow } from "@/lib/sale-lines";
 import type { ReturnMenuContext } from "@/components/dashboard/producto-mas-menu";
-import { estadosDelFiado, type AbonoParaEstado } from "@/lib/estado-del-plazo";
+import { estadosDelFiado, pagadoDelFiado } from "@/lib/estado-del-plazo";
 import type { LedgerCurrency, MovementCurrencyCode, MovementType } from "@/lib/types";
 
 // EL CUERPO DEL DETALLE DE UNA TRANSACCIÓN — frames `1465:18349` (abono) y
@@ -297,20 +297,24 @@ export function DetalleDeTransaccion({
         cuotas: fiadoAplicado.cuotas,
         desde: fiadoAplicado.fecha,
         importe: fiadoAplicado.amount,
-        // DESDE UN ABONO NO SE SABE LO QUE SE LLEVA ABONADO AL FIADO, y por
-        // eso van en cero: esta pantalla trae el fiado para heredar su
-        // acuerdo, no su reparto. La tabla dibuja entonces todas las cuotas
-        // como pendientes, que es lo único que puede afirmar desde aquí.
-        abonoInicial: 0,
-        abonos: [] as AbonoParaEstado[],
+        // FROM AN ABONO, THE FIADO IT PAID, AS IT STANDS TODAY. Until 2026-11-22 this was zero
+        // and the table drew every cuota unpaid, so an abono that settled cuota 1 showed it
+        // «Vencida». `pending` comes with `fiadoAplicado` on both sides (owner and client).
+        pagado: pagadoDelFiado(fiadoAplicado.amount, fiadoAplicado.pending),
       }
     : {
         plazoDias,
         cuotas,
         desde: createdAt,
         importe: amount,
-        abonoInicial: abonoInicial ?? 0,
-        abonos: (abonosRecibidos ?? []).map((a) => ({ fecha: a.fecha, amount: a.amount })),
+        // THE FIADO'S OWN STATE, from what it still owes (`pagadoDelFiado`, owner's decision of
+        // 2026-11-22). NOT the payment at the sale: the fiado is stored for what was left after
+        // it, so it pays no cuota. Without `pending` (client's view before migration 132) it
+        // falls back to the directed payments, the best this screen can say.
+        pagado:
+          pendienteDelFiado != null
+            ? pagadoDelFiado(amount, pendienteDelFiado)
+            : (abonosRecibidos ?? []).reduce((suma, a) => suma + a.amount, 0),
       };
 
   // ── EL CHIP DE CADA ABONO ────────────────────────────────────────────
@@ -351,9 +355,10 @@ export function DetalleDeTransaccion({
           plazoDias,
           cuotas: cuotas ?? 1,
           amount,
-          abonoInicial: abonoInicial ?? 0,
+          // WITHOUT the payment at the sale in front, since 2026-11-22: it pays no cuota (see
+          // `pagadoDelFiado`), and putting it first pushed every abono's chip one cuota later.
           abonos: abonosEnOrden.map((a) => ({ fecha: a.fecha, amount: a.amount })),
-        }).abonos.slice(abonoInicial && abonoInicial > 0.005 ? 1 : 0)
+        }).abonos
       : [];
 
   return (
@@ -782,8 +787,7 @@ export function DetalleDeTransaccion({
             // EN UN ABONO SE PASAN LOS DEL FIADO QUE PAGÓ, no los suyos, por
             // lo mismo que el plazo y las cuotas salen de ahí: la tabla
             // describe el acuerdo de ese fiado, no el de este movimiento.
-            abonoInicial={acuerdo.abonoInicial}
-            abonos={acuerdo.abonos}
+            pagado={acuerdo.pagado}
           />
         ) : null}
       </Grupo>

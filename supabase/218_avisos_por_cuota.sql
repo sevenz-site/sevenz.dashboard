@@ -15,12 +15,12 @@
 -- WHAT THIS FUNCTION DOES, AND WHAT IT DELIBERATELY DOES NOT.
 --
 -- It returns the CANDIDATES: every live charge with a term whose last cuota is
--- at most 16 days behind, of a client who can be messaged, with everything the
--- screen's cuota table uses to judge it -- the charge, what was paid at the
--- moment of the sale in its book, and the payments directed at it. It does NOT
+-- at most 16 days behind, of a client who can be messaged, with what the
+-- screen's cuota table uses to judge it: the charge and what it STILL OWES,
+-- from `get_open_charges_for_client` (the ledger's own queue). It does NOT
 -- decide which cuota is paid or which day a notice goes out. That happens in
--- `lib/whatsapp/installment-notices.ts`, with `estadosDelFiado`, the same
--- function that paints the «Estado» column.
+-- `lib/whatsapp/installment-notices.ts`, with `estadosDelFiado` and
+-- `pagadoDelFiado`, the same functions that paint the «Estado» column.
 --
 -- Why not in SQL, when `120` and `168` did the old reminder in SQL: the specs
 -- say so, and the owner chose it on 2026-11-22 («B», asked with the risk
@@ -28,13 +28,15 @@
 -- the reverse, is the product arguing with itself about money. A second copy
 -- of the paid/unpaid rule in SQL is exactly how that happens.
 --
--- THE KNOWN COST OF THAT CHOICE, stated so nobody rediscovers it: the table
--- counts only payments DIRECTED at the fiado and the payment made at the sale.
--- A payment that was not directed lowers the real debt but not the table, so a
--- client can get a notice about a cuota the ledger considers paid. Measured in
--- dev on 2026-11-22: 12 of 107 open fiados with a term. The owner chose this
--- knowing it. One guard stays, because it costs nothing and is not a second
--- rule: a book with no debt at all gets no notice (`balance_* > 0` below).
+-- THE SAME DAY THE TABLE ITSELF WAS FIXED (owner's «solución 1», 2026-11-22).
+-- It used to count the payments DIRECTED at the fiado plus the payment made at
+-- the sale: the first missed undirected payments (12 of 107 open fiados in dev)
+-- and the second counted the sale's payment twice, since the fiado is stored
+-- for what was left after it (3 fiados in dev, one with all 4 cuotas «Pagado»
+-- while owing $15). Both now read «stored amount minus what it still owes», so
+-- this file returns `pendiente` and not the payments. It was corrected before
+-- it ever reached production; dev re-runs it. One guard stays, because it
+-- costs nothing: a book with no debt at all gets no notice.
 --
 -- WHY A SECURITY DEFINER FUNCTION AND NOT TABLE READS FROM THE SERVER: in
 -- production the service role has no direct grant on the sales tables
@@ -59,8 +61,7 @@ returns table (
   currency text,
   plazo_dias int,
   cuotas int,
-  abono_inicial numeric,
-  abonos jsonb,
+  pendiente numeric,
   business_name text,
   country text,
   is_flagged boolean,
@@ -83,28 +84,11 @@ as $fn$
     mv.currency,
     mv.plazo_dias,
     mv.cuotas,
-    -- The payment made at the sale, in this fiado's book. Same normalisation
-    -- as the transaction screen (`?? "COP"` on both sides): `sale_payments`
-    -- writes the Colombian book as 'COP' and `movements` writes it NULL.
-    coalesce((
-      select sum(sp.amount)
-      from public.sale_payments sp
-      where mv.sale_id is not null
-        and sp.sale_id = mv.sale_id
-        and coalesce(sp.currency, 'COP') = coalesce(mv.currency, 'COP')
-    ), 0) as abono_inicial,
-    -- The payments directed at this fiado, as the screen reads them: payments
-    -- and returns, alive, above zero, and of THIS client (`applies_to` is a
-    -- loose foreign key and nothing forces it to stay inside the client).
-    coalesce((
-      select jsonb_agg(jsonb_build_object('fecha', p.created_at, 'amount', p.amount) order by p.created_at)
-      from public.movements p
-      where p.client_id = mv.client_id
-        and p.applies_to_movement_id = mv.id
-        and p.type in ('payment', 'return')
-        and p.amount > 0
-        and p.deleted_at is null
-    ), '[]'::jsonb) as abonos,
+    -- What this fiado still owes, from the same function the screens read
+    -- (`get_open_charges_for_client`): directed payments, undirected ones in
+    -- the queue's order, and returns. A settled fiado is not in its list, so
+    -- it comes back as zero.
+    coalesce(op.pending, 0) as pendiente,
     o.business_name,
     o.country,
     coalesce(c.is_flagged, false) as is_flagged,
@@ -122,6 +106,11 @@ as $fn$
   join public.clients c on c.id = mv.client_id
   join public.client_summary_all cl on cl.client_id = mv.client_id
   join public.owners o on o.id = cl.owner_id
+  left join lateral (
+    select oc.pending
+    from public.get_open_charges_for_client(mv.client_id) oc
+    where oc.movement_id = mv.id
+  ) op on true
   where mv.type = 'charge'
     and mv.deleted_at is null
     and mv.plazo_dias is not null
@@ -141,7 +130,9 @@ as $fn$
     and public.client_accepts_whatsapp(mv.client_id)
     -- A paused or blocked business sends nothing to its clients (specs of both
     -- templates, 2026-11-19).
-    and public.owner_puede_escribir(cl.owner_id);
+    and public.owner_puede_escribir(cl.owner_id)
+    -- Nothing owed on this fiado, nothing to remind.
+    and coalesce(op.pending, 0) > 0.005;
 $fn$;
 
 -- Supabase grants EXECUTE on every new function in public to anon and
@@ -152,7 +143,7 @@ grant execute on function public.whatsapp_cuotas_candidatas() to service_role;
 insert into public.schema_migrations (key, description)
 values (
   '218_avisos_por_cuota',
-  'Nace whatsapp_cuotas_candidatas(): los fiados con plazo vivos, de clientes con permiso y número y de negocios que pueden escribir, con lo que la tabla de cuotas usa para juzgarlos (el fiado, el pago del momento de la venta en su libro y los abonos dirigidos) y el último aviso por cuota de cada cliente, para el tope de uno por semana. La decisión de qué cuota está pagada y qué día sale cada aviso la toma el servidor con estadosDelFiado, la misma función de la pantalla (opción B del dueño, 2026-11-22). Alimenta installment_due_soon y overdue_debt_warning, que sustituyen a payment_due_date_v2. whatsapp_destinatarios_plazo() se queda en la base sin uso, para poder volver atrás.'
+  'Nace whatsapp_cuotas_candidatas(): los fiados con plazo vivos, de clientes con permiso y número y de negocios que pueden escribir, con lo que la tabla de cuotas usa para juzgarlos (el fiado y lo que todavía debe, de get_open_charges_for_client: solución 1 del dueño el 2026-11-22) y el último aviso por cuota de cada cliente, para el tope de uno por semana. La decisión de qué cuota está pagada y qué día sale cada aviso la toma el servidor con estadosDelFiado y pagadoDelFiado, las mismas funciones de la pantalla. Alimenta installment_due_soon y overdue_debt_warning, que sustituyen a payment_due_date_v2. whatsapp_destinatarios_plazo() se queda en la base sin uso, para poder volver atrás.'
 )
 on conflict (key) do nothing;
 
