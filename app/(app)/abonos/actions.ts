@@ -198,6 +198,13 @@ export async function registrarAbonoDirigido(
     );
   }
 
+  // ONLY A PHOTO OF THIS OWNER (owner's request of 2026-11-22, after the split abono got the
+  // same check). The path comes from the browser; without this a payment could point at another
+  // business's receipt. Same rule as the client's profile picture (`clients/[id]/actions.ts`).
+  // Filed as `split_invalid` for the reason given in `registrarAbonoRepartido`.
+  const foto = entrada.photoPath?.trim() || null;
+  if (foto && !foto.startsWith(`${user.id}/`)) return rechazar("split_invalid", "No pudimos guardar la foto.");
+
   const { data: creado, error: errorInsert } = await supabase
     .from("movements")
     .insert({
@@ -208,7 +215,7 @@ export async function registrarAbonoDirigido(
       currency: libro,
       description: entrada.descripcion?.trim() || null,
       source: "manual",
-      photo_path: entrada.photoPath ?? null,
+      photo_path: foto,
       payment_method: entrada.paymentMethod ?? null,
       // LO QUE HACE QUE ESTE ABONO SEA DIRIGIDO. Todo lo demás de esta fila es
       // igual que el de un abono normal.
@@ -391,6 +398,10 @@ export type AbonoRepartidoEntrada = {
   // How the money arrived, ONE for the whole payment: it is one bill, split across fiados
   // (migration 214, owner's request of 2026-11-17). Every line carries it.
   paymentMethod?: PaymentMethod | null;
+  // The note of the whole bill, put on every line. Owner's request of 2026-11-22.
+  descripcion?: string | null;
+  // And its photo, the same way. Only a path in this owner's folder is accepted.
+  photoPath?: string | null;
   // La misma pareja de banderas que mandan las otras puertas: un «no» también
   // se anota, o el cliente nunca queda marcado como preguntado.
   permisoMostrado?: boolean;
@@ -941,6 +952,23 @@ export async function registrarAbonoRepartido(
       return rechazar("payment_method_invalid", "Elige el método de pago otra vez.");
     }
     lineasRpc = lineasRpc.map((l) => ({ ...l, payment_method: entrada.paymentMethod }));
+  }
+
+  // THE DESCRIPTION, ON EVERY LINE OF BOTH PATHS (owner's request of 2026-11-22): one bill, one
+  // note. `registrar_abono_repartido` already read `description` per line and trims it to null;
+  // nobody sent it. Trimmed here too, so blank text never travels.
+  const descripcion = entrada.descripcion?.trim() || null;
+  if (descripcion) lineasRpc = lineasRpc.map((l) => ({ ...l, description: descripcion }));
+
+  // THE PHOTO, ON EVERY LINE TOO («arregla la foto», 2026-11-22). The path comes from the
+  // browser, so it must sit in this owner's folder: otherwise a payment could point at another
+  // business's receipt. Same rule as the client's profile picture (`clients/[id]/actions.ts`).
+  const foto = entrada.photoPath?.trim() || null;
+  if (foto) {
+    // Filed as `split_invalid`: only a hand-made request gets here, and a new reason would be a
+    // new value of `Payment Rejected` for a case the screen cannot produce.
+    if (!foto.startsWith(`${user.id}/`)) return rechazar("split_invalid", "No pudimos guardar la foto.");
+    lineasRpc = lineasRpc.map((l) => ({ ...l, photo_path: foto }));
   }
 
   const { data: escrito, error: errorRpc } = await supabase.rpc("registrar_abono_repartido", {

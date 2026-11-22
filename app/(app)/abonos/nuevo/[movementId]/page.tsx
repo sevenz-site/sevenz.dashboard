@@ -9,6 +9,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import { Button } from "@/components/ui/button";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CuotasTable } from "@/components/dashboard/cuotas-table";
+import { pagadoDelFiado } from "@/lib/estado-del-plazo";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBs, formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatPlazoDias } from "@/lib/format";
@@ -276,6 +277,9 @@ export default async function ConfirmarFiadoPage({
             plazoDias={mov.plazo_dias as number}
             cuotas={mov.cuotas as number}
             amount={Number(mov.amount)}
+            // WHAT IS ALREADY PAID, so the cuotas this abono is about to pay are the ones still
+            // open. Until 2026-11-22 nothing was passed and every cuota read unpaid.
+            pagado={pagadoDelFiado(Number(mov.amount), pendiente)}
             // EL FORMATEADOR VIENE DE FUERA, que es como esta tabla se
             // mantiene igual en las tres pantallas que ya la montan sin saber
             // de libros ni de monedas.

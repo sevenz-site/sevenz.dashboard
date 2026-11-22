@@ -3,7 +3,7 @@ import { enviarResumenSemanal } from "@/lib/whatsapp/cartera-summary";
 import { enviarAtencionSemanal } from "@/lib/whatsapp/cartera-attention";
 import { diaIsoEnColombia } from "@/lib/whatsapp/send";
 import { registrarLatido } from "@/lib/whatsapp/latido";
-import { enviarRecordatoriosDePlazo } from "@/lib/whatsapp/recordatorio-plazo";
+import { sendInstallmentNotices } from "@/lib/whatsapp/installment-notices";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getRateHealth } from "@/lib/admin/rate-health";
 import { avisarTasaRetenida } from "@/lib/whatsapp/tasa-retenida";
@@ -111,18 +111,16 @@ export async function GET(request: Request) {
     // business family, one template per slot, two slots a week per phone (migration 205).
     const atencion = dia >= 4 ? await enviarAtencionSemanal() : null;
 
-    // LOS RECORDATORIOS DE PLAZO, todos los dias (MS-3). A diferencia de las
-    // dos de arriba, esta no tiene dia fijo: la fecha de vencimiento de cada
-    // cliente decide por si sola, y la funcion de la base ya filtra a quien le
-    // toca HOY. Correrla un dia que no le toca a nadie devuelve cero y no
-    // escribe nada.
+    // THE CLIENT'S NOTICES PER CUOTA, every day: `installment_due_soon` before each cuota and
+    // `overdue_debt_warning` at 7 and 15 days past it (owner's request of 2026-11-19). They
+    // replaced `payment_due_date_v2` on 2026-11-22; its database function stays, unused, so a
+    // rollback of this code still finds it. No fixed day: each cuota's date decides, and a day
+    // when nothing is due returns zero and writes nothing.
     //
-    // VA DESPUES de las del dueno a proposito. Los 250 del portafolio son
-    // compartidos (MS-37) y el resumen semanal es lo que ya funciona en
-    // produccion: si algun dia el cupo escasea, lo que se queda fuera tiene
-    // que ser el recordatorio, no el resumen. La puerta ademas reserva 50 para
-    // duenos, asi que esto es cinturon sobre tirantes.
-    const recordatorios = await enviarRecordatoriosDePlazo();
+    // AFTER the owners' messages on purpose. The 250 of the portfolio are shared (MS-37) and
+    // the weekly summary is what already works: if the quota ever runs short, what stays out
+    // has to be a client notice, not the summary. The gate also keeps 50 for owners.
+    const avisosDeCuota = await sendInstallmentNotices();
 
     // Sin `detalle`: lleva ids de dueños y no tiene por qué existir en una
     // respuesta HTTP. Lo que hace falta para saber si la tanda fue bien son
@@ -136,7 +134,7 @@ export async function GET(request: Request) {
         fallidos: resumen.fallidos,
       },
       atencion,
-      recordatorios,
+      avisosDeCuota,
       cuentasListas,
       pruebaPorVencer,
       avisosInactividad,

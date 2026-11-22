@@ -1,4 +1,5 @@
 import { track } from "@/lib/mixpanel";
+import { installSource } from "@/lib/install-source";
 
 // Saber si Sevenz se puede instalar en este teléfono, y si conviene ofrecerlo.
 //
@@ -78,11 +79,12 @@ export async function instalar(): Promise<boolean> {
 
 // Ya está instalada: la ventana corre sin barras del navegador. `standalone`
 // suelto es el de Safari en iPhone, que no implementa display-mode.
+//
+// The Play Store app counts as installed too (PL-48, step 1.8). A TWA normally matches
+// display-mode standalone already; the referrer check in installSource() covers it
+// without relying on that, so the banner can never offer to install the app it runs in.
 export function yaEstaInstalada(): boolean {
-  if (typeof window === "undefined") return false;
-  const comoApp = window.matchMedia?.("(display-mode: standalone)")?.matches;
-  const safari = (window.navigator as Navigator & { standalone?: boolean }).standalone;
-  return Boolean(comoApp || safari);
+  return installSource() !== "browser";
 }
 
 export function esIphone(): boolean {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,6 +22,8 @@ import { useImportJobs } from "@/components/import/import-context";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { InstallAppDialog } from "@/components/install-app";
+import { suscribirseANada } from "@/lib/install-prompt";
+import { installSource } from "@/lib/install-source";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Inicio", icon: Home, dataTour: undefined },
@@ -68,6 +70,14 @@ export function AppSidebar({ businessName }: { businessName: string }) {
   const router = useRouter();
   const tour = useTour();
   const [instalar, setInstalar] = useState(false);
+  // Read once, like esIphone in install-app.tsx: where the tab was opened from does not
+  // change mid-session. The server snapshot is false, so the entry renders as it always
+  // has and only the Play Store app drops it after hydration.
+  const inPlayStoreApp = useSyncExternalStore(
+    suscribirseANada,
+    () => installSource() === "play",
+    () => false,
+  );
   const [logoutOpen, setLogoutOpen] = useState(false);
   const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();
@@ -146,12 +156,19 @@ export function AppSidebar({ businessName }: { businessName: string }) {
           {/* Aquí está siempre, para quien cerró el aviso de Cartera y luego la
               quiere, o para quien cambió de teléfono. El aviso insiste dos veces
               y se calla; esta entrada no se va nunca. */}
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => setInstalar(true)}>
-              <Smartphone />
-              <span>Instalar app</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {/* EXCEPT inside the Play Store app. Owner's decision of 2026-11-20 (PL-48):
+              «Esconde "Instalar app" solo en la app de la tienda». There it is already
+              installed, and its steps ("open Chrome's menu, the three dots") describe a
+              menu a Trusted Web Activity does not have. In the browser and in an app
+              installed from the browser it stays, as decided above. */}
+          {inPlayStoreApp ? null : (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => setInstalar(true)}>
+                <Smartphone />
+                <span>Instalar app</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             {/* The unsaved-changes guard runs first, then the dialog asks
                 where to sign out. Inside the phone's Sheet the dialog opens

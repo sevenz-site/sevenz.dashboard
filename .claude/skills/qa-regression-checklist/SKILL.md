@@ -1455,7 +1455,7 @@ no escribe nada.
 | **Cualquier campo donde se teclee dinero** | **`qa:agrupado`** |
 | Papelera y restaurar | `qa:papelera` |
 | Libreta por foto | `qa:import`, `qa:reconcile` |
-| WhatsApp, más allá de las plantillas | `qa:puerta`, `qa:recibo`, `qa:recordatorio`, `qa:mensaje`, `qa:consent`, `qa:telefono` |
+| WhatsApp, más allá de las plantillas | `qa:puerta`, `qa:recibo`, `qa:avisos-cuota`, `qa:mensaje`, `qa:consent`, `qa:telefono` |
 | Productos y precios | `qa:precio`, `qa:proveedor`, `qa:producto-rapido` |
 | Documento del cliente | `qa:document-id`, `qa:documento`, `qa:documento-cliente`, `qa:orden-letra` |
 | **Cualquier pantalla, PNG o mensaje que DIBUJE un documento** | Mirar que lleve su letra — ver abajo |

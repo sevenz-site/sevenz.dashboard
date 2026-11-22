@@ -13,7 +13,6 @@ import {
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
@@ -50,6 +49,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
 import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
+import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
 //
@@ -164,8 +164,26 @@ export function AbonoMonto({
   const { ref: refMonto, onChange: alTeclearMonto } = useGroupedAmount(monto, setMonto);
 
   const [usarPrevista, setUsarPrevista] = useState(false);
-  const [descripcion, setDescripcion] = useState("");
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
+  // IN A SPLIT, THE DESCRIPTION IS THE SPLIT'S: one bill, one note on every line. This screen
+  // starts from what the 1/2 holds and gives it back on return (`fijarEnBorrador`). Until
+  // 2026-11-22 the field was drawn here and only the amount travelled back, so whatever the
+  // shopkeeper typed was dropped without a word. Read once on entry, like `leido` below.
+  const descripcionDelReparto = useSyncExternalStore(
+    leerUnaVezAlEntrar,
+    () => (enReparto ? (leerBorrador(clienteId)?.descripcion ?? "") : ""),
+    () => "",
+  );
+  const [descripcionEditada, setDescripcion] = useState<string | null>(null);
+  const descripcion = descripcionEditada ?? descripcionDelReparto;
+  // Inside a split, the photo is the split's, as the description above: read once on entry and
+  // handed back by `fijarYVolver`. `undefined` while untouched, because `null` means «removed».
+  const fotoDelReparto = useSyncExternalStore(
+    leerUnaVezAlEntrar,
+    () => (enReparto ? (leerBorrador(clienteId)?.photoPath ?? null) : null),
+    () => null,
+  );
+  const [photoEditada, setPhotoPath] = useState<string | null | undefined>(undefined);
+  const photoPath = photoEditada !== undefined ? photoEditada : fotoDelReparto;
   const [avisar, setAvisar] = useState(false);
   // THE METHOD, or null while untouched: then the default follows the currency being typed
   // (owner's decision of 2026-11-17). See `MetodoDePagoField`.
@@ -320,6 +338,8 @@ export function AbonoMonto({
       enElLibro,
       libro,
       monedaTecleada === "VES" ? escrito : null,
+      descripcion,
+      photoPath,
     );
     router.push(`/abonos/nuevo?cliente=${clienteId}${sufijoDelOrigen}`);
   }
@@ -616,15 +636,7 @@ export function AbonoMonto({
         />
       ) : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="descripcion">Descripción (opcional)</Label>
-        <Textarea
-          id="descripcion"
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-          className="min-h-[120px]"
-        />
-      </div>
+      <MovementDescriptionField id="descripcion" value={descripcion} onChange={setDescripcion} />
 
       <div className="flex flex-col gap-2">
         <Label>Foto (opcional)</Label>

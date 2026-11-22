@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { ConsentCheckboxRow } from "@/components/dashboard/whatsapp-consent-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -36,6 +35,7 @@ import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { AvisoNumeroYaAcepta } from "@/components/dashboard/aviso-numero-ya-acepta";
 import type { LedgerCurrency, OwnerCountry } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 // LA PANTALLA DE CLIENTE NUEVO — frame `1389:8313`, 2026-10-18, y desde el
 // 2026-10-30 DOS PASOS: «1/2 Información del cliente» (`1868:15815`) y «2/2
@@ -383,16 +383,7 @@ export function NewClientForm({
             {photoPath ? <input type="hidden" name="deuda_photo_path" value={photoPath} /> : null}
           </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="deuda_descripcion">Descripción (opcional)</Label>
-            <Textarea
-              id="deuda_descripcion"
-              name="deuda_descripcion"
-              placeholder="Descripción"
-              maxLength={500}
-              className="min-h-[120px]"
-            />
-          </div>
+          <MovementDescriptionField id="deuda_descripcion" name="deuda_descripcion" maxLength={500} />
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}

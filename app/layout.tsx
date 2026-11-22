@@ -49,6 +49,10 @@ export const metadata: Metadata = {
   // `"id": "/"` keeps the installed app the same app: with no `id`, browsers derive the
   // identity FROM start_url, so changing it alone would make an already installed Sevenz
   // stop receiving manifest updates (or be offered as a second install).
+  // `description` is the owner's app since 2026-11-20 (PL-48, step 1.7). It read
+  // «Consulta tu saldo de fiado en tiempo real», the customer's sentence, while every
+  // install of this manifest is the owner's dashboard (start_url /dashboard). Bubblewrap
+  // reads it when it builds the Play Store package.
   manifest: "/manifest.json",
   icons: {
     // El sufijo -v2 no es decoración: ver la nota de public/manifest.json en

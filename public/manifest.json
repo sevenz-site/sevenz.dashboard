@@ -1,7 +1,7 @@
 {
   "name": "Sevenz",
   "short_name": "Sevenz",
-  "description": "Consulta tu saldo de fiado en tiempo real.",
+  "description": "Anota fiados, abonos y ventas de tu negocio.",
   "id": "/",
   "start_url": "/dashboard",
   "display": "standalone",

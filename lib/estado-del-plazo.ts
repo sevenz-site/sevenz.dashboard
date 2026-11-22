@@ -32,6 +32,26 @@ import { getClientStatus, type ClientStatus } from "@/lib/types";
 
 export type EstadoDelPlazo = "dentro" | "vencido" | "pagado";
 
+/**
+ * What a fiado has had paid: its stored amount minus what it still owes.
+ *
+ * THE ONE ANSWER TO «HOW MUCH OF THIS FIADO IS PAID», for the cuota table, the history chip,
+ * the order of debtors and the client's WhatsApp per cuota. Owner's decision of 2026-11-22
+ * («construye la solución 1»), with his own rule: *«si el cliente compra 100 y paga 25 en esa
+ * compra, los otros 75 se dividen entre el número de cuota, no los 100»*.
+ *
+ * WHY NOT «directed payments plus the payment at the sale», which is what the cuota table did
+ * until that day. Since migration 124 a fiado is stored for WHAT IS LEFT (75), so the 25 paid at
+ * the sale is already outside it; counting it again painted cuotas «Pagado» that nobody had paid
+ * (dev, 2026-11-22: a client owing $15 with all 4 cuotas «Pagado», next to a «Plazo vencido» chip
+ * on the same screen). And a payment that was not directed lowers the debt in the ledger's queue
+ * but was invisible to the table. `pending` comes from `get_open_charges_for_client`, the queue
+ * itself, so both are right by construction.
+ */
+export function pagadoDelFiado(amount: number, pending: number): number {
+  return Math.max(0, Math.round((amount - pending) * 100) / 100);
+}
+
 export const ETIQUETA_DEL_ESTADO: Record<EstadoDelPlazo, string> = {
   dentro: "Dentro del plazo",
   vencido: "Plazo vencido",
@@ -53,6 +73,13 @@ export type CuotaConEstado = {
   fecha: Date;
   monto: number;
   estado: EstadoDelPlazo;
+  /**
+   * What is still owed of THIS cuota, from the same running total that decides `estado`: the
+   * whole `monto` when nothing reached it, the rest when a payment covered part of it, zero when
+   * it is «pagado». Added on 2026-11-22 for the client's WhatsApp per cuota
+   * (`lib/whatsapp/installment-notices.ts`), which has to say the same as this table.
+   */
+  pendiente: number;
 };
 
 /**
@@ -130,6 +157,12 @@ export function estadosDelFiado({
     numero: f.numero,
     fecha: f.fecha,
     monto: f.monto,
+    // The threshold of this cuota minus what was paid, never more than the cuota itself and
+    // never below zero. Same rounding as `pagado`, so 33,33 - 33,329999 is 0 and not a cent.
+    pendiente:
+      pagado + HOLGURA >= umbrales[i]
+        ? 0
+        : Math.round(Math.min(f.monto, umbrales[i] - pagado) * 100) / 100,
     estado:
       pagado + HOLGURA >= umbrales[i]
         ? "pagado"
@@ -196,7 +229,7 @@ export function estadoDelFiado({
       plazoDias,
       cuotas,
       amount,
-      abonoInicial: Math.max(0, Math.round((amount - pendiente) * 100) / 100),
+      abonoInicial: pagadoDelFiado(amount, pendiente),
       ahora,
     });
     const siguiente = filas.find((c) => c.estado !== "pagado");
@@ -258,7 +291,7 @@ export function vencimientoEfectivo({
       plazoDias,
       cuotas,
       amount,
-      abonoInicial: Math.max(0, Math.round((amount - pendiente) * 100) / 100),
+      abonoInicial: pagadoDelFiado(amount, pendiente),
       ahora,
     });
     const siguiente = filas.find((c) => c.estado !== "pagado");
