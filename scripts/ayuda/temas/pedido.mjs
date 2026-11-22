@@ -16,6 +16,9 @@ await shot(S, 4, "Registrar pedido", { crop: 0 });
 await click("Registrar pedido", { wait: 500 });
 await waitFor("location.pathname.includes('/confirmar')"); await sleep(3000);
 await shot(S, 5, "Cambiar");
+// v0.11.0 (CT-181): «Agregar producto» under «Confirmar y continuar». Numbered 14 so the steps
+// after it keep their pictures; nothing is added here, so the order stays as the seed left it.
+await shot(S, 14, "Agregar producto", { crop: 0 });
 await shot(S, 6, "Confirmar y continuar", { crop: 0 });
 await click("Confirmar y continuar", { wait: 500 });
 await waitFor("location.pathname.includes('/pago')"); await sleep(3000);

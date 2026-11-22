@@ -24,6 +24,12 @@ await shot(S, 4, "js:[...document.querySelectorAll('h2')].find(h=>h.textContent.
 await js(`(()=>{${METODO.slice(3)}.scrollIntoView({block:'center',behavior:'instant'}); return 1})()`);
 await sleep(400);
 await shot(S, 5, METODO, { pad: 6 });
+// v0.12.0: «Descripción (opcional)» and «Foto (opcional)» under the method (owner's request of
+// 2026-11-22). Its picture is number 10 so the ones after it keep their numbers.
+const DESCRIPCION = "js:document.getElementById('reparto-descripcion').parentElement";
+await js(`(()=>{${DESCRIPCION.slice(3)}.scrollIntoView({block:'center',behavior:'instant'}); return 1})()`);
+await sleep(400);
+await shot(S, 10, DESCRIPCION, { pad: 6 });
 await click("Repartir manualmente", { wait: 2000 });
 await shot(S, 6, "js:document.querySelector('[role=dialog]')", { crop: 0, pad: 0 });
 await escape(); await sleep(800);
