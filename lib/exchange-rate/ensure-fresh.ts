@@ -9,6 +9,14 @@ import { fetchAndStoreBcvRate } from "@/lib/exchange-rate/fetch-and-store";
 // the visitor's own browser, was current.
 const MAX_AGE_MS = 20 * 60 * 1000;
 
+// Whether a stored rate is recent enough to count as confirmed, by the same
+// window the refresh below uses. For the public balance page (2026-11-19),
+// which shows the rate but never refreshes it: a page anyone can open does not
+// get to trigger writes.
+export function isFreshFetch(fetchedAt: string | null): boolean {
+  return fetchedAt !== null && Date.now() - new Date(fetchedAt).getTime() < MAX_AGE_MS;
+}
+
 // Both providers allow themselves 8s, and the fallback runs after the primary
 // gives up — up to 16s. That budget is right for the cron, where nobody is
 // waiting, and completely wrong here, where an owner is staring at a blank

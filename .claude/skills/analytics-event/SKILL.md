@@ -172,6 +172,13 @@ su fecha real, y esa liberación añade su fila.
 sube a la carpeta de arriba, reemplazando el archivo con el mismo nombre. Sin eso, el
 dueño lee una versión vieja que parece vigente.
 
+**Reemplazar quiere decir tres pasos, en este orden** (regla del dueño del 2026-11-18,
+en `CLAUDE.md`, «Un documento vivo que se sube de nuevo a Drive…»): subir el libro nuevo;
+buscar en la carpeta y comprobar que está; mandar a la papelera **por id** todas las
+copias anteriores (también las que el dueño marcó «BORRAR»), y decirlo en el informe. El
+2026-11-17 y el 2026-11-18 se subió el nuevo sin quitar el viejo, y la carpeta llegó a
+tener tres libros con el mismo nombre.
+
 ## Cómo se reporta
 
 Una fila por evento en la tabla de QA: evento, herramienta, resultado y si se vio

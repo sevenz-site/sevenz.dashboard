@@ -110,6 +110,12 @@ export type RegistroDePedidoEntrada = {
   // currency block. It is what decides WHICH currency a line belongs to in
   // this call, so a line moved to euros stops counting towards dollars.
   editadas: Record<string, { quantity: number; currency: string }>;
+  // PRODUCTS ADDED ON STEP 1/3 that the customer did not order (owner's
+  // request of 2026-11-19). Product, quantity and currency -- NEVER a price:
+  // they reach `registrarVenta` with no `orderItemId`, so it prices them from
+  // the catalogue the way it prices any sale line. Only the ones in `moneda`
+  // enter this call. Optional: a tab opened before this change sends none.
+  agregadas?: { productId: string; quantity: number; currency: string }[];
   cliente: {
     fichaId: string | null;
     name: string;
@@ -263,6 +269,23 @@ async function registrarElPedido(
       quantity: entrada.editadas[linea.id]?.quantity ?? Number(linea.quantity),
       currency: moneda as VentaEntrada["lineas"][number]["currency"],
       orderItemId: linea.id,
+    });
+  }
+
+  // ── WHAT THE SHOPKEEPER ADDED, AT THE END ───────────────────────────
+  //
+  // After the order's own lines, as the screen lists them. Nothing here is
+  // trusted beyond its shape: `registrarVenta` checks the product belongs to
+  // this owner and is not in the bin, re-checks the quantity and the currency,
+  // and computes the price, the stock movement and the frozen cost through the
+  // same path as a counter sale. `catalog_order_items` is never touched -- the
+  // owner's decision of 2026-11-19 that the customer's order stays as it was.
+  for (const a of Array.isArray(entrada.agregadas) ? entrada.agregadas : []) {
+    if (!a || typeof a.productId !== "string" || String(a.currency) !== moneda) continue;
+    lineas.push({
+      productId: a.productId,
+      quantity: Number(a.quantity),
+      currency: moneda as VentaEntrada["lineas"][number]["currency"],
     });
   }
 
@@ -491,6 +514,18 @@ async function registrarElPedido(
       sale_id: resultado.saleId,
       currency: moneda,
       currencies_left: pendientes.length,
+      // HOW OFTEN AN ORDER GROWS AT THE COUNTER. Business question, owner's
+      // request of 2026-11-19: «¿con qué frecuencia el tendero agrega productos
+      // que el cliente no pidió al registrar su pedido?». Many → the customer's
+      // catalogue is missing what people end up buying, and the products added
+      // are the ones worth publishing or pricing better; almost none → the
+      // button is a safety net and the catalogue order is complete as sent.
+      // A property and not a new event: it is counted where the sale is
+      // WRITTEN, on the server, so a phone that never reports a gesture still
+      // counts. Filed under the owner. A product that only added units to a
+      // card the customer ordered is an edit, not an added line, and is not
+      // counted here.
+      added_lines: lineas.filter((l) => l.orderItemId == null).length,
     },
     user.email,
   );

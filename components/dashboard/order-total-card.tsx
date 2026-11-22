@@ -3,6 +3,7 @@
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
+import { totalDelBloque } from "@/lib/orders/bloques-de-moneda";
 import {
   formatPriceAmount,
   priceIn,
@@ -64,24 +65,12 @@ export function OrderTotalCard({
   rates: BolivarRates | null;
 }) {
   const borrador = useBorrador(pedidoId);
-  const total =
-    Math.round(
-      lineas.reduce((suma, l) => {
-        if (l.productId == null) return suma;
-        const edicion = borrador?.editadas?.[l.id];
-        // UNA LÍNEA MOVIDA A OTRA MONEDA SALE DE ESTE TOTAL. Si no, el bloque
-        // de euros seguiría sumando algo que se va a cobrar en dólares.
-        if (edicion && String(edicion.currency) !== String(moneda)) return suma;
-        // EL PRECIO DE LA EDICIÓN, cuando lo hay. Una línea editada puede
-        // haber saltado de escalón --decisión del dueño del 2026-10-26-- y
-        // sumarla al precio sellado haría que esta tarjeta y el botón de
-        // cobro dijeran cifras distintas de la misma venta.
-        return (
-          suma +
-          (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario)
-        );
-      }, 0) * 100,
-    ) / 100;
+  // `totalDelBloque` holds the rules this card used to carry inline: a line
+  // moved to another currency leaves this total, an edited line counts at its
+  // edited price (the owner's decision of 2026-10-26), and since 2026-11-19 the
+  // products added on step 1/3 count too. The payment form's ceiling asks the
+  // same function, so the two cannot disagree.
+  const total = totalDelBloque(lineas, moneda, borrador);
 
   const enBs = rates
     ? (priceIn("VES", { amount: total, currency: moneda }, rates)?.amount ?? null)

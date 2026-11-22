@@ -110,6 +110,18 @@ export function resumirPorMoneda(
     acc.total = Math.round((acc.total + total) * 100) / 100;
     porMoneda.set(moneda, acc);
   }
+  // THE PRODUCTS ADDED ON STEP 1/3 (2026-11-19) are part of what this sale
+  // charges, so they count towards whether something is left on credit -- the
+  // «mala paga» warning reads this. Same rule as above: only currencies with a
+  // payment already typed.
+  for (const a of Object.values(borrador.agregadas ?? {})) {
+    const moneda = a.currency as PriceCurrency;
+    if (!borrador.monedas[moneda]) continue;
+    const total = Math.round(a.quantity * (a.unitPrice ?? 0) * 100) / 100;
+    const acc = porMoneda.get(moneda) ?? { total: 0, abonado: 0 };
+    acc.total = Math.round((acc.total + total) * 100) / 100;
+    porMoneda.set(moneda, acc);
+  }
   // Y el abono, una vez por moneda, después de haber sumado los totales.
   for (const [moneda, acc] of porMoneda) {
     acc.abonado = Math.round((borrador.monedas[moneda]?.amount ?? 0) * 100) / 100;

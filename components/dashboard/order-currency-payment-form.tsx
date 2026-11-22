@@ -27,6 +27,7 @@ import {
   type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
+import { totalDelBloque } from "@/lib/orders/bloques-de-moneda";
 import { useZonaDelNegocio } from "@/components/fecha";
 import {
   formatPriceAmount,
@@ -148,22 +149,13 @@ export function OrderCurrencyPaymentForm({
   const [avisando, setAvisando] = useState(false);
 
   const borradorDeLineas = useBorrador(pedidoId);
-  const total =
-    Math.round(
-      lineas.reduce((suma, l) => {
-        if (l.productId == null) return suma;
-        const edicion = borradorDeLineas?.editadas?.[l.id];
-        if (edicion && String(edicion.currency) !== String(moneda)) return suma;
-        // MISMA CUENTA QUE `OrderTotalCard`, incluido el precio de la
-        // edición: este número es el TECHO de lo que se deja cobrar, así que
-        // si se quedara con el precio sellado el tendero no podría cobrar la
-        // venta que la pantalla de al lado le está enseñando.
-        return (
-          suma +
-          (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario)
-        );
-      }, 0) * 100,
-    ) / 100;
+  // `true` only once the browser renders: see the comment above `PagoCampos`.
+  const enElNavegador = useSyncExternalStore(leerUnaVezAlEntrar, () => true, () => false);
+  // THE SAME FUNCTION AS `OrderTotalCard`, edited prices and added products
+  // included: this number is the CEILING of what may be charged, so a ceiling
+  // below the card's figure would stop the shopkeeper charging the sale the
+  // card above is showing.
+  const total = totalDelBloque(lineas, moneda, borradorDeLineas);
   const router = useRouter();
 
   // THE DRAFT IS READ THROUGH `useSyncExternalStore`, the house pattern of
@@ -346,34 +338,48 @@ export function OrderCurrencyPaymentForm({
           {error}
         </p>
       ) : null}
-      <PagoCampos
-        moneda={moneda}
-        ownerId={ownerId}
-        total={total}
-        rates={rates}
-        prevista={prevista}
-        inicial={inicial}
-        // «Total a pagar» YA ESTÁ ARRIBA, dibujado por la página como en el
-        // frame. La tarjeta de total de los campos sería la misma cifra otra
-        // vez.
-        mostrarTotal={false}
-        // PEGADO ABAJO A 40px, encargo del dueño el 2026-10-27. Es una
-        // pantalla completa: su botón estaba al final de la columna, a 160px
-        // de desplazamiento a 375x812. La hoja del asistente de venta no lo
-        // pide, por eso es una prop y no el comportamiento por defecto.
-        botonPegadoAbajo
-        avisoSiFiado={avisoMalaPaga}
-        onGuardar={guardar}
-        // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
-        // It is the BLOCK's total and not what is typed into the amount field —
-        // the frame's own caption is the ceiling, which is what the shopkeeper
-        // is confirming against.
-        etiquetaBoton={
-          cerrando
-            ? "Registrando…"
-            : `Pagar ${formatPriceAmount(total, moneda)}`
-        }
-      />
+      {/* NOT BEFORE THE BROWSER HAS READ THE DRAFT. `PagoCampos` seeds «Monto»
+          from `total` ONCE, in a `useState`. On a full page load the first
+          render is the hydration one, where `useBorrador` returns the server's
+          snapshot (null): the total is the sealed one, without the «−/+» edits
+          and without the products added on step 1/3. The field kept that figure
+          and the chip read it as a partial payment. Seen on 2026-11-19 taking the
+          release captures: «Fiado o crédito» with $14,55 typed on a $17,85 sale,
+          one tap away from registering $3,30 on credit nobody asked for. Coming
+          from «Confirmar y continuar» (a client navigation) it never showed,
+          which is why it went unseen since the edits landed. A saved payment
+          (`inicial`) had the same problem on a reload. One frame without the
+          fields, the same trade `abono-monto.tsx` makes for its ceiling. */}
+      {enElNavegador ? (
+        <PagoCampos
+          moneda={moneda}
+          ownerId={ownerId}
+          total={total}
+          rates={rates}
+          prevista={prevista}
+          inicial={inicial}
+          // «Total a pagar» YA ESTÁ ARRIBA, dibujado por la página como en el
+          // frame. La tarjeta de total de los campos sería la misma cifra otra
+          // vez.
+          mostrarTotal={false}
+          // PEGADO ABAJO A 40px, encargo del dueño el 2026-10-27. Es una
+          // pantalla completa: su botón estaba al final de la columna, a 160px
+          // de desplazamiento a 375x812. La hoja del asistente de venta no lo
+          // pide, por eso es una prop y no el comportamiento por defecto.
+          botonPegadoAbajo
+          avisoSiFiado={avisoMalaPaga}
+          onGuardar={guardar}
+          // THE FIGURE IS IN THE LABEL, as the frame writes it: «Pagar $00.00».
+          // It is the BLOCK's total and not what is typed into the amount field —
+          // the frame's own caption is the ceiling, which is what the shopkeeper
+          // is confirming against.
+          etiquetaBoton={
+            cerrando
+              ? "Registrando…"
+              : `Pagar ${formatPriceAmount(total, moneda)}`
+          }
+        />
+      ) : null}
 
       {/* ── EL MISMO AVISO QUE EL PASO DEL CLIENTE, EN LA OTRA PUERTA ──
           Las dos pantallas escriben la venta, así que las dos preguntan. El

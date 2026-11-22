@@ -22,7 +22,11 @@ import { resolveOfficialRates, describeSources } from "../lib/exchange-rate/reso
 import { todayInCaracas } from "../lib/exchange-rate/rate-status.ts";
 
 const DEV_REF = "vzqppwrwnmlbrxizskdh";
-const PINNED_ISSUER = "Sectigo Public Server Authentication CA DV R36";
+// Every intermediate shipped in lib/exchange-rate/bcv-intermediate-cert.ts. Keep the two in step.
+const PINNED_ISSUERS = [
+  "Sectigo Public Server Authentication CA DV R36",
+  "Sectigo Public Server Authentication CA OV R36",
+];
 const CERT_WARNING_DAYS = 21;
 
 const hallazgos = []; // { nivel: "ok" | "aviso" | "fallo", texto, accion? }
@@ -111,7 +115,7 @@ try {
   const dias = Math.round((vence.getTime() - Date.now()) / 864e5);
   const emisor = cert.issuer?.CN ?? "?";
   console.log(`BCV certificado: emitido por «${emisor}», vence ${vence.toISOString().slice(0, 10)} (${dias} días)`);
-  if (emisor !== PINNED_ISSUER) fallo(`El BCV renovó su certificado con otro intermedio («${emisor}», y el fijado es «${PINNED_ISSUER}»).`, "Descargar el intermedio nuevo desde la URL «CA Issuers» del certificado (openssl x509 -ext authorityInfoAccess) y reemplazar lib/exchange-rate/bcv-intermediate-cert.ts. Hasta entonces esta fuente falla y la app sigue con las otras dos.");
+  if (!PINNED_ISSUERS.includes(emisor)) fallo(`El BCV renovó su certificado con otro intermedio («${emisor}», y los fijados son ${PINNED_ISSUERS.map((i) => `«${i}»`).join(" y ")}).`, "Descargar el intermedio nuevo desde la URL «CA Issuers» del certificado (openssl x509 -ext authorityInfoAccess) y añadirlo a lib/exchange-rate/bcv-intermediate-cert.ts y a PINNED_ISSUERS de este guion, comprobando antes que firma la hoja del BCV y que lo firma una raíz de Node. Hasta entonces esta fuente falla y la app sigue con las otras dos.");
   else if (dias <= CERT_WARNING_DAYS) aviso(`El certificado del BCV vence en ${dias} días. Si lo renuevan con otro intermedio, esta fuente deja de leerse.`, "Nada que hacer todavía: este diagnóstico avisará el día que cambie el emisor.");
   try {
     await fetch("https://www.bcv.org.ve/", { signal: AbortSignal.timeout(8000) });

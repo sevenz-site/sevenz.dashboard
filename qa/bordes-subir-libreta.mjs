@@ -374,7 +374,7 @@ const errorDeVerdad = console.error;
 console.error = () => {};
 
 const sinJerga = (m) =>
-  !/fetch failed|violates|constraint|policy|undefined|null|GEMINI|Gemini|OpenRouter|TypeError|ECONNREFUSED|PGRST|[0-9]{5}/.test(m);
+  !/fetch failed|violates|constraint|policy|undefined|null\b|GEMINI|Gemini|OpenRouter|TypeError|ECONNREFUSED|PGRST|[0-9]{5}/.test(m);
 
 // EL CASO EXACTO QUE LO MOTIVO.
 const red = mensajeDeError("leer la foto", new TypeError("fetch failed"), "extract");

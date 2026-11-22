@@ -11,12 +11,14 @@ import { parseVenezuelanNumber, type DatedRate } from "@/lib/exchange-rate/dated
 // R36» and the server attaches a different Sectigo intermediate), so Node's fetch fails with
 // UNABLE_TO_VERIFY_LEAF_SIGNATURE even though browsers, which fetch missing intermediates on
 // their own, open it fine. We ship the missing intermediate ourselves and verify normally.
+// The BCV renewed on 2026-11-13 under «CA OV R36» and did exactly the same, so both
+// intermediates are shipped: see bcv-intermediate-cert.ts.
 // Turning verification off was considered and refused: that would let anyone on the path
 // pass off a rate as the BCV's, and this number is what fiados are stamped with.
 //
 // WHAT WILL BREAK IT, and the daily diagnosis (qa/diagnostico-tasas.mjs) watches for both:
-// the BCV renewing its certificate under another intermediate (the leaf expires
-// 2026-11-20), or redesigning the page so the markup below no longer matches. Either way
+// the BCV renewing its certificate under another intermediate (it did on 2026-11-13; the
+// current leaf expires 2027-05-30), or redesigning the page so the markup below no longer matches. Either way
 // this source fails loudly and the other two carry on.
 const PAGE_URL = "https://www.bcv.org.ve/";
 const TIMEOUT_MS = 8_000;

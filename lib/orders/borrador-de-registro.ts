@@ -174,6 +174,48 @@ export type ClienteDelRegistro = {
   consienteWhatsapp: boolean;
 };
 
+// A PRODUCT THE SHOPKEEPER ADDED ON STEP 1/3 THAT THE CUSTOMER DID NOT ORDER.
+//
+// The owner's request of 2026-11-19 (frames in section `2210:22223`): «+ Agregar
+// producto» under «Confirmar y continuar» opens the sale's product picker, and
+// what is picked joins the block. His decisions, the same day:
+//
+//   · IT ONLY ENTERS THE SALE. The order the customer sees does not change, so
+//     nothing is written to `catalog_order_items` -- it lives here, with the
+//     edits, and reaches the server only when the sale is written.
+//   · It enters in the block's currency; «Cambiar» moves it like any line.
+//   · It has no «Cantidad del pedido»: the customer never asked for it.
+//
+// KEYED BY ITS OWN ID, prefixed `agregada:` so it can never collide with a
+// `catalog_order_items.id` (a uuid) and every shared reader can tell the two
+// apart with `esLineaAgregada`.
+//
+// `unitPrice` IS FOR DRAWING ONLY, exactly like `LineaEditada.unitPrice`: the
+// server never receives it and prices the line from the catalogue itself.
+export type LineaAgregada = {
+  productId: string;
+  nombre: string;
+  quantity: number;
+  currency: string;
+  unitPrice?: number;
+};
+
+const PREFIJO_AGREGADA = "agregada:";
+
+export function esLineaAgregada(lineaId: string): boolean {
+  return lineaId.startsWith(PREFIJO_AGREGADA);
+}
+
+export function idDeLineaAgregada(): string {
+  // `crypto.randomUUID` exists only in secure contexts; a LAN address in dev is
+  // not one, so the fallback keeps the button working there too.
+  const aleatorio =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `${PREFIJO_AGREGADA}${aleatorio}`;
+}
+
 export type BorradorDeRegistro = {
   pedidoId: string;
   // Keyed by CURRENCY — "USD", "EUR", "COP". A currency block the shopkeeper
@@ -183,6 +225,9 @@ export type BorradorDeRegistro = {
   // Keyed by `catalog_order_items.id` as well. Absent = the shopkeeper did not
   // edit that line, so what the customer ordered stands.
   editadas?: Record<string, LineaEditada>;
+  // Products added on step 1/3, in the order they were added (string keys keep
+  // insertion order). Absent on every draft written before 2026-11-19.
+  agregadas?: Record<string, LineaAgregada>;
   cliente?: ClienteDelRegistro;
   guardadoEn: number;
 };
@@ -355,6 +400,7 @@ function escribir(
       pedidoId,
       monedas: actual?.monedas ?? {},
       editadas: actual?.editadas ?? {},
+      agregadas: actual?.agregadas ?? {},
       cliente: actual?.cliente,
       guardadoEn: Date.now(),
     };
@@ -429,6 +475,70 @@ export function fijarLineaEditada(
       editadas: { ...(actual?.editadas ?? {}), [lineaId]: edicion },
     };
   });
+}
+
+// THE ADDED LINE'S TWIN OF `fijarLineaEditada`, with the same mandatory
+// `monedasVivas` and for the same reason: moving the only line of a currency
+// elsewhere must not leave that currency's payment pointing at nothing.
+export function fijarLineaAgregada(
+  pedidoId: string,
+  lineaId: string,
+  linea: LineaAgregada,
+  monedasVivas: readonly string[],
+): void {
+  const vivas = new Set(monedasVivas);
+  escribir(pedidoId, (actual) => {
+    const monedas: Record<string, PagoDeMoneda> = {};
+    for (const [m, pago] of Object.entries(actual?.monedas ?? {})) {
+      if (vivas.has(m)) monedas[m] = pago;
+    }
+    return {
+      monedas,
+      agregadas: { ...(actual?.agregadas ?? {}), [lineaId]: linea },
+    };
+  });
+}
+
+// Removing an added line touches nothing but the draft: the customer's order
+// never had it. Its block keeps its payment, because the order's own lines are
+// still in it.
+export function quitarLineaAgregada(pedidoId: string, lineaId: string): void {
+  escribir(pedidoId, (actual) => {
+    const agregadas = { ...(actual?.agregadas ?? {}) };
+    delete agregadas[lineaId];
+    return { agregadas };
+  });
+}
+
+// WHAT A LINE IS BEING REGISTERED AS, whichever kind it is. The stepper, the
+// «Cambiar» sheet and the line's figures all ask this one question, so an added
+// line behaves like an edited one without each of them learning a second shape.
+export function edicionDeLinea(
+  borrador: BorradorDeRegistro | null,
+  lineaId: string,
+): LineaEditada | undefined {
+  if (!borrador) return undefined;
+  if (esLineaAgregada(lineaId)) {
+    const a = borrador.agregadas?.[lineaId];
+    if (!a) return undefined;
+    return {
+      quantity: a.quantity,
+      currency: a.currency,
+      ...(a.unitPrice != null ? { unitPrice: a.unitPrice } : {}),
+    };
+  }
+  return borrador.editadas?.[lineaId];
+}
+
+// The added lines currently in one currency, with their ids, in the order they
+// were added.
+export function lineasAgregadasEn(
+  borrador: BorradorDeRegistro | null,
+  moneda: string,
+): (LineaAgregada & { id: string })[] {
+  return Object.entries(borrador?.agregadas ?? {})
+    .filter(([, a]) => String(a.currency) === String(moneda))
+    .map(([id, a]) => ({ id, ...a }));
 }
 
 export function leerLineaEditada(

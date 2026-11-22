@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { OrderLineEditForm } from "@/components/dashboard/order-line-edit-form";
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
+import { edicionDeLinea } from "@/lib/orders/borrador-de-registro";
 import type { ProductoPublico } from "@/lib/products/public-pricing";
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
 
@@ -54,6 +55,7 @@ export function OrderLineEditSheet({
   rates,
   monedasDelLibro,
   umbralDeStock,
+  monedaExtra,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -72,6 +74,8 @@ export function OrderLineEditSheet({
   moneda: PriceCurrency;
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
+  /** See `ProductDetail.monedaExtra`. Passed for a product added on step 1/3. */
+  monedaExtra?: PriceCurrency;
 }) {
   const router = useRouter();
   const [abierta, setAbierta] = useState(false);
@@ -88,7 +92,7 @@ export function OrderLineEditSheet({
   // no la leía, así que cada vez que la abría parecía que se había perdido —
   // y el siguiente «Agregar» la habría pisado con el número viejo.
   const borrador = useBorrador(pedidoId);
-  const edicion = borrador?.editadas?.[lineaId];
+  const edicion = edicionDeLinea(borrador, lineaId);
   const cantidadActual = edicion?.quantity ?? cantidad;
   // La moneda a la que el tendero la movió, si la movió. `moneda` sigue
   // siendo la del BLOQUE en el que estamos, y `OrderLineEditForm` la necesita
@@ -188,6 +192,7 @@ export function OrderLineEditSheet({
               rates={rates}
               stock={stock}
               monedasDelLibro={monedasDelLibro}
+              monedaExtra={monedaExtra}
               // CIERRA LA HOJA Y REFRESCA LO DE DETRÁS. El paso 2/4 lo pinta
               // el servidor a partir de las líneas del pedido, así que sin
               // `refresh()` la tarjeta de atrás seguiría con la cantidad

@@ -14,6 +14,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { registrarDevolucion, registrarDevolucionDeContado } from "@/app/(app)/devoluciones/actions";
+import { conHoy } from "@/lib/exchange-rate/format";
 import { formatLedgerAmount, type LedgerDisplay } from "@/lib/exchange-rate/movement-display";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
@@ -296,7 +297,7 @@ export function RegistrarDevolucionDialog({
               {currency ? <CurrencyFlagIcon currency={currency} className="size-4" /> : null}
             </span>
             {valor.secondary ? (
-              <span className="text-xs leading-4 text-muted-foreground tabular-nums">{valor.secondary} Hoy</span>
+              <span className="text-xs leading-4 text-muted-foreground tabular-nums">{conHoy(valor.secondary)}</span>
             ) : null}
           </span>
         </div>

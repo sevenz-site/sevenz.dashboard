@@ -322,6 +322,9 @@ export type EventProps = {
     sale_id: string;
     currency: string;
     currencies_left: number;
+    // Products the shopkeeper added on step 1/3 that the customer did not order
+    // (2026-11-19). 0 on every sale before that day.
+    added_lines: number;
   };
   "Order Registration Rejected": FlowContext & { order_id: string; currency: string };
   "Order Status Changed": { order_id: string; action: "discard" | "restore" };
@@ -433,6 +436,10 @@ export type EventProps = {
   "Balance Link Opened": PublicContext;
   "Client Transaction Opened": PublicContext & { transaction_type?: string };
   "Client Signup Link Tapped": PublicContext;
+  // BUSINESS QUESTION, the owner's of 2026-11-19: «¿los clientes calculan antes
+  // de pagar?». If clients open it a lot and payments do not go up, the problem
+  // was never the arithmetic. `prefilled` says which balance it opened with.
+  "Client Calculator Opened": PublicContext & { prefilled?: string };
   "Catalog Link Opened": PublicContext & { from_balance?: boolean };
   "Catalog Product Opened": PublicContext & { product_id?: string; from_balance?: boolean };
   "Catalog Product Added": PublicContext & { product_id?: string; cart_lines?: number };

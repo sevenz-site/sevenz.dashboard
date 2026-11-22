@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { fetchUsdtP2p } from "@/lib/exchange-rate/usdt-p2p";
+import { cachedUsdtPrice } from "@/lib/exchange-rate/usdt-cache";
 
 export const runtime = "nodejs";
 // Sin prerenderizado: lo que devuelve depende de la hora, no de la ruta.
@@ -40,32 +40,24 @@ export const dynamic = "force-dynamic";
 // De paso, CriptoYa ve como mucho una petición por minuto por instancia, da
 // igual cuántos dueños estén mirando.
 
-const CACHE_MS = 60_000;
-
-// La caché vive en memoria del proceso, no en Redis ni en la base. Es lo
-// correcto para un dato que caduca en un minuto: montar almacenamiento
-// compartido para esto costaría más que la petición que ahorra. En
-// serverless cada instancia tiene la suya, así que el peor caso es que unas
-// pocas instancias pidan una vez cada una por minuto — muy por debajo de las
-// 120/min que permite CriptoYa.
-let cache: { precio: Awaited<ReturnType<typeof fetchUsdtP2p>>; en: number } | null = null;
+// THE CACHE MOVED TO `lib/exchange-rate/usdt-cache.ts` on 2026-11-19, when the
+// client's calculator got its own door (`/api/share-usdt`). Same 60-second
+// in-memory cache as before, now shared by both routes so CriptoYa does not
+// see twice the traffic.
 
 export async function GET() {
   // Con sesión. Esta calculadora solo existe dentro de la app, así que no hay
   // motivo para dejar el endpoint abierto — y un endpoint abierto es uno que
-  // alguien puede martillear. La página pública `/s/[token]` no lleva
-  // calculadora, así que no pierde nada.
+  // alguien puede martillear.
+  // The client's calculator on `/s/[token]` (since 2026-11-19) does NOT open
+  // this route: it has its own, `/api/share-usdt`, which asks for a share token
+  // instead of a session. This one stays session-only.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "No autorizado." }, { status: 401 });
-  }
-
-  const ahora = Date.now();
-  if (cache && ahora - cache.en < CACHE_MS) {
-    return NextResponse.json({ usdt: cache.precio, cacheado: true });
   }
 
   // La tasa oficial del día, solo para el límite de cordura: si el precio de
@@ -76,18 +68,18 @@ export async function GET() {
   // Si no hay tasa oficial no se bloquea nada: se pide el USDT sin banda.
   // Quedarse sin calculadora porque falta la referencia sería peor que el
   // riesgo del que protege.
-  const { data: oficial } = await supabase.rpc("get_current_bcv_rate").maybeSingle();
-  const oficialUsd = (oficial as { usd?: number } | null)?.usd;
-
+  //
   // `fetchUsdtP2p` nunca lanza: devuelve null y deja el motivo en el log del
   // servidor. Así que aquí no hay nada que enmascarar — el texto de CriptoYa
   // no puede llegar al navegador ni por accidente.
-  const precio = await fetchUsdtP2p(oficialUsd);
-
+  //
   // También se cachea el null. Si la fuente está caída, preguntarle otra vez
   // en cada apertura de la calculadora es castigar al dueño con la espera del
   // timeout una y otra vez; con esto la espera es de un minuto como mucho.
-  cache = { precio, en: ahora };
+  const resultado = await cachedUsdtPrice(async () => {
+    const { data: oficial } = await supabase.rpc("get_current_bcv_rate").maybeSingle();
+    return (oficial as { usd?: number } | null)?.usd;
+  });
 
-  return NextResponse.json({ usdt: precio, cacheado: false });
+  return NextResponse.json(resultado);
 }

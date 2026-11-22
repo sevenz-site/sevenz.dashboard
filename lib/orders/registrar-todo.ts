@@ -81,6 +81,13 @@ export async function registrarTodoElPedido(
       moneda,
       pago: borrador.monedas[moneda],
       editadas: borrador.editadas ?? {},
+      // Product, quantity and currency only: the draft's `unitPrice` is for the
+      // screen and is deliberately left behind (see `LineaAgregada`).
+      agregadas: Object.values(borrador.agregadas ?? {}).map((a) => ({
+        productId: a.productId,
+        quantity: a.quantity,
+        currency: a.currency,
+      })),
       cliente: { ...cliente, fichaId },
     };
     const r = await registrarPedidoComoVenta(entrada);
