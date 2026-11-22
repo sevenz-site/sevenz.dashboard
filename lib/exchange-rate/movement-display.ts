@@ -50,7 +50,20 @@ export function formatBalanceSummary(
   balanceEur: number,
   ledger: LedgerDisplay | null,
 ): string {
-  if (!ledger) return formatCurrency(balanceCop);
+  return formatBalanceSummaryOfBooks(balanceCop, balanceUsd, balanceEur, ledger !== null);
+}
+
+// The same summary when the caller knows whether the business keeps two books but holds no
+// `LedgerDisplay` -- the cron that sends `installment_due_soon` and `overdue_debt_warning` has no
+// rate to build one with, and the rate plays no part in this text. One rule for both, so a
+// client's WhatsApp and the owner's list cannot word the same debt differently.
+export function formatBalanceSummaryOfBooks(
+  balanceCop: number,
+  balanceUsd: number,
+  balanceEur: number,
+  twoBooks: boolean,
+): string {
+  if (!twoBooks) return formatCurrency(balanceCop);
 
   const parts: string[] = [];
   if (balanceUsd > 0) parts.push(formatDisplayCurrency(balanceUsd, "USD"));

@@ -382,6 +382,8 @@ export const MANIFEST = {
     share_link_owner: "service",
     upsert_report_assistant_note: "service",
     whatsapp_cron_run_registrar: "service",
+    // 218: the candidates of the per-cuota notices, called only by the cron.
+    whatsapp_cuotas_candidatas: "service",
     whatsapp_destinatarios_atencion: "service",
     whatsapp_destinatarios_plazo: "service",
     whatsapp_destinatarios_resumen: "service",

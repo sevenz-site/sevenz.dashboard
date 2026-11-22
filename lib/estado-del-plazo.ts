@@ -53,6 +53,13 @@ export type CuotaConEstado = {
   fecha: Date;
   monto: number;
   estado: EstadoDelPlazo;
+  /**
+   * What is still owed of THIS cuota, from the same running total that decides `estado`: the
+   * whole `monto` when nothing reached it, the rest when a payment covered part of it, zero when
+   * it is «pagado». Added on 2026-11-22 for the client's WhatsApp per cuota
+   * (`lib/whatsapp/installment-notices.ts`), which has to say the same as this table.
+   */
+  pendiente: number;
 };
 
 /**
@@ -130,6 +137,12 @@ export function estadosDelFiado({
     numero: f.numero,
     fecha: f.fecha,
     monto: f.monto,
+    // The threshold of this cuota minus what was paid, never more than the cuota itself and
+    // never below zero. Same rounding as `pagado`, so 33,33 - 33,329999 is 0 and not a cent.
+    pendiente:
+      pagado + HOLGURA >= umbrales[i]
+        ? 0
+        : Math.round(Math.min(f.monto, umbrales[i] - pagado) * 100) / 100,
     estado:
       pagado + HOLGURA >= umbrales[i]
         ? "pagado"

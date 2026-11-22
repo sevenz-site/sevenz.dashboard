@@ -255,8 +255,16 @@ export const PLANTILLAS_ESPERADAS = {
     cuerpo: ["client_name", "payment_amount", "business_display", "new_balance"],
     boton: "url_suffix",
   },
-  payment_due_date_v2: {
-    cuerpo: ["client_name", "business_display", "due_date", "amount_due"],
+  // THE NOTICES PER CUOTA, approved by Meta and compared with their specs on 2026-11-22 (the
+  // owner sent the approved bodies from Kapso; Kapso's own curl gave the parameter order and the
+  // dynamic button). They replaced `payment_due_date_v2` the same day, which is why that one is
+  // no longer here: if anybody sends it again, this table not knowing it is the warning.
+  installment_due_soon: {
+    cuerpo: ["client_name", "installment", "business_name", "due_date", "installment_due", "amount_due"],
+    boton: "url_suffix",
+  },
+  overdue_debt_warning: {
+    cuerpo: ["client_name", "installment", "business_name", "days_overdue", "installment_due", "amount_due"],
     boton: "url_suffix",
   },
 };
