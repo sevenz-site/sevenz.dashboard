@@ -30,6 +30,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
+import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
@@ -62,10 +63,12 @@ import {
 import type { LedgerCurrency } from "@/lib/types";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { foldForSearch } from "@/lib/search/fold";
+import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 const SIN_AJUSTES: Record<string, number> = {};
 
 export function AbonoReparto({
+  ownerId,
   clienteId,
   clienteNombre,
   clienteTieneWhatsapp,
@@ -76,6 +79,8 @@ export function AbonoReparto({
   paisVE,
   desde,
 }: {
+  // Whose folder a photo is uploaded to (`AttachmentUploader`), since 2026-11-22.
+  ownerId: string;
   clienteId: string;
   clienteNombre: string;
   clienteTieneWhatsapp: boolean;
@@ -159,6 +164,15 @@ export function AbonoReparto({
   // THE METHOD OF THE WHOLE BILL, or null while untouched (owner's request of 2026-11-17). It is
   // not kept in the session draft: the screen opens again on the default, which is a tap away.
   const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(null);
+  // THE DESCRIPTION OF THE WHOLE BILL, owner's request of 2026-11-22 («le falta campo
+  // "Descripción". Agrégalo debajo de método de pago»). Unlike the method it IS kept in the
+  // draft: it is text the shopkeeper typed, and going to pay one fiado by hand and coming back
+  // must not wipe it.
+  const [descripcionEditada, setDescripcion] = useState<string | null>(null);
+  // THE PHOTO OF THE WHOLE BILL, same reasons as the description: kept in the draft, so a photo
+  // attached on a fiado's amount screen comes back here, visible and removable, instead of being
+  // lost (owner's «arregla la foto», 2026-11-22). `undefined` while untouched: `null` is «removed».
+  const [photoEditada, setPhotoPath] = useState<string | null | undefined>(undefined);
 
   // ── EL MONTO SE AGRUPA MIENTRAS SE TECLEA ─────────────────────────────
   //
@@ -189,6 +203,8 @@ export function AbonoReparto({
   // `useMemo` del reparto y el efecto que guarda el borrador se dispararan
   // siempre, o sea escribir en `sessionStorage` en cada pintado.
   const aMano = aManoEditado ?? borrador?.aMano ?? SIN_AJUSTES;
+  const descripcion = descripcionEditada ?? borrador?.descripcion ?? "";
+  const photoPath = photoEditada !== undefined ? photoEditada : (borrador?.photoPath ?? null);
   // LOS BOLÍVARES QUE TECLEÓ EN CADA FIADO, cuando los tecleó así. Se usan
   // para el total y viajan al servidor; sin ellos, la suma y lo guardado
   // serían reconversiones y no la cifra del tendero. Ver `aManoBs` en
@@ -524,8 +540,10 @@ export function AbonoReparto({
       // La lección, para la próxima: cuando dos pantallas escriben el mismo
       // borrador, la que no es dueña de un campo tiene que arrastrarlo.
       aManoBs: soloDeFiadosVivos(aManoBs, true),
+      descripcion,
+      photoPath,
     });
-  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs, soloDeFiadosVivos]);
+  }, [clienteId, libro, monto, enBolivares, enElLibro, aMano, aManoBs, descripcion, photoPath, soloDeFiadosVivos]);
 
   // ── LO QUE APAGA «REPARTIR MANUALMENTE» ────────────────────────────
   //
@@ -779,6 +797,8 @@ export function AbonoReparto({
         permisoMostrado: clienteTieneWhatsapp && !yaAceptaAvisos,
         avisarPorWhatsapp: consent,
         paymentMethod: metodo,
+        descripcion,
+        photoPath,
       });
       if (!r.ok) {
         setError(r.error);
@@ -1478,6 +1498,17 @@ export function AbonoReparto({
           value={metodo}
           onValueChange={setMetodoElegido}
         />
+      ) : null}
+
+      {fiados.length > 0 ? (
+        <MovementDescriptionField id="reparto-descripcion" value={descripcion} onChange={setDescripcion} />
+      ) : null}
+
+      {fiados.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <Label>Foto (opcional)</Label>
+          <AttachmentUploader ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+        </div>
       ) : null}
 
       {fiados.length > 0 ? (

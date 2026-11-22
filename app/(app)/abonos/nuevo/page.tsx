@@ -151,6 +151,7 @@ export default async function NuevoAbonoPage({
 
   return (
     <AbonoReparto
+      ownerId={user.id}
       clienteId={cliente.id}
       clienteNombre={cliente.name as string}
       clienteTieneWhatsapp={Boolean((cliente.whatsapp as string | null)?.trim())}

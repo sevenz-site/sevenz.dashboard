@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { conHoy } from "@/lib/exchange-rate/format";
@@ -50,6 +49,7 @@ import {
   type BolivarRates,
   type PriceCurrency,
 } from "@/lib/products/price";
+import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 // CAPITALISED, UNLIKE `currencyName()` in `lib/products/price.ts`, which
 // returns a lowercase word for use inside a sentence. Here it is a label on
@@ -784,14 +784,7 @@ export function PagoCampos({
       </div>
 
       <div className="flex flex-col gap-1">
-        <Label htmlFor="pago-nota">Descripción (opcional)</Label>
-        <Textarea
-          id="pago-nota"
-          className="h-[120px]"
-          value={descripcion}
-          onChange={(e) => setDescripcion(e.target.value)}
-          placeholder="Descripción"
-        />
+        <MovementDescriptionField id="pago-nota" value={descripcion} onChange={setDescripcion} />
       </div>
 
       <Pie pegado={botonPegadoAbajo}>

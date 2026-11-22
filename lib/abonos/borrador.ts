@@ -84,6 +84,15 @@ export type BorradorDeReparto = {
   // mal»*. Guardar lo tecleado es la única forma de que la pantalla y el
   // recibo repitan su cifra en vez de recalcularla.
   aManoBs?: Record<string, number>;
+  // THE SPLIT'S DESCRIPTION, owner's request of 2026-11-22. One bill, one note: it goes on
+  // every line. Written by the 1/2 and by the amount screen of a fiado (both show the field),
+  // so each of them carries it when it saves the draft -- the lesson of `aManoBs` above.
+  descripcion?: string;
+  // AND ITS PHOTO, owner's request of 2026-11-22 («arregla la foto»): the amount screen of a
+  // fiado offered «Foto (opcional)» inside a split and only the amount travelled back, so the
+  // photo was dropped without a word. One bill, one photo: it goes on every line, like the
+  // description. `null` is «no photo», a state of its own once the shopkeeper removes it.
+  photoPath?: string | null;
   guardadoEn: number;
 };
 
@@ -177,6 +186,11 @@ export function fijarEnBorrador(
   // LOS BOLÍVARES QUE TECLEÓ PARA ESTE FIADO, si los tecleó así. Ver
   // `aManoBs` arriba y lo que costó no tenerlos.
   montoBs?: number | null,
+  // WHAT THE AMOUNT SCREEN'S DESCRIPTION SAYS NOW, so the 1/2 finds it on return. `undefined`
+  // leaves the draft's as it was.
+  descripcion?: string,
+  // And its photo. `undefined` leaves the draft's; `null` removes it.
+  photoPath?: string | null,
 ): void {
   const b = leerBorrador(clienteId);
 
@@ -219,6 +233,8 @@ export function fijarEnBorrador(
     totalEnLibro: null,
     aMano: { ...base.aMano, [movementId]: monto },
     aManoBs: bsNuevos,
+    ...(descripcion !== undefined ? { descripcion } : {}),
+    ...(photoPath !== undefined ? { photoPath } : {}),
   });
 }
 
