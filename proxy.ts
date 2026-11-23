@@ -20,8 +20,14 @@ export async function proxy(request: NextRequest) {
 // The file holds `[]` until Play Console shows the signing fingerprints. Every one of
 // them goes in (Google's "quantum-ready" signing uses several keys), plus the upload
 // key's for local testing.
+//
+// `.wasm` is excluded for the barcode scanner (CT-182): its reader is a static file in
+// public/wasm/, like the images in this list. Through updateSession every opening of the
+// scanner cost a session check, and an owner whose session had just expired got the
+// /login page instead of the reader -- the camera opened and never read anything, with
+// no error he could read. Found on dev.sevenz.site on 2026-11-23 (307 to /login).
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm)$).*)",
   ],
 };
