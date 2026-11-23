@@ -15,6 +15,7 @@ import { productoPorCodigo, restoreProduct, type CodeLookup } from "@/app/(app)/
 import { monedasDelNegocio, productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { gunOpensSheetsOn } from "@/lib/barcodes/routes";
 import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { StockBadge } from "@/components/stock-badge";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
 import { track } from "@/lib/mixpanel";
@@ -54,29 +55,56 @@ export function useBarcodeScanner() {
   return useContext(Ctx);
 }
 
-type Found = {
-  code: string;
-  productId: string;
+// What the product card of a sheet shows (frames 6 and 9): the same card for a product
+// found and for one in the bin, the second dimmed.
+type Card = {
   name: string;
   photoPath: string | null;
   price: string | null;
   bs: string | null;
-  inStock: boolean | null;
+  // `products.stock_opening`; null when nobody counts it. Drawn by `StockBadge`.
+  stock: number | null;
 };
+
+type Found = Card & { code: string; productId: string };
 
 type Panel =
   | { kind: "loading"; code: string }
   | { kind: "found"; data: Found }
   | { kind: "new"; code: string }
-  | { kind: "trashed"; code: string; productId: string; name: string };
+  | { kind: "trashed"; code: string; productId: string; name: string; card: Card | null };
+
+// The card from the same function the sale prices with, so the sheet and the cart can
+// never quote two prices for one product. Null when it cannot be read: the sheet then
+// shows the name alone rather than nothing.
+async function loadCard(productId: string, fallbackName: string, incluirPapelera = false): Promise<Card | null> {
+  const p = await productoParaVentaPorId(productId, { incluirPapelera }).catch(() => null);
+  const producto = p?.productos[0];
+  if (!producto) return null;
+  const retail = producto.producto.retail ?? producto.producto.wholesale ?? null;
+  const bs =
+    retail && p?.rates && retail.base !== "VES"
+      ? priceIn("VES", { amount: retail.price, currency: retail.base }, p.rates).amount
+      : null;
+  return {
+    name: producto.name ?? fallbackName,
+    photoPath: producto.photoPath ?? null,
+    price: retail ? formatPriceAmount(retail.price, retail.base) : null,
+    bs: bs != null ? formatBsHoy(bs) : null,
+    stock: producto.stock,
+  };
+}
 
 export function BarcodeScannerProvider({
   enabled,
   ownerId,
+  lowStockThreshold,
   children,
 }: {
   enabled: boolean;
   ownerId: string;
+  // `owners.low_stock_threshold`, for the card's `StockBadge`.
+  lowStockThreshold: number;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -97,27 +125,16 @@ export function BarcodeScannerProvider({
     // a floor. Filed under the owner.
     track("Barcode Scanned", { source, surface: "home", result: r.status });
     if (r.status === "found") {
-      const p = await productoParaVentaPorId(r.productId).catch(() => null);
-      const producto = p?.productos[0];
-      const retail = producto?.producto.retail ?? producto?.producto.wholesale ?? null;
-      const bs =
-        retail && p?.rates && retail.base !== "VES"
-          ? priceIn("VES", { amount: retail.price, currency: retail.base }, p.rates).amount
-          : null;
+      const card = await loadCard(r.productId, r.name);
       setPanel({
         kind: "found",
-        data: {
-          code: r.code,
-          productId: r.productId,
-          name: producto?.name ?? r.name,
-          photoPath: producto?.photoPath ?? null,
-          price: retail ? formatPriceAmount(retail.price, retail.base) : null,
-          bs: bs != null ? formatBsHoy(bs) : null,
-          inStock: producto?.stock == null ? null : producto.stock > 0,
-        },
+        data: { code: r.code, productId: r.productId, ...(card ?? { name: r.name, photoPath: null, price: null, bs: null, stock: null }) },
       });
     } else if (r.status === "not_found") setPanel({ kind: "new", code: r.code });
-    else if (r.status === "trashed") setPanel({ kind: "trashed", code: r.code, productId: r.productId, name: r.name });
+    else if (r.status === "trashed") {
+      const card = await loadCard(r.productId, r.name, true);
+      setPanel({ kind: "trashed", code: r.code, productId: r.productId, name: r.name, card });
+    }
     else {
       setPanel(null);
       toast.error(r.status === "invalid" ? "Ese código no es válido." : "No pudimos buscar el código. Intenta de nuevo.");
@@ -176,6 +193,7 @@ export function BarcodeScannerProvider({
     <PanelContent
       panel={panel}
       isMobile={isMobile}
+      threshold={lowStockThreshold}
       busy={busy}
       onClose={() => setPanel(null)}
       onSell={(id) => go(`/ventas/nueva?producto=${id}`)}
@@ -254,9 +272,32 @@ function OptionRow({ icon, label, onClick, disabled }: { icon: ReactNode; label:
   );
 }
 
+// THE PRODUCT CARD OF A SHEET. Found (frame 6): with the owner's `StockBadge`, the same
+// chip as every other owner screen -- never its classes copied here. In the bin (frame 9):
+// dimmed and without the chip, because what it has on the shelf is not what is asked.
+function ProductCard({ card, threshold, dimmed = false }: { card: Card; threshold: number; dimmed?: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 rounded-[10px] border p-2.5 ${dimmed ? "opacity-60" : ""}`}>
+      {card.photoPath ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={getPublicProductPhotoUrl(card.photoPath)} alt="" className="size-14 shrink-0 rounded-md object-cover" />
+      ) : (
+        <div className="size-14 shrink-0 rounded-md bg-muted" />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-semibold">{card.name}</span>
+        {card.price ? <span className="font-semibold">{card.price}</span> : null}
+        {card.bs ? <span className="text-xs text-muted-foreground">{card.bs}</span> : null}
+      </div>
+      {dimmed ? null : <StockBadge quantity={card.stock} threshold={threshold} />}
+    </div>
+  );
+}
+
 function PanelContent({
   panel,
   isMobile,
+  threshold,
   busy,
   onClose,
   onSell,
@@ -268,6 +309,7 @@ function PanelContent({
 }: {
   panel: Panel;
   isMobile: boolean;
+  threshold: number;
   busy: boolean;
   onClose: () => void;
   onSell: (id: string) => void;
@@ -310,22 +352,7 @@ function PanelContent({
       {panel.kind === "found" ? (
         <>
           <p className="text-sm text-muted-foreground">Código {panel.data.code}</p>
-          <div className="flex items-center gap-3 rounded-[10px] border p-2.5">
-            {panel.data.photoPath ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={getPublicProductPhotoUrl(panel.data.photoPath)} alt="" className="size-14 shrink-0 rounded-md object-cover" />
-            ) : (
-              <div className="size-14 shrink-0 rounded-md bg-muted" />
-            )}
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-semibold">{panel.data.name}</span>
-              {panel.data.price ? <span className="font-semibold">{panel.data.price}</span> : null}
-              {panel.data.bs ? <span className="text-xs text-muted-foreground">{panel.data.bs}</span> : null}
-            </div>
-            {panel.data.inStock ? (
-              <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Disponible</span>
-            ) : null}
-          </div>
+          <ProductCard card={panel.data} threshold={threshold} />
           <div className="flex flex-col gap-2">
             <OptionRow icon={<ArrowUpRight className="size-6" aria-hidden="true" />} label="Vender" onClick={() => onSell(panel.data.productId)} />
             <OptionRow icon={<Pencil className="size-6" aria-hidden="true" />} label="Editar producto" onClick={() => onEdit(panel.data.productId)} />
@@ -353,6 +380,7 @@ function PanelContent({
       {panel.kind === "trashed" ? (
         <>
           <p className="text-base">{panel.name} tiene este código, pero lo mandaste a la papelera.</p>
+          {panel.card ? <ProductCard card={panel.card} threshold={threshold} dimmed /> : null}
           <Button type="button" className="h-10 w-full" disabled={busy} onClick={() => onRestore(panel.productId)}>
             {busy ? <Loader2 className="size-5 animate-spin" aria-hidden="true" /> : <RotateCcw className="size-5" aria-hidden="true" />}
             Restaurar y vender

@@ -372,6 +372,10 @@ async function categoriasConProductos(
 // the browser — it is in the URL of that screen.
 export async function productoParaVentaPorId(
   id: string,
+  // CT-182: the scanner's «Está en la papelera» sheet draws the trashed product's card
+  // (frame 9), so it may read one in the bin. Every other caller keeps the default and
+  // never gets a trashed product into a sale.
+  options: { incluirPapelera?: boolean } = {},
 ): Promise<ProductosParaVenta> {
   const supabase = await createClient();
   const {
@@ -383,13 +387,9 @@ export async function productoParaVentaPorId(
   if (!contexto.ok) return { productos: [], rates: null, monedasDelLibro: [], prevista: null };
   const { rates, monedasDelLibro, prevista } = contexto;
 
-  const { data, error } = await supabase
-    .from("products")
-    .select(COLUMNAS_PRODUCTO)
-    .eq("id", id)
-    .eq("owner_id", user.id)
-    .is("trashed_at", null)
-    .limit(1);
+  let consulta = supabase.from("products").select(COLUMNAS_PRODUCTO).eq("id", id).eq("owner_id", user.id);
+  if (!options.incluirPapelera) consulta = consulta.is("trashed_at", null);
+  const { data, error } = await consulta.limit(1);
 
   if (error) {
     console.error("productoParaVentaPorId:", error.message);

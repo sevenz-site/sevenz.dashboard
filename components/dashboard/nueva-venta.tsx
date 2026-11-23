@@ -257,6 +257,17 @@ export function NuevaVenta({
   // a grid of one product.
   const [delEscaner, setDelEscaner] = useState<Pick<ProductosParaVenta, "rates" | "monedasDelLibro" | "prevista"> | null>(null);
   const productoInicialCargado = useRef(false);
+
+  // THE LINE A SCAN JUST ADDED TO, lit in green for a moment (frame 11 of the scanner flow,
+  // approved 2026-11-23). With the camera or the gun the shopkeeper is looking at the
+  // product, not the screen: the green tells him which line moved without reading it.
+  // `vez` restarts the light when the same product is scanned again.
+  const [resaltado, setResaltado] = useState<{ productId: string; vez: number } | null>(null);
+  useEffect(() => {
+    if (!resaltado) return;
+    const t = window.setTimeout(() => setResaltado(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [resaltado]);
   useEffect(() => {
     if (!productoInicial || productoInicialCargado.current) return;
     productoInicialCargado.current = true;
@@ -631,6 +642,7 @@ export function NuevaVenta({
         onLinea={(l) => {
           track("Sale Product Added", { ...contexto, added_via: "scan", cart_lines: agregar(lineas, l).length });
           setLineas((xs) => agregar(xs, l));
+          setResaltado({ productId: l.productId, vez: Date.now() });
         }}
         onIrAlCarrito={() => setPaso(2)}
       />
@@ -653,6 +665,7 @@ export function NuevaVenta({
       {paso === 2 ? (
         <PasoCarrito
           lineas={lineas}
+          resaltado={resaltado?.productId ?? null}
           ownerId={ownerId}
           rates={catalogo?.rates ?? delEscaner?.rates ?? null}
           monedasDelLibro={catalogo?.monedasDelLibro ?? delEscaner?.monedasDelLibro ?? []}
@@ -835,6 +848,7 @@ export function NuevaVenta({
 // ── 3/4 ────────────────────────────────────────────────────────────────
 function PasoCarrito({
   lineas,
+  resaltado = null,
   ownerId,
   rates,
   monedasDelLibro,
@@ -843,6 +857,8 @@ function PasoCarrito({
   onIrAPago,
 }: {
   lineas: LineaVenta[];
+  // CT-182: the product a scan just added a unit to; its line is lit for a moment.
+  resaltado?: string | null;
   ownerId: string;
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
@@ -916,6 +932,7 @@ function PasoCarrito({
         <TarjetaDeLinea
           key={`${l.productId}-${l.currency}`}
           linea={l}
+          resaltada={resaltado === l.productId}
           rates={rates}
           monedasDelLibro={monedasDelLibro}
           onCantidad={(q) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, quantity: q } : x)))}
@@ -964,6 +981,7 @@ function PasoCarrito({
 // UNA LÍNEA DEL CARRITO — frame `1389:8379`.
 function TarjetaDeLinea({
   linea,
+  resaltada = false,
   rates,
   monedasDelLibro,
   onCantidad,
@@ -972,6 +990,7 @@ function TarjetaDeLinea({
   onEditar,
 }: {
   linea: LineaVenta;
+  resaltada?: boolean;
   rates: BolivarRates | null;
   monedasDelLibro: PriceCurrency[];
   onCantidad: (q: number) => void;
@@ -1032,7 +1051,14 @@ function TarjetaDeLinea({
     }));
 
   return (
-    <div className="flex flex-col gap-3 rounded-[10px] border p-2.5">
+    // The green of frame 11, from the app's own «A favor» palette (CLIENT_STATUS_BADGE_CLASS),
+    // a shade stronger on the border so the moved line reads at arm's length.
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-[10px] border p-2.5 transition-colors duration-500",
+        resaltada && "border-emerald-600 bg-emerald-50 dark:border-emerald-500/60 dark:bg-emerald-500/10",
+      )}
+    >
       <div className="flex items-center gap-2">
         <span className="relative size-12 shrink-0 overflow-hidden bg-muted">
           {foto ? (
