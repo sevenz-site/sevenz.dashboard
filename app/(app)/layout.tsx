@@ -28,6 +28,8 @@ import { refreshStockAlerts } from "@/lib/stock-alerts";
 import { STOCK_ALERTS_DAY_COOKIE, stockAlertsDayValue } from "@/lib/stock-alerts-day";
 import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supabase/current-user";
 import { getImportUsageForOwner } from "@/lib/import-usage";
+import { getBarcodesEnabled } from "@/lib/barcodes/setting-server";
+import { BarcodeScannerProvider } from "@/components/barcode/scanner-provider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!isSupabaseConfigured()) {
@@ -46,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const stockAlertsDue =
     (await cookies()).get(STOCK_ALERTS_DAY_COOKIE)?.value !== stockAlertsDayValue(user.id);
 
-  const [{ data: owner }, unreadCount, importUsage, motivo, mustReset] = await Promise.all([
+  const [{ data: owner }, unreadCount, importUsage, motivo, mustReset, barcodesEnabled] = await Promise.all([
     // Shared with the page and the rate helpers through React cache(): one
     // `owners` read per request instead of one per caller.
     getOwnerShellRow(supabase, user.id),
@@ -68,6 +70,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // password changes. In the layout and not a redirect because /login bounces a signed-in
     // visitor back to /dashboard. A read of one boolean, through `my_security_state`.
     mustResetPassword(supabase),
+    // CT-182: whether the scan button, the code field and the gun's sheets are on.
+    getBarcodesEnabled(supabase, user.id),
   ]);
 
   if (mustReset) {
@@ -84,6 +88,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <TourProvider active={!owner?.onboarding_completed_at}>
         <UnsavedChangesProvider>
           <UnreadNotificationsProvider initialCount={unreadCount}>
+          {/* The barcode scanner (CT-182). Wraps the whole shell because its gun guard is on
+              for every screen, switch or no switch. */}
+          <BarcodeScannerProvider enabled={barcodesEnabled} ownerId={user.id}>
           <SidebarProvider>
             <AppSidebar businessName={owner?.business_name || user.email || "Mi negocio"} />
             <SidebarInset>
@@ -125,6 +132,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <MobileNav />
             </SidebarInset>
           </SidebarProvider>
+          </BarcodeScannerProvider>
           </UnreadNotificationsProvider>
         </UnsavedChangesProvider>
       </TourProvider>

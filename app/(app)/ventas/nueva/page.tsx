@@ -19,11 +19,11 @@ export default async function NuevaVentaPage({
   // SIN ÉL TAMBIÉN SE ENTRA, y esa es la novedad del 2026-10-18: se empieza
   // directamente por el producto y no se pregunta a quién hasta el paso 3, y
   // solo si algo queda fiado. Una venta de contado no necesita cliente.
-  searchParams: Promise<{ cliente?: string; desde?: string }>;
+  searchParams: Promise<{ cliente?: string; desde?: string; producto?: string; cantidad?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const { cliente: clienteId, desde } = await searchParams;
+  const { cliente: clienteId, desde, producto: productoId, cantidad } = await searchParams;
   // WHERE THE SALE STARTED. `?cliente=` alone does not say: the profile, a new client
   // and a payment with no fiados all set it. Only for the funnels.
   const entryPoint =
@@ -33,7 +33,9 @@ export default async function NuevaVentaPage({
         ? "new_client"
         : desde === "abono"
           ? "payment_no_fiados"
-          : "register";
+          : productoId
+            ? "scanner"
+            : "register";
   const supabase = await createClient();
   const {
     data: { user },
@@ -78,6 +80,25 @@ export default async function NuevaVentaPage({
     getOwnerRateContext(supabase, user.id),
   ]);
   const idsComodin = new Set((comodin ?? []).map((c) => c.id as string));
+
+  // CT-182: THE SCANNED PRODUCT (`?producto=`, from the scanner's «Vender» or «Guardar y
+  // vender»). The id comes from the URL, so it is checked against the session's owner
+  // explicitly (CLAUDE.md), and a trashed product does not count. A foreign or unknown id
+  // is dropped without a word: the sale opens empty, as if it had come with none.
+  let productoInicial: { id: string; cantidad: number } | null = null;
+  if (productoId) {
+    const { data } = await supabase
+      .from("products")
+      .select("id")
+      .eq("id", productoId)
+      .eq("owner_id", user.id)
+      .is("trashed_at", null)
+      .maybeSingle();
+    const unidades = Number(cantidad);
+    if (data) {
+      productoInicial = { id: data.id as string, cantidad: Number.isFinite(unidades) && unidades > 0 ? unidades : 1 };
+    }
+  }
 
   // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
   // A failed read still draws an empty list, as when the error was dropped.
@@ -130,6 +151,7 @@ export default async function NuevaVentaPage({
           ownerId={user.id}
           ownerCountry={ownerCountry}
           rateContext={rateContext}
+          productoInicial={productoInicial}
         />
       );
     }
@@ -144,6 +166,7 @@ export default async function NuevaVentaPage({
       ownerId={user.id}
       ownerCountry={ownerCountry}
       rateContext={rateContext}
+      productoInicial={productoInicial}
     />
   );
 }

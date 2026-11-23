@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NotificacionesAccordion } from "@/components/dashboard/notificaciones-accordion";
+import { CodigosDeBarrasCard } from "@/components/dashboard/codigos-de-barras-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -349,6 +350,10 @@ export function BusinessSettingsForm({
           consentimiento con su fecha y no puede reescribirse cada vez que el
           dueño corrija su dirección. */}
       <NotificacionesAccordion owner={owner} />
+
+      {/* CT-182: between the notices and the account's security, as frames 1 and 2 of the
+          scanner flow draw it (approved 2026-11-23). */}
+      <CodigosDeBarrasCard initial={owner.barcodes_enabled === true} />
 
       {/* The second line is NOT in frame 1928:24764. Owner's decision on
           2026-11-02 (phase 3, B1): an owner who fears somebody got into the

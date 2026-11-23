@@ -515,6 +515,38 @@ export async function guardarConsejosSevenz(activar: boolean): Promise<{ error: 
   return { error: null };
 }
 
+// «TRABAJAR CON CÓDIGOS DE BARRAS» (CT-182). Owner's decision of 2026-11-23: scanning is
+// optional per business, off by default. It saves on its own, like the switches next to
+// it, so it never waits for «Guardar cambios».
+//
+// Turning it off deletes no code: the codes stay on their products and come back if it is
+// turned on again. Only the owner's own row, by the session's id.
+export async function guardarCodigosDeBarras(activar: boolean): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const { error } = await supabase
+    .from("owners")
+    .update({ barcodes_enabled: activar })
+    .eq("id", user.id);
+
+  if (error) {
+    console.error("guardarCodigosDeBarras:", error);
+    return { error: "No pudimos guardar tu preferencia. Intenta de nuevo." };
+  }
+
+  // «¿Cuántos negocios trabajan con códigos de barras?» -- asked by active owners on
+  // 2026-11-23 (CT-182). What it decides: whether the scanner earns more investment (a
+  // native camera, weighed codes, box codes) or stays a niche feature. Filed under the
+  // owner; a gesture in settings, so exact, not a floor.
+  trackServer("Barcodes Setting Changed", user.id, { enabled: activar }, user.email);
+  revalidatePath("/", "layout");
+  return { error: null };
+}
+
 // Deja constancia de que el diálogo se enseñó. Se llama AL MOSTRARLO, no al
 // contestarlo: si se anotara al contestar, recargar la pantalla antes de
 // responder lo volvería a sacar, y otra vez, y otra. Anotar al aparecer lo

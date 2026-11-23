@@ -26,6 +26,7 @@ import {
   type PriceCurrency,
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
+import { BarcodeField } from "@/components/barcode/barcode-field";
 
 // REGISTRAR UN PRODUCTO SIN SALIR DE LA VENTA — frame `1389:9169`, 2026-10-18.
 //
@@ -76,6 +77,8 @@ export function QuickProductSheet({
   onCreado,
   editando = null,
   onEditado,
+  codigos,
+  textoBoton,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,7 +95,15 @@ export function QuickProductSheet({
   // the product instead of creating one. Without it the sheet is exactly what it was.
   editando?: ProductoRapido | null;
   onEditado?: (productId: string, cantidad: number, datos: DatosRapidos) => void;
+  // BARCODES (CT-182). Undefined -- the business does not work with codes -- hides the field
+  // and sends nothing, so the product's codes are never touched. A list shows the field with
+  // those codes already in it (a scan that found no product).
+  codigos?: string[];
+  // The button's words when the scanner opened the sheet: «Guardar y vender» from Home,
+  // «Guardar y agregar» inside a sale (frames 8 and 12). Without it, the total as before.
+  textoBoton?: string;
 }) {
+  const [listaDeCodigos, setListaDeCodigos] = useState<string[]>(codigos ?? []);
   const [nombre, setNombre] = useState(editando?.nombre ?? "");
   const [precio, setPrecio] = useState(editando ? String(editando.precio).replace(".", ",") : "");
   const [moneda, setMoneda] = useState<PriceCurrency>(editando?.moneda ?? monedas[0] ?? "USD");
@@ -219,6 +230,7 @@ export function QuickProductSheet({
           publishedWholesale: false,
           photoPath,
           description: descripcion.trim() || null,
+          barcodes: codigos === undefined ? undefined : listaDeCodigos,
         };
         // THE SAME FIELDS EITHER WAY. The product was created from this sheet with no cost,
         // stock or wholesale price, so writing them back as null changes nothing the owner
@@ -259,6 +271,10 @@ export function QuickProductSheet({
         </SheetHeader>
 
         <div className="flex flex-col gap-5 p-4">
+          {/* First, as frame 8 draws it: the code is what brought the shopkeeper here. */}
+          {codigos !== undefined ? (
+            <BarcodeField values={listaDeCodigos} onChange={setListaDeCodigos} idPrefix="qp-codigo" />
+          ) : null}
           <div className="flex flex-col gap-1">
             <Label htmlFor="qp-nombre">Nombre del producto</Label>
             <Input
@@ -395,7 +411,7 @@ export function QuickProductSheet({
           <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={intentarGuardar}>
             {guardando
               ? "Guardando…"
-              : `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
+              : textoBoton ?? `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
           </Button>
         </div>
       </SheetContent>

@@ -46,10 +46,13 @@ import { PRODUCT_PHOTO_BOX, ProductPhoto } from "@/components/product-photo";
 import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   createProduct,
+  codigosDelProducto,
   productNameTaken,
   updateProduct,
   type ProductInput,
 } from "@/app/(app)/productos/actions";
+import { BarcodeField } from "@/components/barcode/barcode-field";
+import { useBarcodeScanner } from "@/components/barcode/scanner-provider";
 import type { ProductRow } from "@/lib/products/catalog";
 import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { DescriptionField } from "@/components/dashboard/description-field";
@@ -158,6 +161,29 @@ export function ProductoFlujo({
   const router = useRouter();
   const [saving, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // BARCODES (CT-182), only when the business works with them (frame 13 of the scanner
+  // flow, approved 2026-11-23). Editing, the product's codes are read first; until they
+  // arrive -- or if the read fails -- the field is not shown and the save sends
+  // `undefined`, which leaves them untouched. Showing an empty field instead would let a
+  // save delete codes the shopkeeper never saw.
+  const { enabled: conCodigos } = useBarcodeScanner();
+  const [codigos, setCodigos] = useState<string[]>([]);
+  const [codigosListos, setCodigosListos] = useState(product == null);
+  useEffect(() => {
+    if (!conCodigos || product == null) return;
+    let vivo = true;
+    codigosDelProducto(product.id)
+      .then((r) => {
+        if (!vivo || r === null) return;
+        setCodigos(r);
+        setCodigosListos(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, [conCodigos, product]);
 
   // THE PRODUCT FUNNEL. Owner's request of 2026-11-04: *«productos creados y sus
   // eventos para funnel de creación de un producto»*. The four steps are `useState`
@@ -640,6 +666,7 @@ export function ProductoFlujo({
     photoPath,
     extraPhotoPaths: photos.slice(1),
     description: description || null,
+    barcodes: conCodigos && codigosListos ? codigos : undefined,
   };
 
   // A REPEATED NAME IS WARNED ABOUT, NEVER REFUSED (owner's request of 2026-11-15): on
@@ -776,6 +803,11 @@ export function ProductoFlujo({
                 autoFocus={!editing}
               />
             </div>
+
+            {/* Right under the name, as frame 13 draws it. Optional, never required. */}
+            {conCodigos && codigosListos ? (
+              <BarcodeField values={codigos} onChange={setCodigos} idPrefix="producto_codigo" optional />
+            ) : null}
 
             {/* «Disponible en inventario», no «Cantidad»: el frame lo renombró el
                 2026-10-10 y la palabra nueva dice de qué cantidad habla. Sin

@@ -404,6 +404,19 @@ export async function productoParaVentaPorId(
   };
 }
 
+// THE CURRENCIES A QUICK PRODUCT CAN BE PRICED IN, for the scanner's «Crear producto» on
+// Home (CT-182): the same list the sale's quick sheet gets, from the same function, so a
+// product created from a scan can always be sold. Empty when the business cannot be read.
+export async function monedasDelNegocio(): Promise<PriceCurrency[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+  const contexto = await contextoDeVenta(supabase, user.id);
+  return contexto.ok ? contexto.monedasDelLibro : [];
+}
+
 // ===========================================================================
 // EL CLIENTE MOSTRADOR, resuelto cuando el tendero lo pide
 // ===========================================================================

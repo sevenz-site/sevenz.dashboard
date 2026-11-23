@@ -33,7 +33,9 @@ export type EntryPoint =
   | "transaction_detail"
   | "report"
   | "sale_step_client"
-  | "order_step_client";
+  | "order_step_client"
+  // CT-182, 2026-11-23: a sale started from the scanner's «Vender» or «Guardar y vender».
+  | "scanner";
 
 // Ties the steps of one attempt together, so a funnel can hold it constant.
 export type FlowContext = { flow_id?: string; entry_point?: EntryPoint };
@@ -271,7 +273,8 @@ export type EventProps = {
   };
   "New Client Rejected": FlowContext & { reason: NewClientRejectionReason };
   "Sale Started": FlowContext & { has_client: boolean };
-  "Sale Product Added": FlowContext & { added_via: "catalog" | "quick_create"; cart_lines: number };
+  // `scan` since 2026-11-23 (CT-182): a code read inside the sale, camera or gun.
+  "Sale Product Added": FlowContext & { added_via: "catalog" | "quick_create" | "scan"; cart_lines: number };
   "Sale Cart Confirmed": FlowContext & { lines: number; units: number; currencies_count: number };
   "Sale Payment Decided": FlowContext & { currency: string; decision: "full" | "partial" | "none" };
   "Sale Client Step Viewed": FlowContext;
@@ -398,6 +401,15 @@ export type EventProps = {
   // unsubscribe link in the email, which has no session and files under the owner it was
   // signed for.
   "Product Tips Changed": { enabled: boolean; source: "settings" | "email_link" };
+  // CT-182, 2026-11-23. The switch in Mi negocio; sent by the server after it saved.
+  "Barcodes Setting Changed": { enabled: boolean };
+  // CT-182, 2026-11-23. One per code read (camera or gun), where it was read, and what it
+  // turned out to be. A browser event: a floor, not a count.
+  "Barcode Scanned": {
+    source: "camera" | "gun";
+    surface: "home" | "sale";
+    result: "found" | "not_found" | "trashed" | "invalid" | "error";
+  };
   "Owner Notices Prompt Shown": { ask_number: number };
   "Owner Notices Scope Notice Shown": Record<string, never>;
   "Password Change Attempted": { result: "success" | "rejected"; reason?: "complexity" | "mismatch" | "leaked" | "code" | "other" };

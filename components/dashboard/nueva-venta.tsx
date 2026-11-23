@@ -45,6 +45,8 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { PasoProducto, type LineaVenta } from "@/components/dashboard/paso-producto";
+import { SaleScanner } from "@/components/barcode/sale-scanner";
+import { lineaParaProducto } from "@/lib/barcodes/sale-line";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
 import { DocumentIdInput } from "@/components/dashboard/document-id-input";
 import { WhatsappInput } from "@/components/whatsapp-input";
@@ -182,6 +184,7 @@ export function NuevaVenta({
   ownerCountry,
   rateContext,
   umbralDeStock,
+  productoInicial = null,
 }: {
   // Where this sale started, resolved by the page. Only for the funnels.
   entryPoint: EntryPoint;
@@ -202,6 +205,9 @@ export function NuevaVenta({
   // Decide las letras del documento (V/E/J o CC/CE/NIT) y el prefijo del
   // WhatsApp en el paso 4.
   ownerCountry: OwnerCountry | null;
+  // CT-182: the product the scanner's «Vender» or «Guardar y vender» brought, already
+  // checked against the owner by the page. The sale opens on the cart with it.
+  productoInicial?: { id: string; cantidad: number } | null;
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
@@ -245,11 +251,43 @@ export function NuevaVenta({
   const [lineas, setLineas] = useState<LineaVenta[]>([]);
   const [catalogo, setCatalogo] = useState<ProductosParaVenta | null>(null);
 
-  const total = useMemo(() => totalesPorMoneda(lineas, catalogo?.rates ?? null), [lineas, catalogo]);
+  // CT-182: A SALE OPENED BY THE SCANNER starts on the cart with the scanned product. Its
+  // rates and currencies come with that product's own fetch and are kept apart from
+  // `catalogo`, which is the product grid's search: setting it here would make step 1 show
+  // a grid of one product.
+  const [delEscaner, setDelEscaner] = useState<Pick<ProductosParaVenta, "rates" | "monedasDelLibro" | "prevista"> | null>(null);
+  const productoInicialCargado = useRef(false);
+  useEffect(() => {
+    if (!productoInicial || productoInicialCargado.current) return;
+    productoInicialCargado.current = true;
+    void (async () => {
+      try {
+        const r = await productoParaVentaPorId(productoInicial.id);
+        const linea = lineaParaProducto(r, productoInicial.id, productoInicial.cantidad);
+        setDelEscaner({ rates: r.rates, monedasDelLibro: r.monedasDelLibro, prevista: r.prevista });
+        if (!linea) {
+          toast.error("Ese producto no tiene precio en una moneda de tu negocio. Edítalo para venderlo.");
+          return;
+        }
+        track("Sale Product Added", { ...contexto, added_via: "scan", cart_lines: 1 });
+        setLineas((xs) => agregar(xs, linea));
+        setPaso(2);
+      } catch (e) {
+        console.error("[NuevaVenta] scanned product:", e);
+        toast.error("No pudimos agregar el producto escaneado. Búscalo por su nombre.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, [productoInicial]);
+
+  const total = useMemo(
+    () => totalesPorMoneda(lineas, catalogo?.rates ?? delEscaner?.rates ?? null),
+    [lineas, catalogo, delEscaner],
+  );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicado, setDuplicado] = useState<{ id: string; name: string } | null>(null);
-  const rates = catalogo?.rates ?? null;
+  const rates = catalogo?.rates ?? delEscaner?.rates ?? null;
   const [registros, setRegistros] = useState<Partial<Record<PriceCurrency, Registro>>>({});
   // LO QUE EL CLIENTE YA DEBÍA ANTES DE ESTA VENTA, para la fila «Deuda
   // antigua» del frame `1389:8504`. Vacío mientras no haya cliente: hasta
@@ -583,6 +621,20 @@ export function NuevaVenta({
         </div>
       </div>
 
+      {/* CT-182: «Escanear productos» and the gun's continuous mode. Renders nothing when
+          the business does not work with codes. */}
+      <SaleScanner
+        cartOpen={paso === 1 || paso === 2}
+        lineas={lineas}
+        ownerId={ownerId}
+        monedas={catalogo?.monedasDelLibro ?? delEscaner?.monedasDelLibro ?? []}
+        onLinea={(l) => {
+          track("Sale Product Added", { ...contexto, added_via: "scan", cart_lines: agregar(lineas, l).length });
+          setLineas((xs) => agregar(xs, l));
+        }}
+        onIrAlCarrito={() => setPaso(2)}
+      />
+
       {paso === 1 ? (
         <PasoProducto
           catalogo={catalogo}
@@ -602,8 +654,8 @@ export function NuevaVenta({
         <PasoCarrito
           lineas={lineas}
           ownerId={ownerId}
-          rates={catalogo?.rates ?? null}
-          monedasDelLibro={catalogo?.monedasDelLibro ?? []}
+          rates={catalogo?.rates ?? delEscaner?.rates ?? null}
+          monedasDelLibro={catalogo?.monedasDelLibro ?? delEscaner?.monedasDelLibro ?? []}
           onCambiar={setLineas}
           onSeguirComprando={() => setPaso(1)}
           onIrAPago={() => {
@@ -632,7 +684,7 @@ export function NuevaVenta({
           guardando={guardando}
           error={error}
           rates={rates}
-          prevista={catalogo?.prevista ?? null}
+          prevista={catalogo?.prevista ?? delEscaner?.prevista ?? null}
           ownerId={ownerId}
           onContinuar={() => {
             track("Sale Client Step Viewed", contexto);
