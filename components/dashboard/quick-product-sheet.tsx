@@ -266,7 +266,11 @@ export function QuickProductSheet({
       <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
         <SheetHeader>
           <SheetTitle className="text-xl font-medium">
-            {editando ? "Editar producto" : "Registrar producto"}
+            {/* «Crear producto» when the scanner opened it (frames 8 and 12 of the scanner
+                flow, approved 2026-11-23; owner's request of the same day to align the
+                title). The ordinary sheet of a sale keeps «Registrar producto», its own
+                frame `1389:9169`. `textoBoton` is only ever set by the scanner. */}
+            {editando ? "Editar producto" : textoBoton ? "Crear producto" : "Registrar producto"}
           </SheetTitle>
         </SheetHeader>
 
