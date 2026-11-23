@@ -207,7 +207,7 @@ export function NuevaVenta({
   ownerCountry: OwnerCountry | null;
   // CT-182: the product the scanner's «Vender» or «Guardar y vender» brought, already
   // checked against the owner by the page. The sale opens on the cart with it.
-  productoInicial?: { id: string; cantidad: number } | null;
+  productoInicial?: { id: string; cantidad: number; creadoEnVenta?: DatosRapidos } | null;
 }) {
   const router = useRouter();
   const [paso, setPaso] = useState<1 | 2 | 3 | 4>(1);
@@ -274,7 +274,7 @@ export function NuevaVenta({
     void (async () => {
       try {
         const r = await productoParaVentaPorId(productoInicial.id);
-        const linea = lineaParaProducto(r, productoInicial.id, productoInicial.cantidad);
+        const linea = lineaParaProducto(r, productoInicial.id, productoInicial.cantidad, productoInicial.creadoEnVenta);
         setDelEscaner({ rates: r.rates, monedasDelLibro: r.monedasDelLibro, prevista: r.prevista });
         if (!linea) {
           toast.error("Ese producto no tiene precio en una moneda de tu negocio. Edítalo para venderlo.");

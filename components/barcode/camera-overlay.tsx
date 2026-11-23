@@ -23,9 +23,13 @@ import { hasValidCheckDigit, normalizeBarcode } from "@/lib/barcodes/normalize";
 export function CameraOverlay({
   onCode,
   onClose,
+  aviso = null,
 }: {
   onCode: (code: string) => void;
   onClose: () => void;
+  // CONTINUOUS MODE (an order's «Detalle del pedido», 2026-11-23): the caller keeps the
+  // viewer open after a read and passes what the last read did, shown over the camera.
+  aviso?: string | null;
 }) {
   const [status, setStatus] = useState<CameraStatus>("starting");
   const [typing, setTyping] = useState(false);
@@ -84,6 +88,11 @@ export function CameraOverlay({
           <p className="text-center text-sm">
             {status === "starting" ? "Abriendo la cámara…" : "Apunta al código de barras del producto"}
           </p>
+          {aviso ? (
+            <p role="status" className="max-w-full truncate rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900">
+              {aviso}
+            </p>
+          ) : null}
         </div>
       )}
 

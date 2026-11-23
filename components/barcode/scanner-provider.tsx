@@ -250,7 +250,8 @@ export function BarcodeScannerProvider({
           textoBoton="Guardar y vender"
           onCreado={(productId, cantidad) => {
             setCreating(null);
-            router.push(`/ventas/nueva?producto=${productId}&cantidad=${cantidad}`);
+            // `creado=1`: its cart line gets «Editar», like one created inside the sale.
+            router.push(`/ventas/nueva?producto=${productId}&cantidad=${cantidad}&creado=1`);
           }}
         />
       ) : null}

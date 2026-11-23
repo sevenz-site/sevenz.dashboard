@@ -2953,6 +2953,29 @@ los 16 de la regla.
 **Se cancela en la pantalla, no en `app-main.tsx`**: ese archivo lo usan todas,
 y una excepción allí sería una quinta lista que mantener.
 
+## EL CAMPO DE CÓDIGO DE BARRAS: «ESCANEAR» FUERA, LA «X» DENTRO
+
+**Patrón del dueño del 2026-11-23**, tras probar el escáner en su teléfono: *«Icon button en
+input del código de barras escaneado debería estar fuera del input y con label "Escanear" y
+estilo del botón outlined, así no seleccionar "X" por error. Establecer como patrón y corregir
+en todas las interfaces»*, y *«falta "X" para limpiar el input, corregir patrón en todas las
+interfaces»*.
+
+Vive en un solo componente, `components/barcode/barcode-field.tsx`, y toda pantalla que pida un
+código lo monta; nunca se copian sus clases.
+
+- **«Escanear» es un botón propio, fuera del campo**: `variant="outline"`, icono más la palabra,
+  y toma la altura del campo de al lado (`items-stretch`), mida lo que mida el formulario. Antes
+  era un icono dentro del campo junto a la «X», y estaban tan cerca que se pulsaba la otra.
+- **Solo en el teléfono** (`md:hidden`): en web el código entra con la pistola, que escribe
+  directo en el campo, y en web no hay botón de cámara en ningún sitio (decisión del dueño del
+  mismo día).
+- **La «X» va dentro del campo siempre que tenga algo, y lo borra.** En una fila vacía que no es
+  la única, quita la fila. Antes solo aparecía con dos filas, así que un código solo no se podía
+  limpiar.
+- **El campo nunca recibe el foco al abrir un formulario.** Un código recién escaneado con el
+  foco encima, seleccionado, se borra con la primera tecla. El foco va al nombre.
+
 ## Before calling UI work done
 
 Render it and **measure at 375px**, not just at desktop width. Check

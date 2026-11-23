@@ -22,6 +22,7 @@ import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-pro
 import {
   currencyName,
   formatPriceAmount,
+  marginFromPrice,
   parseTypedAmount,
   type PriceCurrency,
 } from "@/lib/products/price";
@@ -57,7 +58,13 @@ import { BarcodeField } from "@/components/barcode/barcode-field";
 // tendero el trabajo que esta hoja existe para quitarle.
 // What the sheet typed beyond name, price and currency, which the product row does not carry
 // back to the cart. Kept on the cart line so «Editar» reopens the sheet as it was left.
-export type DatosRapidos = { publicar: boolean; descripcion: string | null };
+export type DatosRapidos = {
+  publicar: boolean;
+  descripcion: string | null;
+  // The unit cost as typed (CT-182, owner's decision of 2026-11-23). Optional so a line
+  // created before this field existed still reopens.
+  costo?: string | null;
+};
 
 // A product this sheet created, as «Editar» reopens it.
 export type ProductoRapido = DatosRapidos & {
@@ -122,6 +129,16 @@ export function QuickProductSheet({
   const [publicar, setPublicar] = useState(editando?.publicar ?? true);
   const [photoPath, setPhotoPath] = useState<string | null>(editando?.photoPath ?? null);
   const [descripcion, setDescripcion] = useState(editando?.descripcion ?? "");
+  // «COSTO UNITARIO (OPCIONAL)», THE ONE CATALOGUE FIELD ADDED HERE. Owner's decision of
+  // 2026-11-23, asked whether this sheet should carry every field of the catalogue's
+  // «Crear producto»: «agreguemos solo el input de costo». It displaces, by one field, the
+  // decision written at the top of this file (six fields, because twenty with a customer
+  // waiting means the product never gets written down); the rest of that reasoning stands.
+  //
+  // IN THE PRICE'S CURRENCY, with no selector of its own: the owner asked for the input
+  // only. The catalogue's form, where the cost has its own currency, still edits it.
+  const [costo, setCosto] = useState(editando?.costo ?? "");
+  const { ref: refCosto, onChange: alTeclearCosto } = useGroupedAmount(costo, setCosto);
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
 
@@ -131,6 +148,9 @@ export function QuickProductSheet({
   // doscientos treinta y cuatro. De este número sale el total que el tendero
   // confirma, así que el que manda es el que él escribió.
   const unitario = parseTypedAmount(precio) ?? 0;
+  // Null when empty or not a positive number: then no cost is saved at all.
+  const costoParsed = parseTypedAmount(costo);
+  const costoNumero = costoParsed != null && costoParsed > 0 ? costoParsed : null;
   // LOS MILES, MIENTRAS SE TECLEA.
   const { ref: refPrecio, onChange: alTeclearPrecio } = useGroupedAmount(precio, setPrecio);
   // La coma como separador decimal, igual que en la ficha pública: un tendero
@@ -215,10 +235,13 @@ export function QuickProductSheet({
           priceWholesale: null,
           fixedRetail: {},
           fixedWholesale: {},
-          cost: null,
-          costCurrency: null,
+          // THE COST AND ITS MARGIN, like the catalogue: the margin is stored, and Reportes
+          // reads it, so it is computed here in the cost's currency, which is the price's.
+          cost: costoNumero != null ? costo : null,
+          costCurrency: costoNumero != null ? moneda : null,
           costCurrencyOther: null,
-          marginRetailPct: null,
+          marginRetailPct:
+            costoNumero != null ? (marginFromPrice(costoNumero, moneda, unitario, moneda, null)?.toString() ?? null) : null,
           marginWholesalePct: null,
           stockOpening: null,
           supplier: null,
@@ -251,7 +274,7 @@ export function QuickProductSheet({
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
       }
-      const escrito = { publicar, descripcion: descripcion.trim() || null };
+      const escrito = { publicar, descripcion: descripcion.trim() || null, costo: costoNumero != null ? costo : null };
       if (editando) onEditado?.(editando.productId, unidades, escrito);
       else if (r.id) onCreado(r.id, unidades, escrito);
       onOpenChange(false);
@@ -263,7 +286,19 @@ export function QuickProductSheet({
       {/* `dvh` y no `vh`: en un teléfono con la barra del navegador a la vista,
           `vh` mide el viewport grande. Y `overflow-y-auto` porque esta hoja
           tiene siete campos y a 375px no caben sin desplazar. */}
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+      <SheetContent
+        side="bottom"
+        className="max-h-[90dvh] overflow-y-auto rounded-t-xl"
+        // THE FIRST FIELD GETS THE FOCUS, AND IT IS NEVER THE CODE. Radix focuses the first
+        // focusable element, and since the scanner put «Código de barras» first that was the
+        // code just read, selected: one key and it was gone (owner's report of 2026-11-23,
+        // «se puede editar por error el código y registrar mal»). The name is what the
+        // shopkeeper types next, so it gets it, as before the code field existed.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          document.getElementById("qp-nombre")?.focus();
+        }}
+      >
         <SheetHeader>
           <SheetTitle className="text-xl font-medium">
             {/* «Crear producto» when the scanner opened it (frames 8 and 12 of the scanner
@@ -344,6 +379,26 @@ export function QuickProductSheet({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-costo">Costo unitario (opcional)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="qp-costo"
+                className="min-w-0 flex-1"
+                inputMode="decimal"
+                value={costo}
+                ref={refCosto}
+                onChange={alTeclearCosto}
+                placeholder="00"
+              />
+              {/* No selector: the cost goes in the price's currency, said here. */}
+              <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
+                {currencyName(moneda)}
+              </span>
             </div>
           </div>
 

@@ -407,7 +407,8 @@ export type EventProps = {
   // turned out to be. A browser event: a floor, not a count.
   "Barcode Scanned": {
     source: "camera" | "gun";
-    surface: "home" | "sale";
+    // `order` since 2026-11-23: «Detalle del pedido» got its own scanner.
+    surface: "home" | "sale" | "order";
     result: "found" | "not_found" | "trashed" | "invalid" | "error";
   };
   "Owner Notices Prompt Shown": { ask_number: number };

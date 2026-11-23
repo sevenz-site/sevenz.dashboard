@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ScanBarcode } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { CameraFeed, scanFeedback, type CameraStatus } from "@/components/barcode/camera-feed";
 import { useBarcodeScanner } from "@/components/barcode/scanner-provider";
 import { productoPorCodigo } from "@/app/(app)/productos/actions";
@@ -184,17 +183,32 @@ export function SaleScanner({
             </button>
           </div>
         ) : (
-          <Button type="button" variant="outline" className="h-10 w-full" onClick={() => setCamera(true)}>
-            <ScanBarcode className="size-5" aria-hidden="true" />
-            Escanear productos
-          </Button>
+          // A FLOATING BUTTON ON THE RIGHT, steps 1 and 2 (owner's request of 2026-11-23,
+          // «debe ser botón flotante a la derecha para que siempre se vea cuando se hace
+          // scroll down»). It replaced a full-width button at the top that scrolled away
+          // with the product grid. Phone only: on the web the gun scans and there is no
+          // camera button (owner's decision of the same day). From step 1 it goes to the
+          // cart and opens the camera there, at the top, where frame 10 draws it.
+          <button
+            type="button"
+            aria-label="Escanear productos"
+            onClick={() => {
+              onIrAlCarrito();
+              setCamera(true);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] z-40 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-colors active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden"
+          >
+            <ScanBarcode className="size-6" aria-hidden="true" />
+          </button>
         )
       ) : null}
 
       {ultimo ? (
         <div
           role="status"
-          className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-50 -translate-x-1/2 rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg"
+          // Above the floating scan button, so a long product name never runs under it.
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+10.75rem)] left-1/2 z-50 max-w-[calc(100vw-2rem)] -translate-x-1/2 truncate rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg"
         >
           {ultimo}
         </div>

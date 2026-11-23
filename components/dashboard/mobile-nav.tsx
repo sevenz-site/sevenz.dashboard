@@ -739,11 +739,15 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
           `pantalla-vacia.ts`, y el comentario de `pantallaVacia` arriba. */}
       {/* THE SCAN BUTTON (CT-182) -- option A of «Propuesta · Escáner de códigos», approved
           by the owner on 2026-11-23: a second round floating button right above «Registrar»,
-          on exactly the screens where «Registrar» shows (same condition, plus not on the
-          catalogue, whose button is «Crear producto»), and only when the business works
-          with codes. Its known cost, named in the frame's note: on Inicio it sits over the
-          arrow of «Pedidos sin atender»; a long list scrolls out from under it. */}
-      {scanner.enabled && !enCatalogo && !enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && !enReportes && (
+          on exactly the screens where «Registrar» shows (same condition), and only when the
+          business works with codes. ON THE CATALOGUE TOO, above «Crear producto», since the
+          owner's request of the same day («En catálogo sobre el botón flotante "Crear
+          producto" debe estar el botón flotante para escanear producto»); it used to be
+          left out there. Its known cost: on Inicio it sits over part of the Pedidos card,
+          accepted by the owner («La tarjeta de pedidos es clickeable entera»), and on the
+          catalogue it covers more of the right column's share buttons than `CT-150`
+          already measured. A list scrolls out from under it. */}
+      {scanner.enabled && !enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && !enReportes && (
         <button
           type="button"
           aria-label="Escanear código"

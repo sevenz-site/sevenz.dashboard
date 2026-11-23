@@ -10,6 +10,12 @@ import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
 
+// Whether a product was created in the last half hour (CT-182: see `creado` below). Read
+// per request, which is what a page that checks a session already is.
+function creadoHacePoco(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < 30 * 60 * 1000;
+}
+
 export default async function NuevaVentaPage({
   searchParams,
 }: {
@@ -19,11 +25,11 @@ export default async function NuevaVentaPage({
   // SIN ÉL TAMBIÉN SE ENTRA, y esa es la novedad del 2026-10-18: se empieza
   // directamente por el producto y no se pregunta a quién hasta el paso 3, y
   // solo si algo queda fiado. Una venta de contado no necesita cliente.
-  searchParams: Promise<{ cliente?: string; desde?: string; producto?: string; cantidad?: string }>;
+  searchParams: Promise<{ cliente?: string; desde?: string; producto?: string; cantidad?: string; creado?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const { cliente: clienteId, desde, producto: productoId, cantidad } = await searchParams;
+  const { cliente: clienteId, desde, producto: productoId, cantidad, creado } = await searchParams;
   // WHERE THE SALE STARTED. `?cliente=` alone does not say: the profile, a new client
   // and a payment with no fiados all set it. Only for the funnels.
   const entryPoint =
@@ -85,18 +91,42 @@ export default async function NuevaVentaPage({
   // vender»). The id comes from the URL, so it is checked against the session's owner
   // explicitly (CLAUDE.md), and a trashed product does not count. A foreign or unknown id
   // is dropped without a word: the sale opens empty, as if it had come with none.
-  let productoInicial: { id: string; cantidad: number } | null = null;
+  //
+  // `&creado=1` (owner's report of 2026-11-23): the product was created a moment ago by the
+  // scanner's quick sheet, so its cart line gets «Editar», like a line created inside the
+  // sale. What the sheet needs to reopen as it was left is read from the product row. Only
+  // for a product created in the last half hour: the flag comes from the URL, and «Editar»
+  // saves the quick sheet's few fields, which on an older product would blank the ones it
+  // does not show (stock, wholesale price, supplier).
+  let productoInicial: {
+    id: string;
+    cantidad: number;
+    creadoEnVenta?: { publicar: boolean; descripcion: string | null; costo: string | null };
+  } | null = null;
   if (productoId) {
     const { data } = await supabase
       .from("products")
-      .select("id")
+      .select("id, published_retail, description, cost, created_at")
       .eq("id", productoId)
       .eq("owner_id", user.id)
       .is("trashed_at", null)
       .maybeSingle();
     const unidades = Number(cantidad);
     if (data) {
-      productoInicial = { id: data.id as string, cantidad: Number.isFinite(unidades) && unidades > 0 ? unidades : 1 };
+      const reciente = creadoHacePoco(data.created_at as string);
+      productoInicial = {
+        id: data.id as string,
+        cantidad: Number.isFinite(unidades) && unidades > 0 ? unidades : 1,
+        ...(creado === "1" && reciente
+          ? {
+              creadoEnVenta: {
+                publicar: data.published_retail === true,
+                descripcion: (data.description as string | null) ?? null,
+                costo: data.cost == null ? null : String(data.cost).replace(".", ","),
+              },
+            }
+          : {}),
+      };
     }
   }
 
