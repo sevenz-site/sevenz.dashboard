@@ -18,6 +18,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { createProduct, productNameTaken, updateProduct } from "@/app/(app)/productos/actions";
+import { contextoParaMonto } from "@/app/(app)/ventas/actions";
 import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   currencyName,
@@ -64,6 +65,9 @@ export type DatosRapidos = {
   // The unit cost as typed (CT-182, owner's decision of 2026-11-23). Optional so a line
   // created before this field existed still reopens.
   costo?: string | null;
+  // The currency of that cost, its own since 2026-11-25. Absent on a line created before: that
+  // cost was saved in the price's currency.
+  costoMoneda?: PriceCurrency;
 };
 
 // A product this sheet created, as «Editar» reopens it.
@@ -135,8 +139,15 @@ export function QuickProductSheet({
   // decision written at the top of this file (six fields, because twenty with a customer
   // waiting means the product never gets written down); the rest of that reasoning stands.
   //
-  // IN THE PRICE'S CURRENCY, with no selector of its own: the owner asked for the input
-  // only. The catalogue's form, where the cost has its own currency, still edits it.
+  // WITH ITS OWN CURRENCY, since 2026-11-25: «el campo de "Costo unitario" la moneda debe ser un
+  // dropdown para que el usuario pueda seleccionar entre "Dólares" y "Euros", Dólares como
+  // default». It displaces «in the price's currency, with no selector of its own» of 2026-11-23.
+  // Dollars whatever the price is in, as he asked. A Colombian business has one currency, so
+  // there is nothing to choose and it stays in pesos.
+  const monedasDeCosto: PriceCurrency[] = monedas.includes("COP") ? ["COP"] : ["USD", "EUR"];
+  const [costoMoneda, setCostoMoneda] = useState<PriceCurrency>(
+    (editando?.costo ? (editando.costoMoneda ?? editando.moneda) : editando?.costoMoneda) ?? monedasDeCosto[0],
+  );
   const [costo, setCosto] = useState(editando?.costo ?? "");
   const { ref: refCosto, onChange: alTeclearCosto } = useGroupedAmount(costo, setCosto);
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +216,12 @@ export function QuickProductSheet({
       // repeated name, so the message asks to look before saving again.
       let r: Awaited<ReturnType<typeof createProduct>>;
       try {
+        // THE MARGIN OF A COST IN ANOTHER CURRENCY NEEDS THE RATE, which this sheet does not
+        // carry: asked for here, only then. Without a rate the margin is left empty and the
+        // product is saved, like in the catalogue's form; a margin computed as if both
+        // currencies were worth the same would be a believable, false figure in Reportes.
+        const rates =
+          costoNumero != null && costoMoneda !== moneda ? ((await contextoParaMonto())?.rates ?? null) : null;
         const datos = {
           name: nombre.trim(),
           unit: null,
@@ -236,12 +253,14 @@ export function QuickProductSheet({
           fixedRetail: {},
           fixedWholesale: {},
           // THE COST AND ITS MARGIN, like the catalogue: the margin is stored, and Reportes
-          // reads it, so it is computed here in the cost's currency, which is the price's.
+          // reads it, so it is computed here.
           cost: costoNumero != null ? costo : null,
-          costCurrency: costoNumero != null ? moneda : null,
+          costCurrency: costoNumero != null ? costoMoneda : null,
           costCurrencyOther: null,
           marginRetailPct:
-            costoNumero != null ? (marginFromPrice(costoNumero, moneda, unitario, moneda, null)?.toString() ?? null) : null,
+            costoNumero != null
+              ? (marginFromPrice(costoNumero, costoMoneda, unitario, moneda, rates)?.toString() ?? null)
+              : null,
           marginWholesalePct: null,
           stockOpening: null,
           supplier: null,
@@ -274,7 +293,7 @@ export function QuickProductSheet({
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
       }
-      const escrito = { publicar, descripcion: descripcion.trim() || null, costo: costoNumero != null ? costo : null };
+      const escrito = { publicar, descripcion: descripcion.trim() || null, costo: costoNumero != null ? costo : null, costoMoneda };
       if (editando) onEditado?.(editando.productId, unidades, escrito);
       else if (r.id) onCreado(r.id, unidades, escrito);
       onOpenChange(false);
@@ -328,11 +347,10 @@ export function QuickProductSheet({
           {/* THE COST COMES FIRST, and the price says «de venta» (owner's request of 2026-11-25:
               «el input de costo va arriba de precio unitario (ajustar label a "Precio de venta
               unitario")»). It is the catalogue form's order, and beside a cost «Precio unitario»
-              alone could be read as what the product cost. The cost's currency is still the one
-              chosen below, in the price. */}
+              alone could be read as what the product cost. */}
           <div className="flex flex-col gap-1">
             <Label htmlFor="qp-costo">Costo unitario (opcional)</Label>
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-1">
               <Input
                 id="qp-costo"
                 className="min-w-0 flex-1"
@@ -342,11 +360,20 @@ export function QuickProductSheet({
                 onChange={alTeclearCosto}
                 placeholder="00"
               />
-              {/* No selector: the cost goes in the price's currency, said here. */}
-              <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
-                {currencyName(moneda)}
-              </span>
+              {/* One currency only (Colombia): said, not offered. */}
+              {monedasDeCosto.length > 1 ? (
+                <MonedaMenu
+                  label="Moneda del costo"
+                  value={costoMoneda}
+                  opciones={monedasDeCosto}
+                  onSelect={setCostoMoneda}
+                />
+              ) : (
+                <span className="flex h-9 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <CurrencyFlagIcon currency={costoMoneda} className="size-4 shrink-0" />
+                  {nombreDeMoneda(costoMoneda)}
+                </span>
+              )}
             </div>
           </div>
 
@@ -382,28 +409,7 @@ export function QuickProductSheet({
 
                   MISMO MONTAJE QUE `abono-monto.tsx` Y `nueva-venta.tsx`: si
                   a uno hay que cambiarle algo, a los tres. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 shrink-0 gap-2"
-                    aria-label="Moneda del precio"
-                  >
-                    <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
-                    <span className="text-xs">{currencyName(moneda)}</span>
-                    <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {monedas.map((c) => (
-                    <DropdownMenuItem key={c} onSelect={() => setMoneda(c)}>
-                      <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
-                      {currencyName(c)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <MonedaMenu label="Moneda del precio" value={moneda} opciones={monedas} onSelect={setMoneda} />
             </div>
           </div>
 
@@ -490,5 +496,44 @@ export function QuickProductSheet({
         }}
       />
     </Sheet>
+  );
+}
+
+// «Dólares», as the frame writes it: `currencyName` is lowercase, for the middle of a sentence.
+function nombreDeMoneda(c: PriceCurrency): string {
+  const n = currencyName(c);
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
+// THE CURRENCY MENU of the two amounts of this sheet, one drawing for both.
+function MonedaMenu({
+  label,
+  value,
+  opciones,
+  onSelect,
+}: {
+  label: string;
+  value: PriceCurrency;
+  opciones: PriceCurrency[];
+  onSelect: (c: PriceCurrency) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" className="h-9 shrink-0 gap-2" aria-label={label}>
+          <CurrencyFlagIcon currency={value} className="size-4 shrink-0" />
+          <span className="text-xs">{nombreDeMoneda(value)}</span>
+          <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {opciones.map((c) => (
+          <DropdownMenuItem key={c} onSelect={() => onSelect(c)}>
+            <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
+            {nombreDeMoneda(c)}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NuevaVenta } from "@/components/dashboard/nueva-venta";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { PriceCurrency } from "@/lib/products/price";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
@@ -101,12 +102,17 @@ export default async function NuevaVentaPage({
   let productoInicial: {
     id: string;
     cantidad: number;
-    creadoEnVenta?: { publicar: boolean; descripcion: string | null; costo: string | null };
+    creadoEnVenta?: {
+      publicar: boolean;
+      descripcion: string | null;
+      costo: string | null;
+      costoMoneda?: PriceCurrency;
+    };
   } | null = null;
   if (productoId) {
     const { data } = await supabase
       .from("products")
-      .select("id, published_retail, description, cost, created_at")
+      .select("id, published_retail, description, cost, cost_currency, created_at")
       .eq("id", productoId)
       .eq("owner_id", user.id)
       .is("trashed_at", null)
@@ -117,12 +123,15 @@ export default async function NuevaVentaPage({
       productoInicial = {
         id: data.id as string,
         cantidad: Number.isFinite(unidades) && unidades > 0 ? unidades : 1,
-        ...(creado === "1" && reciente
+        // A cost in a currency this sheet cannot show («Otro», typed in the catalogue's form
+        // in the meantime) is not reopened here: saving would file it as dollars.
+        ...(creado === "1" && reciente && data.cost_currency !== "OTHER"
           ? {
               creadoEnVenta: {
                 publicar: data.published_retail === true,
                 descripcion: (data.description as string | null) ?? null,
                 costo: data.cost == null ? null : String(data.cost).replace(".", ","),
+                costoMoneda: (data.cost_currency as PriceCurrency | null) ?? undefined,
               },
             }
           : {}),
