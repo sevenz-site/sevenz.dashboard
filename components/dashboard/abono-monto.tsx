@@ -48,7 +48,7 @@ import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
-import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
+import { defaultAbonoMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
@@ -185,10 +185,10 @@ export function AbonoMonto({
   const [photoEditada, setPhotoPath] = useState<string | null | undefined>(undefined);
   const photoPath = photoEditada !== undefined ? photoEditada : fotoDelReparto;
   const [avisar, setAvisar] = useState(false);
-  // THE METHOD, or null while untouched: then the default follows the currency being typed
-  // (owner's decision of 2026-11-17). See `MetodoDePagoField`.
+  // THE METHOD, or null while untouched: then it is «Pago móvil», whatever currency is typed
+  // (owner's decision of 2026-11-25). See `defaultAbonoMethod`.
   const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(null);
-  const metodo: PaymentMethod = metodoElegido ?? defaultMethod(libro, monedaTecleada === "VES" ? "VES" : libro);
+  const metodo: PaymentMethod = metodoElegido ?? defaultAbonoMethod(libro);
 
   // `parseAmount` Y NO `Number(...)`, que es lo que había aquí.
   //

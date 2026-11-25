@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { loadDetector } from "@/lib/barcodes/camera";
+import { loadDetector, type DetectedCode } from "@/lib/barcodes/camera";
+import { toast } from "sonner";
+import { enlargement, setTorch, tuneCamera, VIDEO_CONSTRAINTS, viewfinderRect } from "@/lib/barcodes/camera-tuning";
+import { createConfirmer } from "@/lib/barcodes/confirm";
 import { normalizeBarcode } from "@/lib/barcodes/normalize";
+
+/** The torch of the open camera, for whoever draws its button. Null: this camera has none. */
+export type Torch = { on: boolean; toggle: () => void };
 
 export type CameraStatus = "starting" | "scanning" | "denied" | "unavailable" | "failed";
 
@@ -11,7 +17,20 @@ export type CameraStatus = "starting" | "scanning" | "denied" | "unavailable" | 
 // would add five to a fiado. The clock restarts on every sighting, so a code counts once
 // for as long as it stays in view, and again only after leaving it for this long.
 export const SAME_CODE_PAUSE_MS = 1500;
-const READS_EVERY_MS = 150;
+// 100, from 150: a code needs two equal reads now (`createConfirmer`). A read still running when
+// its turn comes is never overlapped, so a slow phone reads less often and not more at once.
+const READS_EVERY_MS = 100;
+// The whole picture is read no bigger than this; the part that matters goes at full detail.
+const FULL_PASS_MAX = 1920;
+
+/** The code nearest the centre: on a shelf the picture holds several, and the aimed one is that. */
+function nearestToCentre(found: DetectedCode[], width: number, height: number): DetectedCode | undefined {
+  const distance = (d: DetectedCode) =>
+    d.boundingBox
+      ? Math.hypot(d.boundingBox.x + d.boundingBox.width / 2 - width / 2, d.boundingBox.y + d.boundingBox.height / 2 - height / 2)
+      : 0;
+  return [...found].sort((a, b) => distance(a) - distance(b))[0];
+}
 
 // THE CAMERA AND THE READER, nothing drawn on top: the full-screen viewer and the strip
 // inside a sale put their own frame around it.
@@ -22,30 +41,37 @@ const READS_EVERY_MS = 150;
 export function CameraFeed({
   onCode,
   onStatus,
+  onTorch,
   className,
 }: {
   onCode: (code: string) => void;
   onStatus?: (status: CameraStatus) => void;
+  onTorch?: (torch: Torch | null) => void;
   className?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onCodeRef = useRef(onCode);
   const onStatusRef = useRef(onStatus);
+  const onTorchRef = useRef(onTorch);
   useEffect(() => {
     onCodeRef.current = onCode;
     onStatusRef.current = onStatus;
+    onTorchRef.current = onTorch;
   });
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let timer: number | undefined;
     let cancelled = false;
-    const lastSeen = new Map<string, number>();
+    const counts = createConfirmer(SAME_CODE_PAUSE_MS);
+    const canvas = document.createElement("canvas");
 
     const stop = () => {
       window.clearInterval(timer);
       stream?.getTracks().forEach((t) => t.stop());
       stream = null;
+      // Closing the camera turns its torch off, so the button goes back to off with it.
+      onTorchRef.current?.(null);
     };
 
     const start = async () => {
@@ -57,7 +83,7 @@ export function CameraFeed({
       try {
         const [s, detector] = await Promise.all([
           navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+            video: VIDEO_CONSTRAINTS,
             audio: false,
           }),
           loadDetector(),
@@ -72,19 +98,55 @@ export function CameraFeed({
         video.srcObject = s;
         await video.play().catch(() => undefined);
         onStatusRef.current?.("scanning");
+        // Not awaited: focus and zoom settle while the first pictures are already being read.
+        const track = s.getVideoTracks()[0];
+        void tuneCamera(track).then(({ settings, torch }) => {
+          if (!torch || cancelled || stream !== s) return;
+          let changing = false;
+          const report = (on: boolean) => onTorchRef.current?.({ on, toggle: () => void toggle(!on) });
+          const toggle = async (on: boolean) => {
+            if (changing || stream !== s) return;
+            changing = true;
+            const result = await setTorch(track, on, settings);
+            changing = false;
+            if (cancelled || stream !== s) return;
+            if (result === "ok") report(on);
+            else if (result === "failed") toast.error("No pudimos encender la linterna.");
+            else {
+              // It would not turn off: closing the camera is the only thing that does it.
+              stop();
+              void start();
+            }
+          };
+          report(false);
+        });
         let busy = false;
+        let turn = 0;
+
+        // TWO READS OF THE PICTURE, TAKING TURNS. The part around the viewfinder at full detail,
+        // enlarged, is where a small code gets read; the whole picture is what keeps a code
+        // outside the frame readable, as it always was («a target, not a crop»).
+        const drawn = (): CanvasImageSource & { width: number; height: number } => {
+          const { videoWidth: vw, videoHeight: vh } = video;
+          const full = turn++ % 2 === 1;
+          const r = full
+            ? { x: 0, y: 0, width: vw, height: vh }
+            : viewfinderRect(vw, vh, video.clientWidth || vw, video.clientHeight || vh);
+          const k = full ? Math.min(1, FULL_PASS_MAX / Math.max(vw, vh)) : enlargement(r.width);
+          canvas.width = Math.round(r.width * k);
+          canvas.height = Math.round(r.height * k);
+          canvas.getContext("2d", { willReadFrequently: true })?.drawImage(video, r.x, r.y, r.width, r.height, 0, 0, canvas.width, canvas.height);
+          return canvas;
+        };
         timer = window.setInterval(async () => {
           if (busy || !video.videoWidth) return;
           busy = true;
           try {
-            const found = await detector.detect(video);
-            const code = normalizeBarcode(found[0]?.rawValue);
-            if (code) {
-              const now = Date.now();
-              const seen = lastSeen.get(code);
-              lastSeen.set(code, now);
-              if (seen === undefined || now - seen > SAME_CODE_PAUSE_MS) onCodeRef.current(code);
-            }
+            const picture = drawn();
+            const found = await detector.detect(picture);
+            const code = normalizeBarcode(nearestToCentre(found, picture.width, picture.height)?.rawValue);
+            // `cancelled`: a read that finishes after the viewer closed must not act.
+            if (code && !cancelled && counts(code, Date.now())) onCodeRef.current(code);
           } catch {
             // A frame the reader could not process; the next one will.
           } finally {

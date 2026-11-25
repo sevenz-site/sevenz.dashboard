@@ -19,7 +19,8 @@ export const ZXING_WASM_VERSION_SERVED = "3.1.6";
 // the same package would otherwise win over its barcode.
 export const SCAN_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "itf"] as const;
 
-export type Detector = { detect(source: CanvasImageSource): Promise<{ rawValue: string }[]> };
+export type DetectedCode = { rawValue: string; boundingBox?: { x: number; y: number; width: number; height: number } };
+export type Detector = { detect(source: CanvasImageSource): Promise<DetectedCode[]> };
 
 type DetectorClass = {
   new (options?: { formats?: string[] }): Detector;

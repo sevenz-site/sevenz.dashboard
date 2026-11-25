@@ -45,6 +45,7 @@ import { ScreenBackRow } from "@/components/dashboard/screen-back-row";
 import { ClientResultList } from "@/components/dashboard/client-result-list";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { PasoProducto, type LineaVenta } from "@/components/dashboard/paso-producto";
+import { montoValido, PasoMonto, type MontoTecleado } from "@/components/dashboard/paso-monto";
 import { SaleScanner } from "@/components/barcode/sale-scanner";
 import { lineaParaProducto } from "@/lib/barcodes/sale-line";
 import { CurrencySheet } from "@/components/dashboard/currency-sheet";
@@ -62,6 +63,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { toast } from "sonner";
 import {
+  contextoParaMonto,
   productoParaVentaPorId,
   registrarVenta,
   resolverMostrador,
@@ -291,9 +293,77 @@ export function NuevaVenta({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, [productoInicial]);
 
+  // ── A SALE WITH NO PRODUCT: «OMITIR» ────────────────────────────────
+  //
+  // Owner's request of 2026-11-25: «Selección de producto en venta opcional (botón "Omitir" en el
+  // header donde está el botón "<" alineado a la derecha)», option A: step 2 becomes «Monto».
+  //
+  // `sinProducto` IS DERIVED FROM THE CART, not only from the tap: a product added later by any
+  // door (the grid, the camera, the gun) makes it a sale of products again, and the typed amounts
+  // are then not sent. Both at once would charge twice for the same thing.
+  const [omitido, setOmitido] = useState(false);
+  const sinProducto = omitido && lineas.length === 0;
+  const [montosTecleados, setMontosTecleados] = useState<MontoTecleado[]>([]);
+  const [descripcionVenta, setDescripcionVenta] = useState("");
+  const [leyendoContexto, setLeyendoContexto] = useState(false);
+  const monedasDelLibro = catalogo?.monedasDelLibro ?? delEscaner?.monedasDelLibro ?? [];
+  // UNTIL SOMETHING IS TYPED, one field in the ledger's first currency. Not stored: the currencies
+  // may arrive after the screen does.
+  const montos: MontoTecleado[] =
+    montosTecleados.length > 0 ? montosTecleados : monedasDelLibro[0] ? [{ currency: monedasDelLibro[0], text: "" }] : [];
+
+  // «OMITIR» CAN BE TOUCHED BEFORE THE GRID FINISHES LOADING, so the rates and currencies are
+  // asked for when nothing has brought them.
+  async function leerContexto() {
+    setLeyendoContexto(true);
+    try {
+      const r = await contextoParaMonto();
+      if (r) setDelEscaner(r);
+    } catch (e) {
+      console.error("[NuevaVenta] amount context:", e);
+    } finally {
+      setLeyendoContexto(false);
+    }
+  }
+
+  function omitirProductos() {
+    track("Sale Products Skipped", contexto);
+    setOmitido(true);
+    setPaso(2);
+    if (monedasDelLibro.length === 0) void leerContexto();
+  }
+
+  // A PAYMENT WAS AGREED FOR THE AMOUNT THAT WAS THERE. Changing that amount drops the payment of
+  // its currency, and step 3 asks for it again: kept, it could be larger than the sale.
+  function cambiarMontos(siguientes: MontoTecleado[]) {
+    const distintas = new Set<PriceCurrency>();
+    for (const c of new Set([...montos, ...siguientes].map((m) => m.currency))) {
+      const antes = montos.find((m) => m.currency === c);
+      const ahora = siguientes.find((m) => m.currency === c);
+      if ((antes ? montoValido(antes.text) : null) !== (ahora ? montoValido(ahora.text) : null)) distintas.add(c);
+    }
+    setMontosTecleados(siguientes);
+    if (distintas.size > 0) {
+      setRegistros((xs) => Object.fromEntries(Object.entries(xs).filter(([c]) => !distintas.has(c as PriceCurrency))));
+    }
+  }
+
+  // BACK TO PRODUCTS: whatever was agreed to pay was about the typed amounts.
+  function volverAProductos() {
+    if (!omitido) return;
+    setOmitido(false);
+    setRegistros({});
+  }
+
   const total = useMemo(
-    () => totalesPorMoneda(lineas, catalogo?.rates ?? delEscaner?.rates ?? null),
-    [lineas, catalogo, delEscaner],
+    () =>
+      sinProducto
+        ? montosTecleados.flatMap((m) => {
+            const amount = montoValido(m.text);
+            return amount == null ? [] : [{ currency: m.currency, amount }];
+          })
+        : totalesPorMoneda(lineas, catalogo?.rates ?? delEscaner?.rates ?? null),
+    [sinProducto, montosTecleados, lineas, catalogo, delEscaner],
   );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -464,6 +534,9 @@ export function NuevaVenta({
         quantity: l.quantity,
         currency: l.currency,
       })),
+      sinProducto: sinProducto
+        ? { montos: total.map((t) => ({ currency: t.currency, amount: t.amount })), descripcion: descripcionVenta }
+        : undefined,
       pagos: cuentas
         .filter((c) => c.cobrado > 0)
         .map((c) => ({
@@ -600,6 +673,15 @@ export function NuevaVenta({
       <ScreenBackRow
         soloEnTelefono={false}
         onClick={() => (paso === 1 ? router.back() : setPaso((p) => (p - 1) as 1 | 2 | 3))}
+        // ONLY WITH AN EMPTY CART: with products in it, skipping them would throw them away
+        // without a word.
+        acciones={
+          paso === 1 && lineas.length === 0 ? (
+            <Button type="button" variant="ghost" className="-my-1 -mr-2 h-10" onClick={omitirProductos}>
+              Omitir
+            </Button>
+          ) : null
+        }
       />
 
       {/* ── TRES PASOS, Y EL CLIENTE NO ES UNO DE ELLOS ──────────────────
@@ -619,7 +701,7 @@ export function NuevaVenta({
       <div className="flex flex-col gap-2">
         <ScreenTitle>Nueva venta</ScreenTitle>
         <p className="text-sm text-muted-foreground">
-          {paso}/{pasos} {["Producto", "Carrito", "Pago", "Información del cliente"][paso - 1]}
+          {paso}/{pasos} {["Producto", sinProducto ? "Monto" : "Carrito", "Pago", "Información del cliente"][paso - 1]}
         </p>
         {/* `aria-hidden` porque la línea de arriba ya dice «1/3 Producto» con
             palabras: repetirlo en el lector de pantalla sería ruido, no
@@ -635,16 +717,21 @@ export function NuevaVenta({
       {/* CT-182: «Escanear productos» and the gun's continuous mode. Renders nothing when
           the business does not work with codes. */}
       <SaleScanner
-        cartOpen={paso === 1 || paso === 2}
+        cartOpen={paso === 1 || (paso === 2 && !sinProducto)}
+        closedMessage={sinProducto ? "Para agregar productos, vuelve al paso 1." : undefined}
         lineas={lineas}
         ownerId={ownerId}
         monedas={catalogo?.monedasDelLibro ?? delEscaner?.monedasDelLibro ?? []}
         onLinea={(l) => {
           track("Sale Product Added", { ...contexto, added_via: "scan", cart_lines: agregar(lineas, l).length });
+          volverAProductos();
           setLineas((xs) => agregar(xs, l));
           setResaltado({ productId: l.productId, vez: Date.now() });
         }}
-        onIrAlCarrito={() => setPaso(2)}
+        onIrAlCarrito={() => {
+          volverAProductos();
+          setPaso(2);
+        }}
       />
 
       {paso === 1 ? (
@@ -654,6 +741,7 @@ export function NuevaVenta({
           lineas={lineas}
           onAgregar={(l, via) => {
             track("Sale Product Added", { ...contexto, added_via: via, cart_lines: agregar(lineas, l).length });
+            volverAProductos();
             setLineas((xs) => agregar(xs, l));
           }}
           onIrAlCarrito={() => setPaso(2)}
@@ -662,7 +750,31 @@ export function NuevaVenta({
         />
       ) : null}
 
-      {paso === 2 ? (
+      {paso === 2 && sinProducto ? (
+        <PasoMonto
+          montos={montos}
+          onMontos={cambiarMontos}
+          descripcion={descripcionVenta}
+          onDescripcion={setDescripcionVenta}
+          monedas={monedasDelLibro}
+          rates={rates}
+          cargando={leyendoContexto}
+          onReintentar={() => void leerContexto()}
+          onContinuar={() => {
+            // HOW MANY WHO SKIP THE PRODUCT GET AS FAR AS CHARGING. What it decides: if they
+            // stop here, the amount step asks for too much. Browser gesture, so a floor. Filed
+            // under the owner; the sale itself is `Sale Completed` with `without_product`.
+            track("Sale Amount Confirmed", {
+              ...contexto,
+              currencies_count: montos.length,
+              has_description: descripcionVenta.trim() !== "",
+            });
+            setPaso(3);
+          }}
+        />
+      ) : null}
+
+      {paso === 2 && !sinProducto ? (
         <PasoCarrito
           lineas={lineas}
           resaltado={resaltado?.productId ?? null}
@@ -687,6 +799,8 @@ export function NuevaVenta({
         <PasoPago
           conCliente={inicial != null}
           debeAvisar={marcadaYFiando}
+          // Asked already in «Monto», where it names the sale.
+          pideDescripcion={!sinProducto}
           registros={registros}
           setRegistros={setRegistros}
           saldoDelElegido={saldoDelElegido}
@@ -1230,7 +1344,10 @@ function PasoPago({
   ownerId,
   onContinuar,
   guardar,
+  pideDescripcion = true,
 }: {
+  /** False when the description was asked before this step. */
+  pideDescripcion?: boolean;
   onPagoDecidido: (currency: PriceCurrency, decision: "full" | "partial" | "none") => void;
   // POR DÓNDE SE ENTRÓ, no si hay cliente ahora. Decide si el botón dice
   // «Finalizar» o «Continuar».
@@ -1597,6 +1714,7 @@ function PasoPago({
           })()}
           rates={rates}
           prevista={prevista}
+          pideDescripcion={pideDescripcion}
           inicial={registros[cobrando] ?? null}
           onGuardar={(r) => {
             const aPagar = cuentas.find((x) => x.currency === cobrando);

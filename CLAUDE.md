@@ -1151,6 +1151,30 @@ es una captura y se rehace.
 de la app pegadas en frames vacíos, y la primera de la `v0.8.0` igual. Esas dos ya
 aprobadas se quedan como están; la de la `v0.8.0` se rehizo editable.
 
+### TODOS LOS FRAMES USAN AUTOLAYOUT
+
+**Regla del dueño, 2026-11-25**: *«Nueva regla para los diseños en figma, todos los
+frames deben usar autolayout. Agrégalo a la norma»*.
+
+**La regla**: todo frame que se deja en Figma usa autolayout, el de la pantalla y cada
+uno de los que lleva dentro: cabecera, contenido, fila, campo, tarjeta, botón, barra de
+abajo, nota. Nada se coloca con coordenadas sueltas. Los espacios son `itemSpacing` y
+paddings, y lo que ocupa el ancho va en «Fill», no con un ancho fijo copiado del padre.
+
+**Por qué importa, además de ser suya**: con coordenadas sueltas, cambiar un rótulo o
+meter un botón obliga a mover a mano todo lo de abajo. Con autolayout la pantalla se
+reacomoda sola, que es para lo que él quiere los frames editables.
+
+**Lo que no cuenta**: una sección, un vector, un icono o un grupo clonado de otro frame
+del archivo, y una capa que de verdad flota sobre la pantalla (un botón flotante, el velo
+de una hoja), que va con posición absoluta dentro de un padre con autolayout.
+
+**Cómo se comprueba antes de entregar**: se recorre cada frame y se buscan los
+`layoutMode === 'NONE'` que tengan hijos. Uno solo, fuera de lo de arriba, y se rehace.
+
+**Lo anterior se queda como está.** Un frame viejo se convierte cuando haya que tocarlo
+por otra razón. Los de esta regla para adelante nacen así.
+
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
 **Un enlace a un frame de Figma es una instrucción de leerlo, no una

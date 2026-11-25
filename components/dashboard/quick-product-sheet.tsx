@@ -325,8 +325,33 @@ export function QuickProductSheet({
             />
           </div>
 
+          {/* THE COST COMES FIRST, and the price says «de venta» (owner's request of 2026-11-25:
+              «el input de costo va arriba de precio unitario (ajustar label a "Precio de venta
+              unitario")»). It is the catalogue form's order, and beside a cost «Precio unitario»
+              alone could be read as what the product cost. The cost's currency is still the one
+              chosen below, in the price. */}
           <div className="flex flex-col gap-1">
-            <Label htmlFor="qp-precio">Precio unitario</Label>
+            <Label htmlFor="qp-costo">Costo unitario (opcional)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="qp-costo"
+                className="min-w-0 flex-1"
+                inputMode="decimal"
+                value={costo}
+                ref={refCosto}
+                onChange={alTeclearCosto}
+                placeholder="00"
+              />
+              {/* No selector: the cost goes in the price's currency, said here. */}
+              <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
+                {currencyName(moneda)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-precio">Precio de venta unitario</Label>
             <div className="flex items-start gap-1">
               <Input
                 id="qp-precio"
@@ -379,26 +404,6 @@ export function QuickProductSheet({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="qp-costo">Costo unitario (opcional)</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="qp-costo"
-                className="min-w-0 flex-1"
-                inputMode="decimal"
-                value={costo}
-                ref={refCosto}
-                onChange={alTeclearCosto}
-                placeholder="00"
-              />
-              {/* No selector: the cost goes in the price's currency, said here. */}
-              <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
-                {currencyName(moneda)}
-              </span>
             </div>
           </div>
 

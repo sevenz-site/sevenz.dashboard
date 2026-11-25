@@ -404,6 +404,23 @@ export async function productoParaVentaPorId(
   };
 }
 
+// WHAT THE AMOUNT STEP OF A SALE NEEDS when nothing else has brought it yet: «Omitir» can be
+// touched before the product grid finishes loading (2026-11-25). The same context every other
+// read of this file starts from. `null` when the business cannot be read.
+export async function contextoParaMonto(): Promise<Pick<
+  ProductosParaVenta,
+  "rates" | "monedasDelLibro" | "prevista"
+> | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const contexto = await contextoDeVenta(supabase, user.id);
+  if (!contexto.ok) return null;
+  return { rates: contexto.rates, monedasDelLibro: contexto.monedasDelLibro, prevista: contexto.prevista };
+}
+
 // THE CURRENCIES A QUICK PRODUCT CAN BE PRICED IN, for the scanner's «Crear producto» on
 // Home (CT-182): the same list the sale's quick sheet gets, from the same function, so a
 // product created from a scan can always be sold. Empty when the business cannot be read.
@@ -983,9 +1000,23 @@ export type CreditoDeVentaEntrada = {
   description?: string | null;
 };
 
+// A SALE WITH NO PRODUCT (owner's request of 2026-11-25): «Omitir» in step 1 of the sale and an
+// amount typed instead. One entry per currency, at most the two of the business' ledger.
+//
+// THE ONLY PRICE THAT TRAVELS FROM THE BROWSER, and it has to: there is no product whose price
+// the server could read instead. It is the shopkeeper's own figure, like the amount of an abono.
+// It is why it goes in its own field and never as a `lineas` entry with an optional price: a
+// price next to a product id is exactly the hole this action exists not to have.
+export type MontoSinProducto = { currency: PriceCurrency; amount: number };
+
+/** The name of a sale with no product when the shopkeeper wrote no description. */
+const NOMBRE_SIN_PRODUCTO = "Venta sin producto registrado";
+
 export type VentaEntrada = {
   clientId: string;
   lineas: LineaDeVentaEntrada[];
+  /** Only with `lineas` empty and no `pedidoId`. See `MontoSinProducto`. */
+  sinProducto?: { montos: MontoSinProducto[]; descripcion?: string | null };
   pagos: PagoDeVentaEntrada[];
   credito: CreditoDeVentaEntrada[];
   // WHAT THE SHOPKEEPER CHOSE TO PAY WITH SALDO A FAVOR, per currency. Owner's
@@ -1084,7 +1115,16 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     return rechazar("paused_account", MENSAJE_CUENTA_PAUSADA);
   }
 
-  if (entrada.lineas.length === 0) return rechazar("empty_sale", "Agrega al menos un producto a la venta.");
+  const montosSinProducto = entrada.sinProducto?.montos ?? [];
+  if (montosSinProducto.length > 0) {
+    // ONE OR THE OTHER, refused and never merged: a cart sent together with typed amounts is a
+    // screen that lost track of which sale it is, and guessing would charge for something twice.
+    if (entrada.lineas.length > 0 || entrada.pedidoId) {
+      return rechazar("empty_sale", "Esta venta tiene productos. Quítalos o no escribas un monto.");
+    }
+  } else if (entrada.lineas.length === 0) {
+    return rechazar("empty_sale", "Agrega al menos un producto a la venta.");
+  }
   if (entrada.lineas.length > 60) return rechazar("too_many_lines", "Son demasiados productos para una sola venta.");
 
   // EL CLIENTE SE COMPRUEBA CONTRA EL DUEÑO DE LA SESIÓN, explícitamente y no
@@ -1193,13 +1233,38 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
   }
 
   const lineasResueltas: {
-    productId: string;
+    // null: a sale with no product. `sale_lines.product_id` has always been nullable.
+    productId: string | null;
     name: string;
     quantity: number;
     unitPrice: number;
     currency: PriceCurrency;
-    tier: "retail" | "wholesale";
+    // null: no product, so no price tier was chosen.
+    tier: "retail" | "wholesale" | null;
   }[] = [];
+
+  // ── A SALE WITH NO PRODUCT: one line per currency, named by the shopkeeper ──
+  for (const m of montosSinProducto) {
+    if (!monedasDelLibro.includes(m.currency)) {
+      return rechazar("currency_not_allowed", "Tu negocio no maneja esa moneda.");
+    }
+    // Two amounts in one currency would read as two sales added up: the screen has one field
+    // per currency, so a second one is not something a person typed.
+    if (lineasResueltas.some((l) => l.currency === m.currency)) {
+      return rechazar("invalid_amount", "Hay dos montos en la misma moneda.");
+    }
+    const monto = Number.isFinite(m.amount) ? redondear(m.amount) : 0;
+    // The ceiling is the one of `sale_lines.unit_price` (migration 124).
+    if (monto <= 0 || monto > 1e11) return rechazar("invalid_amount", "Revisa el monto de la venta.");
+    lineasResueltas.push({
+      productId: null,
+      name: entrada.sinProducto?.descripcion?.trim().slice(0, 120) || NOMBRE_SIN_PRODUCTO,
+      quantity: 1,
+      unitPrice: monto,
+      currency: m.currency,
+      tier: null,
+    });
+  }
 
   for (const linea of entrada.lineas) {
     const producto = porId.get(linea.productId);
@@ -1492,8 +1557,8 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       },
     ]),
   );
-  const costoDeLinea = (productId: string, currency: string) => {
-    const costo = costoPorId.get(productId);
+  const costoDeLinea = (productId: string | null, currency: string) => {
+    const costo = productId ? costoPorId.get(productId) : undefined;
     return costo ? costoParaCongelar(costo, currency, rates) : null;
   };
 
@@ -1507,7 +1572,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       currency: l.currency,
       tier: l.tier,
       unit_cost: costoDeLinea(l.productId, l.currency),
-      supplier: costoPorId.get(l.productId)?.proveedor ?? null,
+      supplier: (l.productId ? costoPorId.get(l.productId)?.proveedor : null) ?? null,
     })),
   );
   if (errorLineas) {
@@ -1678,6 +1743,10 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       client_kind: cliente.is_walk_in ? "walk_in" : "named",
       lines: lineasResueltas.length,
       units: lineasResueltas.reduce((suma, l) => suma + l.quantity, 0),
+      // HOW MUCH IS SOLD WITHOUT REGISTERING A PRODUCT, since 2026-11-25. What it decides: if most
+      // of a business' sales skip the product, its inventory and its profit describe a small part
+      // of what it sells, and what to fix is how hard registering a product is.
+      without_product: montosSinProducto.length > 0,
       currencies_count: totales.size,
       ...moneyProps("total", totales),
       ...moneyProps("collected", pagado),

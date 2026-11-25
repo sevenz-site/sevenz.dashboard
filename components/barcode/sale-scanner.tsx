@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ScanBarcode } from "lucide-react";
 import { toast } from "sonner";
-import { CameraFeed, scanFeedback, type CameraStatus } from "@/components/barcode/camera-feed";
+import { CameraFeed, scanFeedback, type CameraStatus, type Torch } from "@/components/barcode/camera-feed";
+import { TorchButton } from "@/components/barcode/torch-button";
 import { useBarcodeScanner } from "@/components/barcode/scanner-provider";
 import { productoPorCodigo } from "@/app/(app)/productos/actions";
 import { monedasDelNegocio, productoParaVentaPorId } from "@/app/(app)/ventas/actions";
@@ -37,6 +38,7 @@ const QuickProductSheet = dynamic(
 // loading every code of the catalogue for a sale that may scan none.)
 export function SaleScanner({
   cartOpen,
+  closedMessage = "Para agregar productos, vuelve al carrito.",
   lineas,
   ownerId,
   monedas,
@@ -45,6 +47,8 @@ export function SaleScanner({
 }: {
   // Steps 1 and 2: where a code may still change the cart.
   cartOpen: boolean;
+  /** What a code read while the cart is closed answers. A sale with no product has no cart. */
+  closedMessage?: string;
   lineas: LineaVenta[];
   ownerId: string;
   monedas: PriceCurrency[];
@@ -54,6 +58,7 @@ export function SaleScanner({
   const { enabled, registerSaleHandler } = useBarcodeScanner();
   const [camera, setCamera] = useState(false);
   const [status, setStatus] = useState<CameraStatus>("starting");
+  const [torch, setTorch] = useState<Torch | null>(null);
   const [ultimo, setUltimo] = useState<string | null>(null);
   const [creando, setCreando] = useState<string | null>(null);
   const known = useRef(new Map<string, string>());
@@ -87,7 +92,7 @@ export function SaleScanner({
 
   async function leer(code: string, source: "camera" | "gun") {
     if (!cartOpenRef.current) {
-      toast.error("Para agregar productos, vuelve al carrito.");
+      toast.error(closedMessage);
       return;
     }
     let productId = known.current.get(code);
@@ -163,6 +168,7 @@ export function SaleScanner({
                     void leer(code, "camera");
                   }}
                   onStatus={setStatus}
+                  onTorch={setTorch}
                   className="absolute inset-0 size-full object-cover"
                 />
                 <div className="pointer-events-none absolute top-1/2 left-1/2 h-[110px] w-[220px] -translate-x-1/2 -translate-y-1/2">
@@ -172,8 +178,14 @@ export function SaleScanner({
                   <span className="absolute right-0 bottom-0 size-6 rounded-br-xl border-r-4 border-b-4 border-white" />
                   <span className="absolute top-1/2 right-4 left-4 h-0.5 bg-red-500" />
                 </div>
+                {status === "scanning" ? (
+                  <p className="pointer-events-none absolute inset-x-3 bottom-2 text-center text-xs text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]">
+                    Aleja el teléfono un palmo para que enfoque.
+                  </p>
+                ) : null}
               </>
             )}
+            <TorchButton torch={torch} className="absolute top-1.5 left-2.5" />
             <button
               type="button"
               onClick={() => setCamera(false)}

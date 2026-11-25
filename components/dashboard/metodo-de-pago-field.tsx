@@ -16,9 +16,9 @@ import { methodsForBook, type PaymentMethod } from "@/lib/payments/methods";
 //
 // ONE COMPONENT, NOT THREE COPIES (CLAUDE.md, «Un valor visual que sale en más de una pantalla
 // NACE en un componente»). The list comes from `lib/payments/methods.ts` and depends on the book:
-// a Venezuelan one offers eight methods, a Colombian one five.
+// a Venezuelan one offers nine methods, a Colombian one five.
 //
-// WHO PICKS THE DEFAULT: the caller, with `defaultMethod`, because only it knows the currency
+// WHO PICKS THE DEFAULT: the caller, with `defaultMethod` (or `defaultAbonoMethod`), because only it knows the currency
 // being typed and whether the shopkeeper already chose something on purpose.
 export function MetodoDePagoField({
   id,

@@ -188,6 +188,7 @@ export type EventProps = {
       client_kind: "named" | "walk_in";
       lines: number;
       units: number;
+      without_product: boolean;
       currencies_count: number;
       charges_count: number;
       used_credit: boolean;
@@ -276,6 +277,9 @@ export type EventProps = {
   // `scan` since 2026-11-23 (CT-182): a code read inside the sale, camera or gun.
   "Sale Product Added": FlowContext & { added_via: "catalog" | "quick_create" | "scan"; cart_lines: number };
   "Sale Cart Confirmed": FlowContext & { lines: number; units: number; currencies_count: number };
+  // «Omitir», 2026-11-25: the sale goes on with an amount and no product.
+  "Sale Products Skipped": FlowContext;
+  "Sale Amount Confirmed": FlowContext & { currencies_count: number; has_description: boolean };
   "Sale Payment Decided": FlowContext & { currency: string; decision: "full" | "partial" | "none" };
   "Sale Client Step Viewed": FlowContext;
   "Sale Client Chosen": FlowContext & {

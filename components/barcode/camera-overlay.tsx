@@ -5,7 +5,8 @@ import { CameraOff, Keyboard, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CameraFeed, scanFeedback, type CameraStatus } from "@/components/barcode/camera-feed";
+import { CameraFeed, scanFeedback, type CameraStatus, type Torch } from "@/components/barcode/camera-feed";
+import { TorchButton } from "@/components/barcode/torch-button";
 import { hasValidCheckDigit, normalizeBarcode } from "@/lib/barcodes/normalize";
 
 // THE FULL-SCREEN VIEWER (CT-182) -- frames 3, 4 and 5 of «Propuesta · Escáner de códigos:
@@ -18,8 +19,10 @@ import { hasValidCheckDigit, normalizeBarcode } from "@/lib/barcodes/normalize";
 // sheets and dialogs), mounted only while open. A Radix dialog stays mounted closed
 // (DESIGN-SYSTEM.md), and a mounted camera is a camera on.
 //
-// NO TORCH. Safari on iPhone does not let a web page turn it on; the way out of a dark
-// shop is «Escribir el código», which is always on screen.
+// THE TORCH, since 2026-11-25. This said «NO TORCH: Safari on iPhone does not let a web page turn
+// it on», which stopped being true: WebKit took it in October 2023 and it is reported working
+// from iOS 17.5 (bugs.webkit.org 243075). The button shows only when the camera offers one, and
+// «Escribir el código» stays as the way out where it does not.
 export function CameraOverlay({
   onCode,
   onClose,
@@ -32,6 +35,7 @@ export function CameraOverlay({
   aviso?: string | null;
 }) {
   const [status, setStatus] = useState<CameraStatus>("starting");
+  const [torch, setTorch] = useState<Torch | null>(null);
   const [typing, setTyping] = useState(false);
   const [typed, setTyped] = useState("");
   const [typedError, setTypedError] = useState<string | null>(null);
@@ -56,7 +60,7 @@ export function CameraOverlay({
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-neutral-950 text-white" role="dialog" aria-label="Escanear código">
       {!blocked && !typing ? (
-        <CameraFeed onCode={read} onStatus={setStatus} className="absolute inset-0 size-full object-cover" />
+        <CameraFeed onCode={read} onStatus={setStatus} onTorch={setTorch} className="absolute inset-0 size-full object-cover" />
       ) : null}
 
       <div className="relative z-10 flex items-center gap-3 px-4 py-4">
@@ -64,6 +68,7 @@ export function CameraOverlay({
           <X className="size-6" aria-hidden="true" />
         </button>
         <span className="text-lg font-semibold">Escanear código</span>
+        {!blocked && !typing ? <TorchButton torch={torch} className="-my-2 ml-auto" /> : null}
       </div>
 
       {blocked ? (
@@ -87,6 +92,9 @@ export function CameraOverlay({
           </div>
           <p className="text-center text-sm">
             {status === "starting" ? "Abriendo la cámara…" : "Apunta al código de barras del producto"}
+            {/* Owner's report of 2026-11-25: the reflex with a small code is to bring the phone
+                closer, and there no phone focuses. The zoom makes the distance worth it. */}
+            {status === "scanning" ? <span className="block text-white/80">Aleja el teléfono un palmo para que enfoque.</span> : null}
           </p>
           {aviso ? (
             <p role="status" className="max-w-full truncate rounded-full bg-white px-4 py-2 text-sm font-medium text-neutral-900">
