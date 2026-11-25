@@ -65,10 +65,11 @@ await tuneCamera(dropping);
 // Android: the capabilities are missing at first.
 let asked = 0;
 const late = fakeTrack({});
-late.getCapabilities = () => (++asked < 3 ? { width: { max: 4032 } } : { zoom: { min: 1, max: 8 }, torch: true, width: { max: 4032 } });
+late.getCapabilities = () => (++asked < 3 ? { width: { max: 4032 } } : { zoom: { min: 1, max: 8 }, width: { max: 4032 } });
 const lateResult = await tuneCamera(late, 1);
-const torchOf = (settingAfter, refuse = false) => ({
+const torchOf = (settingAfter, refuse = false, listed = false) => ({
   calls: [],
+  getCapabilities: () => (listed ? { torch: true } : {}),
   getSettings: () => ({ torch: settingAfter }),
   async applyConstraints(c) {
     this.calls.push(c);
@@ -76,6 +77,9 @@ const torchOf = (settingAfter, refuse = false) => ({
   },
 });
 const lit = torchOf(true);
+// A browser that drops the whole set when one of its members is not its own: only «torch» alone works.
+const picky = { on: false, getCapabilities: () => ({}), getSettings: () => ({ torch: picky.on }), async applyConstraints(c) { if (Object.keys(c.advanced[0]).length === 1) picky.on = c.advanced[0].torch; } };
+const pickyResult = await setTorch(picky, true, { zoom: 2 });
 const litResult = await setTorch(lit, true, { zoom: 2, focusMode: "continuous" });
 
 cases.push(
@@ -103,12 +107,15 @@ cases.push(
     const r = viewfinderRect(w, h, bw, bh);
     return r.width > 0 && r.height > 0 && r.x >= 0 && r.y >= 0 && r.x + r.width <= w && r.y + r.height <= h;
   })],
-  ["Capacidades tardías (Android): espera y pone zoom, sin pedir 4K", lateResult.settings.zoom === 2 && lateResult.torch && late.calls.length === 1 && !late.calls[0].width],
+  ["Capacidades tardías (Android): espera y pone zoom, sin pedir 4K", lateResult.zoom === 2 && late.calls.length === 1 && !late.calls[0].width],
   ["Linterna: la ofrece si la cámara la tiene, y no si no", hasTorch(true) && hasTorch([false, true]) && !hasTorch(undefined) && !hasTorch(false) && !hasTorch([false])],
   ["Linterna: al encenderla conserva zoom y enfoque", litResult === "ok" && lit.calls[0].advanced[0].torch === true && lit.calls[0].advanced[0].zoom === 2 && lit.calls[0].advanced[0].focusMode === "continuous"],
   ["Linterna: si no se apaga (Samsung), lo dice para reabrir la cámara", (await setTorch(torchOf(true), false, {})) === "stuck" && (await setTorch(torchOf(undefined, true), false, {})) === "stuck"],
   ["Linterna: si se niega a encender, falla sin reventar", (await setTorch(torchOf(false), true, {})) === "failed" && (await setTorch(torchOf(undefined, true), true, {})) === "failed"],
-  ["Linterna: un teléfono que no informa su estado se da por bueno", (await setTorch(torchOf(undefined), true, {})) === "ok" && (await setTorch(torchOf(undefined), false, {})) === "ok"],
+  ["Linterna: si no informa su estado pero dice tenerla, se da por buena", (await setTorch(torchOf(undefined, false, true), true, {})) === "ok" && (await setTorch(torchOf(undefined), false, {})) === "ok"],
+  ["Linterna: si ni la lista ni informa, no dice «encendida» a oscuras", (await setTorch(torchOf(undefined), true, {})) === "failed"],
+  ["Linterna: si no la lista pero enciende de verdad, vale", (await setTorch(torchOf(true), true, {})) === "ok"],
+  ["Linterna: si el conjunto se descarta, prueba la linterna sola", pickyResult === "ok" && picky.on],
   ["Ampliación: hasta el doble, y nunca reduce", enlargement(400) === 2 && enlargement(3000) === 1],
 );
 

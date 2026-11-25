@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CameraOff, Keyboard, X } from "lucide-react";
+import { Dialog as DialogPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,14 +16,20 @@ import { hasValidCheckDigit, normalizeBarcode } from "@/lib/barcodes/normalize";
 // One read closes it: the caller decides what the code is (Home's sheets, a product form's
 // field). The continuous mode of a sale is `CameraStrip`, not this.
 //
-// NOT A RADIX DIALOG, on purpose: a fixed layer above everything (z-60, over the z-50 of
-// sheets and dialogs), mounted only while open. A Radix dialog stays mounted closed
-// (DESIGN-SYSTEM.md), and a mounted camera is a camera on.
+// A MODAL LAYER OF ITS OWN, AND MOUNTED ONLY WHILE OPEN, since 2026-11-25. It was a plain fixed
+// layer until then, «not a Radix dialog, on purpose», because a Radix dialog that stays mounted
+// closed is a camera on. That reason stands and is kept by its callers, which render this only
+// while open. What the plain layer got wrong: opened over the quick product sheet (a modal), it
+// inherited the sheet's `pointer-events: none` and lost the focus to it, so the X, the torch and
+// «Escribir el código» could not be touched, and a tap landed on the sheet's backdrop, which
+// closes it with everything typed. Radix stacks its layers; a layer of its own is the top one.
+//
+// Only its own buttons close it (and Escape): a tap outside does not exist, it covers the screen.
 //
 // THE TORCH, since 2026-11-25. This said «NO TORCH: Safari on iPhone does not let a web page turn
 // it on», which stopped being true: WebKit took it in October 2023 and it is reported working
-// from iOS 17.5 (bugs.webkit.org 243075). The button shows only when the camera offers one, and
-// «Escribir el código» stays as the way out where it does not.
+// from iOS 17.5 (bugs.webkit.org 243075). The button is always there while the camera is
+// open; a phone that refuses says so, and «Escribir el código» stays as the way out.
 export function CameraOverlay({
   onCode,
   onClose,
@@ -58,7 +65,13 @@ export function CameraOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-neutral-950 text-white" role="dialog" aria-label="Escanear código">
+    <DialogPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed inset-0 z-[60] flex flex-col bg-neutral-950 text-white outline-none"
+        >
       {!blocked && !typing ? (
         <CameraFeed onCode={read} onStatus={setStatus} onTorch={setTorch} className="absolute inset-0 size-full object-cover" />
       ) : null}
@@ -67,7 +80,7 @@ export function CameraOverlay({
         <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-md p-1 outline-none focus-visible:ring-2 focus-visible:ring-white">
           <X className="size-6" aria-hidden="true" />
         </button>
-        <span className="text-lg font-semibold">Escanear código</span>
+        <DialogPrimitive.Title className="text-lg font-semibold">Escanear código</DialogPrimitive.Title>
         {!blocked && !typing ? <TorchButton torch={torch} className="-my-2 ml-auto" /> : null}
       </div>
 
@@ -160,6 +173,8 @@ export function CameraOverlay({
           </form>
         </div>
       ) : null}
-    </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

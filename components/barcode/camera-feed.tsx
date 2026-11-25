@@ -7,7 +7,7 @@ import { enlargement, setTorch, tuneCamera, VIDEO_CONSTRAINTS, viewfinderRect } 
 import { createConfirmer } from "@/lib/barcodes/confirm";
 import { normalizeBarcode } from "@/lib/barcodes/normalize";
 
-/** The torch of the open camera, for whoever draws its button. Null: this camera has none. */
+/** The torch, for whoever draws its button. Null: no camera is open. */
 export type Torch = { on: boolean; toggle: () => void };
 
 export type CameraStatus = "starting" | "scanning" | "denied" | "unavailable" | "failed";
@@ -100,26 +100,28 @@ export function CameraFeed({
         onStatusRef.current?.("scanning");
         // Not awaited: focus and zoom settle while the first pictures are already being read.
         const track = s.getVideoTracks()[0];
-        void tuneCamera(track).then(({ settings, torch }) => {
-          if (!torch || cancelled || stream !== s) return;
-          let changing = false;
-          const report = (on: boolean) => onTorchRef.current?.({ on, toggle: () => void toggle(!on) });
-          const toggle = async (on: boolean) => {
-            if (changing || stream !== s) return;
-            changing = true;
-            const result = await setTorch(track, on, settings);
-            changing = false;
-            if (cancelled || stream !== s) return;
-            if (result === "ok") report(on);
-            else if (result === "failed") toast.error("No pudimos encender la linterna.");
-            else {
-              // It would not turn off: closing the camera is the only thing that does it.
-              stop();
-              void start();
-            }
-          };
-          report(false);
-        });
+        const tuned = tuneCamera(track);
+        // THE TORCH'S BUTTON IS ON EVERY VIEWER (owner's request of 2026-11-25: «debe estar en
+        // todos los flujos del escaner»). Until then it waited for the phone to say it had one,
+        // and a phone that says so late or never had no button anywhere. Now it is tried when
+        // touched, and a phone that refuses answers with a sentence.
+        let changing = false;
+        const report = (on: boolean) => onTorchRef.current?.({ on, toggle: () => void toggle(!on) });
+        const toggle = async (on: boolean) => {
+          if (changing || stream !== s) return;
+          changing = true;
+          const result = await setTorch(track, on, await tuned);
+          changing = false;
+          if (cancelled || stream !== s) return;
+          if (result === "ok") report(on);
+          else if (result === "failed") toast.error("Este teléfono no permite encender la linterna desde Sevenz.");
+          else {
+            // It would not turn off: closing the camera is the only thing that does it.
+            stop();
+            void start();
+          }
+        };
+        report(false);
         let busy = false;
         let turn = 0;
 

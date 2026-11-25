@@ -34,7 +34,7 @@ type CameraCapabilities = {
 /** What was asked of the camera, kept so a later call (the torch) repeats it and undoes nothing. */
 export type CameraSettings = { focusMode?: string; zoom?: number };
 
-// ANDROID CHROME ANSWERS LATE: focus, zoom and torch are missing from `getCapabilities()` for a
+// ANDROID CHROME ANSWERS LATE: focus and zoom are missing from `getCapabilities()` for a
 // moment after the camera opens, as if the phone had none. Asked again a few times before
 // believing it.
 const CAPABILITY_TRIES = 4;
@@ -48,7 +48,7 @@ async function readCapabilities(track: MediaStreamTrack, waitMs: number): Promis
     } catch {
       return null;
     }
-    if (caps.zoom || caps.focusMode || caps.torch || i === CAPABILITY_TRIES - 1) return caps;
+    if (caps.zoom || caps.focusMode || i === CAPABILITY_TRIES - 1) return caps;
     await new Promise((r) => setTimeout(r, waitMs));
   }
   return null;
@@ -73,11 +73,11 @@ export function zoomTarget(zoom: Range | undefined): number | null {
 export async function tuneCamera(
   track: MediaStreamTrack | undefined,
   waitMs = CAPABILITY_WAIT_MS,
-): Promise<{ settings: CameraSettings; torch: boolean }> {
+): Promise<CameraSettings> {
   const set: CameraSettings = {};
-  if (!track?.getCapabilities) return { settings: set, torch: false };
+  if (!track?.getCapabilities) return set;
   const caps = await readCapabilities(track, waitMs);
-  if (!caps) return { settings: set, torch: false };
+  if (!caps) return set;
   const before = track.getSettings?.().width ?? 0;
   if (caps.focusMode?.includes("continuous")) set.focusMode = "continuous";
   const zoom = zoomTarget(caps.zoom);
@@ -94,27 +94,43 @@ export async function tuneCamera(
   if (zoom === null && Math.max(caps.width?.max ?? 0, caps.height?.max ?? 0) > 1920) {
     await apply(track, { ...VIDEO_CONSTRAINTS, width: { ideal: 3840 }, height: { ideal: 2160 } });
   }
-  return { settings: set, torch: hasTorch(caps.torch) };
+  return set;
 }
 
 /**
- * Turns the torch on or off. `"stuck"` when the phone was asked to turn it off and still says it
- * is on: a known fault of some Samsungs (Chromium issue 40789586, the Galaxy A9), whose only cure
- * is closing the camera. The caller reopens it.
+ * Turns the torch on or off.
  *
- * The focus and zoom already in use travel with it: a call replaces the one before.
+ * TRIED WHETHER OR NOT THE PHONE SAYS IT HAS ONE, since 2026-11-25: the button is always there
+ * (owner's request) and some phones name the torch late, or not at all. First with the focus and
+ * zoom already in use, because a call replaces the one before; then alone, because a browser that
+ * cannot take one of them drops the whole set without an error.
+ *
+ * - `"failed"`: it did not light. A phone that neither lists a torch nor reports it lit counts as
+ *   failed, or the button would say «on» over a dark shelf.
+ * - `"stuck"`: asked to turn off and still on. A known fault of some Samsungs (Chromium issue
+ *   40789586, the Galaxy A9) whose only cure is closing the camera. The caller reopens it.
  */
 export async function setTorch(
   track: MediaStreamTrack,
   on: boolean,
   settings: CameraSettings,
 ): Promise<"ok" | "failed" | "stuck"> {
-  const ok = await apply(track, { advanced: [{ ...settings, torch: on } as MediaTrackConstraintSet] });
-  if (!ok) return on ? "failed" : "stuck";
-  const now = (track.getSettings?.() as { torch?: boolean } | undefined)?.torch;
-  if (!on && now === true) return "stuck";
-  if (on && now === false) return "failed";
-  return "ok";
+  let applied = false;
+  for (const base of [settings, {}]) {
+    applied = await apply(track, { advanced: [{ ...base, torch: on } as MediaTrackConstraintSet] });
+    const now = (track.getSettings?.() as { torch?: boolean } | undefined)?.torch;
+    if (applied && now === on) return "ok";
+    if (applied && now === undefined && (!on || torchListed(track))) return "ok";
+  }
+  return on ? "failed" : "stuck";
+}
+
+function torchListed(track: MediaStreamTrack): boolean {
+  try {
+    return hasTorch((track.getCapabilities?.() as CameraCapabilities | undefined)?.torch);
+  } catch {
+    return false;
+  }
 }
 
 async function apply(track: MediaStreamTrack, constraints: MediaTrackConstraints): Promise<boolean> {

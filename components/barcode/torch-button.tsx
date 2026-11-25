@@ -7,8 +7,10 @@ import type { Torch } from "@/components/barcode/camera-feed";
 // botón para encender la linterna en la pantalla lectora del código de barras, si es viable
 // agreguémoslo de una vez»).
 //
-// DRAWN ONLY WHEN THE OPEN CAMERA HAS ONE. A button that does nothing on half the phones would
-// read as broken; where it is missing, «Escribir el código» is still the way out of a dark shop.
+// ON EVERY VIEWER, ALWAYS, while a camera is open (owner's request of the same day, after not
+// finding it from Home: «debe estar en todos los flujos del escaner»). It displaces «drawn only
+// when the open camera says it has one»: that reason -- a button that does nothing reads as
+// broken -- is answered with a sentence when the phone refuses.
 export function TorchButton({ torch, className = "" }: { torch: Torch | null; className?: string }) {
   if (!torch) return null;
   const Icon = torch.on ? FlashlightOff : Flashlight;
