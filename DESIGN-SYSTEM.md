@@ -421,10 +421,32 @@ todos.
 - `icon-*` sizes stay square; they have no label to align to.
 - Primary action filled, secondary outlined. On a client's screen: "Agregar
   fiado" filled, "Agregar abono" outlined.
-- **Un botón abraza su contenido.** No se estira a `w-full` salvo que ocupe una
-  fila entera por diseño —el "Agregar movimiento" del teléfono, por ejemplo—.
-  Un botón de ancho completo debajo de una imagen se lee como una barra, no
-  como una acción.
+- **En el teléfono, un botón de acción ocupa todo el ancho.** Decisión del dueño
+  el 2026-11-25, primero para la factura fiscal y, al preguntarle si valía solo
+  ahí: *«En toda la app»*. Sus palabras: *«Todos debe ser fill container, es
+  decir ocupar el ancho total de la pantalla en mobile/app, si hay dos en la
+  misma fila, entonces ambos deben ocupar el ancho total de la pantalla con el
+  gap de separador entre ellos»*.
+  - **Uno en su fila**: todo el ancho de la pantalla, menos los márgenes
+    laterales. Dentro de una tarjeta o un diálogo, todo su ancho interior.
+  - **Dos en la misma fila**: mitad y mitad, con la separación entre ellos. A
+    375px son 168px cada uno con 8px en medio (`flex gap-2` y `flex-1` en los
+    dos), medido en los frames que ajustó él.
+  - **Desde `md`**, el botón sigue abrazando su contenido (`w-full md:w-auto`),
+    como en los frames web del dueño. En el enlace del cliente, él dejó el
+    frame 41 a todo el ancho de su columna también en web.
+  - **No son botones de acción**, y no se estiran: iconos (`icon-*`), `xs`,
+    enlaces, chips, filtros, selectores de moneda y encabezados de tabla.
+  - **Sin decidir**: un botón al lado de un texto en la misma fila («Editar»
+    junto a un título, «Seleccionar» en una lista). Se pregunta antes de tocarlo.
+- **La regla que desplaza**, del 2026-09-07, era «Un botón abraza su contenido.
+  No se estira a `w-full` salvo que ocupe una fila entera por diseño», porque un
+  botón de ancho completo debajo de una imagen se lee como una barra, no como
+  una acción. Sigue valiendo desde `md`. En el teléfono se cambió sabiéndolo.
+- **Lo que ya estaba construido no cumple todavía.** El 2026-11-25 una búsqueda
+  por clases dio 154 usos de botón sin ancho completo. Es un techo, no una
+  cuenta: incluye controles que no son de acción y botones que su contenedor ya
+  estira. Se corrige cuando el dueño lo pida; lo nuevo nace cumpliéndola.
 
 **Deriva encontrada el 2026-09-07:** la web nunca siguió la regla de los 40px.
 Su `button.tsx` tenía `default: h-8`, `sm: h-7` y `lg: h-9` — 32, 28 y 36px —
