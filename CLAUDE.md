@@ -2099,6 +2099,23 @@ sufijo falla igual de entera y de silenciosa. Por eso
 los dos primeros se envíen igual: la tabla no es solo una comprobación, es el
 único sitio del repo donde consta qué aprobó Meta.
 
+## Los Reels de Sevenz
+
+Videos verticales para Instagram y TikTok que enseñan una función de la app grabada de
+verdad. Dos reglas del dueño, del 2026-11-25, al revisar el primero
+(`reel-calculadora-de-tasa.mp4`):
+
+1. **El acento es el naranja de la marca, `--brand` `#F66B02`. Nunca amarillo ni ámbar.**
+   *«El amarillo utilizado no es el color principal de la marca, usa el naranja que está
+   nombrado en el design system como brand (#F66B02)»*. Vale para todo lo que resalta en
+   el video: la palabra destacada de cada texto, la pastilla del paso, el botón del cierre,
+   el borde de una imagen que se enseña, y el círculo que marca cada toque. Es la misma
+   regla de `DESIGN-SYSTEM.md` («El naranja de la marca es `--brand`, y no es `amber`»),
+   y con el mismo límite: el naranja va sobre fondo oscuro, y no como texto sobre blanco.
+2. **Los textos van centrados.** *«Textos centrados. Agrégalo a las reglas de los
+   reels»*. Esto incluye el gancho, los pasos (pastilla y frase), los avisos sobre la
+   pantalla y el cierre. No hay texto alineado a la izquierda en ninguna parte del video.
+
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 
 **Si una decisión no está escrita, dentro de seis meses no se tomó: solo pasó.**
