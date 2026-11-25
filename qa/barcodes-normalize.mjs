@@ -27,7 +27,7 @@ const cases = [
 
 // ── THE CAMERA: when a read counts, and how it is set up (2026-11-25) ──
 const { createConfirmer, CONFIRM_WITHIN_MS } = await import("../lib/barcodes/confirm.ts");
-const { zoomTarget, viewfinderRect, enlargement, tuneCamera, hasTorch, setTorch } = await import("../lib/barcodes/camera-tuning.ts");
+const { zoomTarget, viewfinderRect, enlargement, tuneCamera, hasTorch, setTorch, OPEN_CONSTRAINTS, VIDEO_CONSTRAINTS, otherBackCameras } = await import("../lib/barcodes/camera-tuning.ts");
 const A = "7591058001109";
 const B = "0561850001109";
 const reads = (list) => {
@@ -79,8 +79,27 @@ const torchOf = (settingAfter, refuse = false, listed = false) => ({
 const lit = torchOf(true);
 // A browser that drops the whole set when one of its members is not its own: only «torch» alone works.
 const picky = { on: false, getCapabilities: () => ({}), getSettings: () => ({ torch: picky.on }), async applyConstraints(c) { if (Object.keys(c.advanced[0]).length === 1) picky.on = c.advanced[0].torch; } };
-const pickyResult = await setTorch(picky, true, { zoom: 2 });
-const litResult = await setTorch(lit, true, { zoom: 2, focusMode: "continuous" });
+const pickyResult = await setTorch(picky, true, { zoom: 2 }, 1);
+// CHROME ON ANDROID, as its source does it: `getSettings` is refreshed only by the call itself, and
+// with the state from before that call. The light does change.
+const chrome = (listed = true) => {
+  const t = { light: false, seen: false, calls: 0, getCapabilities: () => (listed ? { torch: true } : {}), getSettings: () => ({ torch: t.seen }) };
+  t.applyConstraints = async (c) => { t.calls++; t.seen = t.light; t.light = c.advanced[0].torch; };
+  return t;
+};
+const android = chrome();
+const androidOn = await setTorch(android, true, { zoom: 2 }, 1);
+const androidLit = android.light;
+const androidOff = await setTorch(android, false, { zoom: 2 }, 1);
+// SAFARI: applies in a deferred task.
+const safari = { light: false, getCapabilities: () => ({ torch: true }), getSettings: () => ({ torch: safari.light }), async applyConstraints(c) { setTimeout(() => (safari.light = c.advanced[0].torch), 2); } };
+const safariOn = await setTorch(safari, true, {}, 5);
+await new Promise((d) => setTimeout(d, 10));
+const safariLit = safari.light;
+const safariOff = await setTorch(safari, false, {}, 5);
+const slowUnlisted = { light: false, getCapabilities: () => ({}), getSettings: () => ({ torch: slowUnlisted.light }), async applyConstraints(c) { setTimeout(() => (slowUnlisted.light = c.advanced[0].torch), 4); } };
+const slowResult = await setTorch(slowUnlisted, true, {}, 5);
+const litResult = await setTorch(lit, true, { zoom: 2, focusMode: "continuous" }, 1);
 
 cases.push(
   ["Cámara: una sola lectura no cuenta", reads([[A, 0]]) === ""],
@@ -110,11 +129,21 @@ cases.push(
   ["Capacidades tardías (Android): espera y pone zoom, sin pedir 4K", lateResult.zoom === 2 && late.calls.length === 1 && !late.calls[0].width],
   ["Linterna: la ofrece si la cámara la tiene, y no si no", hasTorch(true) && hasTorch([false, true]) && !hasTorch(undefined) && !hasTorch(false) && !hasTorch([false])],
   ["Linterna: al encenderla conserva zoom y enfoque", litResult === "ok" && lit.calls[0].advanced[0].torch === true && lit.calls[0].advanced[0].zoom === 2 && lit.calls[0].advanced[0].focusMode === "continuous"],
-  ["Linterna: si no se apaga (Samsung), lo dice para reabrir la cámara", (await setTorch(torchOf(true), false, {})) === "stuck" && (await setTorch(torchOf(undefined, true), false, {})) === "stuck"],
-  ["Linterna: si se niega a encender, falla sin reventar", (await setTorch(torchOf(false), true, {})) === "failed" && (await setTorch(torchOf(undefined, true), true, {})) === "failed"],
-  ["Linterna: si no informa su estado pero dice tenerla, se da por buena", (await setTorch(torchOf(undefined, false, true), true, {})) === "ok" && (await setTorch(torchOf(undefined), false, {})) === "ok"],
-  ["Linterna: si ni la lista ni informa, no dice «encendida» a oscuras", (await setTorch(torchOf(undefined), true, {})) === "failed"],
-  ["Linterna: si no la lista pero enciende de verdad, vale", (await setTorch(torchOf(true), true, {})) === "ok"],
+  ["Linterna: si no se apaga (Samsung), lo dice para reabrir la cámara", (await setTorch(torchOf(true), false, {}, 1)) === "stuck" && (await setTorch(torchOf(undefined, true), false, {}, 1)) === "stuck"],
+  ["Linterna: si se niega a encender, falla sin reventar", (await setTorch(torchOf(false), true, {}, 1)) === "failed" && (await setTorch(torchOf(undefined, true), true, {}, 1)) === "failed"],
+  ["Linterna: si no informa su estado pero dice tenerla, se da por buena", (await setTorch(torchOf(undefined, false, true), true, {}, 1)) === "ok" && (await setTorch(torchOf(undefined), false, {}, 1)) === "ok"],
+  ["Linterna: si ni la lista ni informa, no dice «encendida» a oscuras", (await setTorch(torchOf(undefined), true, {}, 1)) === "failed"],
+  ["Linterna: si no la lista pero enciende de verdad, vale", (await setTorch(torchOf(true), true, {}, 1)) === "ok"],
+  ["Linterna en Chrome Android: enciende aunque el estado llegue atrasado", androidOn === "ok" && androidLit === true],
+  ["Linterna en Chrome Android: apaga sin reabrir la cámara", androidOff === "ok" && android.light === false],
+  ["Linterna en Safari: enciende y apaga aunque lo aplique después", safariOn === "ok" && safariLit === true && safariOff === "ok" && safari.light === false],
+  ["Linterna: si no la lista pero tarda en encender, espera", slowResult === "ok"],
+  ["Permisos: la primera petición incluye el zoom, y las demás no", OPEN_CONSTRAINTS.zoom === true && !("zoom" in VIDEO_CONSTRAINTS) && OPEN_CONSTRAINTS.facingMode.ideal === "environment"],
+  ["Otra cámara con flash: solo las traseras, sin la actual, hasta 4", (() => {
+    const cam = (deviceId, label, kind = "videoinput") => ({ kind, deviceId, label });
+    const list = [cam("a", "camera2 1, facing front"), cam("b", "camera2 0, facing back"), cam("c", "camera2 2, facing back"), cam("d", "Cámara trasera"), cam("e", "Back Ultra Wide Camera"), cam("f", "Cámara frontal"), cam("g", "Câmera traseira"), cam("h", "facing back", "audioinput"), cam("", "facing back")];
+    return otherBackCameras(list, "c").join() === "b,d,e,g" && otherBackCameras([], "x").length === 0 && otherBackCameras([cam("z", "")], "x").length === 0;
+  })()],
   ["Linterna: si el conjunto se descarta, prueba la linterna sola", pickyResult === "ok" && picky.on],
   ["Ampliación: hasta el doble, y nunca reduce", enlargement(400) === 2 && enlargement(3000) === 1],
 );

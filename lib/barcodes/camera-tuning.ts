@@ -21,6 +21,13 @@ export const VIDEO_CONSTRAINTS: MediaTrackConstraints = {
   height: { ideal: 1080 },
 };
 
+// WHAT THE FIRST CALL ASKS FOR, PERMISSIONS INCLUDED (owner's request of 2026-11-25: «debería
+// otorgarlos desde el primer intento»). The torch has no permission of its own in any browser:
+// the camera's covers it. The ZOOM does in Chrome: without `zoom: true` here the page never gets
+// it, even with the camera granted, and a camera granted before without it is asked again
+// (web.dev/articles/camera-pan-tilt-zoom). Safari reads it as «zoom 1, if possible».
+export const OPEN_CONSTRAINTS = { ...VIDEO_CONSTRAINTS, zoom: true } as MediaTrackConstraints;
+
 const ZOOM_TARGET = 2;
 
 type Range = { min?: number; max?: number };
@@ -97,32 +104,70 @@ export async function tuneCamera(
   return set;
 }
 
+// How long a phone gets to say what the torch is doing, and how many times it is asked.
+const TORCH_WAIT_MS = 150;
+const TORCH_READS = 3;
+
 /**
  * Turns the torch on or off.
  *
- * TRIED WHETHER OR NOT THE PHONE SAYS IT HAS ONE, since 2026-11-25: the button is always there
- * (owner's request) and some phones name the torch late, or not at all. First with the focus and
- * zoom already in use, because a call replaces the one before; then alone, because a browser that
- * cannot take one of them drops the whole set without an error.
+ * WHAT THE PHONE REPORTS RIGHT AFTER MAY BE THE STATE FROM BEFORE. Read in both browsers' source
+ * on 2026-11-25: Safari applies the torch in a deferred task, and Chrome on Android refreshes
+ * `getSettings().torch` only with each call. The first version read it at once and believed the
+ * «no»: on an iPhone that is «este teléfono no permite encender la linterna» over a light that was
+ * coming on. So a torch the phone LISTS, asked for without an error, is on.
  *
- * - `"failed"`: it did not light. A phone that neither lists a torch nor reports it lit counts as
- *   failed, or the button would say «on» over a dark shelf.
- * - `"stuck"`: asked to turn off and still on. A known fault of some Samsungs (Chromium issue
- *   40789586, the Galaxy A9) whose only cure is closing the camera. The caller reopens it.
+ * TRIED WHETHER OR NOT IT IS LISTED, because the button is always there (owner's request): then it
+ * has to report itself lit, with time, or the button would say «on» over a dark shelf. Each try
+ * goes first with the focus and zoom already in use, because a call replaces the one before, and
+ * then alone, because a browser that cannot take one of them drops the whole set without an error.
+ *
+ * - `"failed"`: it did not light.
+ * - `"stuck"`: asked twice to turn off and still on. A known fault of some Samsungs (Chromium issue
+ *   40789586, the Galaxy A9) whose only cure is closing the camera. The caller reopens it. Twice,
+ *   because the first answer may be the stale one above and the second call is what refreshes it.
  */
 export async function setTorch(
   track: MediaStreamTrack,
   on: boolean,
   settings: CameraSettings,
+  waitMs = TORCH_WAIT_MS,
 ): Promise<"ok" | "failed" | "stuck"> {
-  let applied = false;
+  const reported = () => (track.getSettings?.() as { torch?: boolean } | undefined)?.torch;
   for (const base of [settings, {}]) {
-    applied = await apply(track, { advanced: [{ ...base, torch: on } as MediaTrackConstraintSet] });
-    const now = (track.getSettings?.() as { torch?: boolean } | undefined)?.torch;
-    if (applied && now === on) return "ok";
-    if (applied && now === undefined && (!on || torchListed(track))) return "ok";
+    if (!(await apply(track, { advanced: [{ ...base, torch: on } as MediaTrackConstraintSet] }))) continue;
+    if (on && torchListed(track)) return "ok";
+    for (let i = 0; i < TORCH_READS; i++) {
+      if (reported() === on || (!on && reported() === undefined)) return "ok";
+      await new Promise((done) => setTimeout(done, waitMs));
+    }
   }
   return on ? "failed" : "stuck";
+}
+
+/** Whether the open camera lists a torch, giving a late phone time to say so. */
+export async function listsTorch(track: MediaStreamTrack, waitMs = CAPABILITY_WAIT_MS): Promise<boolean> {
+  for (let i = 0; i < CAPABILITY_TRIES; i++) {
+    if (torchListed(track)) return true;
+    await new Promise((done) => setTimeout(done, waitMs));
+  }
+  return false;
+}
+
+/**
+ * The other back cameras, in the order worth trying for a torch. A phone with several may open one
+ * with no flash beside it, and the flash belongs to one of the others. Labels exist once the
+ * camera has been granted, in the phone's language.
+ */
+export function otherBackCameras(
+  devices: readonly { kind: string; deviceId: string; label: string }[],
+  current: string | undefined,
+): string[] {
+  return devices
+    .filter((d) => d.kind === "videoinput" && d.deviceId && d.deviceId !== current)
+    .filter((d) => /back|rear|environment|trasera|posterior|traseira/i.test(d.label))
+    .map((d) => d.deviceId)
+    .slice(0, 4);
 }
 
 function torchListed(track: MediaStreamTrack): boolean {

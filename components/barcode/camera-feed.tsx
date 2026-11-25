@@ -3,7 +3,16 @@
 import { useEffect, useRef } from "react";
 import { loadDetector, type DetectedCode } from "@/lib/barcodes/camera";
 import { toast } from "sonner";
-import { enlargement, setTorch, tuneCamera, VIDEO_CONSTRAINTS, viewfinderRect } from "@/lib/barcodes/camera-tuning";
+import {
+  enlargement,
+  listsTorch,
+  OPEN_CONSTRAINTS,
+  otherBackCameras,
+  setTorch,
+  tuneCamera,
+  VIDEO_CONSTRAINTS,
+  viewfinderRect,
+} from "@/lib/barcodes/camera-tuning";
 import { createConfirmer } from "@/lib/barcodes/confirm";
 import { normalizeBarcode } from "@/lib/barcodes/normalize";
 
@@ -17,11 +26,73 @@ export type CameraStatus = "starting" | "scanning" | "denied" | "unavailable" | 
 // would add five to a fiado. The clock restarts on every sighting, so a code counts once
 // for as long as it stays in view, and again only after leaving it for this long.
 export const SAME_CODE_PAUSE_MS = 1500;
+const NO_TORCH = "Este teléfono no permite encender la linterna desde Sevenz.";
 // 100, from 150: a code needs two equal reads now (`createConfirmer`). A read still running when
 // its turn comes is never overlapped, so a slow phone reads less often and not more at once.
 const READS_EVERY_MS = 100;
 // The whole picture is read no bigger than this; the part that matters goes at full detail.
 const FULL_PASS_MAX = 1920;
+
+// THE CAMERA THAT TURNED OUT TO HAVE THE TORCH, for the rest of the visit: every viewer opened
+// after finding it starts on it. And whether it was looked for already, so a phone that has none
+// answers at once the second time.
+let torchCamera: string | null = null;
+let torchSearched = false;
+
+/**
+ * Opens a camera asking for the zoom with it, and without it where that is what failed.
+ *
+ * A REFUSED ZOOM TAKES THE CAMERA WITH IT in Chrome: checked on 2026-11-25 with the camera granted
+ * and the zoom not, the call answers `NotAllowedError`, the same as a refused camera. So that
+ * answer is only believed when the camera itself is not granted; otherwise the camera opens as it
+ * did before the zoom existed. A refused camera is the user's answer and is not asked again.
+ */
+async function openWith(which: MediaTrackConstraints): Promise<MediaStream> {
+  const { mediaDevices } = navigator;
+  try {
+    return await mediaDevices.getUserMedia({ video: { ...OPEN_CONSTRAINTS, ...which }, audio: false });
+  } catch (e) {
+    const name = e instanceof DOMException ? e.name : "";
+    if (name === "NotFoundError") throw e;
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      const camera = await navigator.permissions
+        ?.query({ name: "camera" as PermissionName })
+        .catch(() => null);
+      if (camera?.state !== "granted") throw e;
+    }
+    return mediaDevices.getUserMedia({ video: { ...VIDEO_CONSTRAINTS, ...which }, audio: false });
+  }
+}
+
+const byId = (id: string): MediaTrackConstraints => ({ facingMode: undefined, deviceId: { exact: id } });
+
+/** Opens the other back cameras one by one. The one in use must be closed first. */
+async function findTorchCamera(ids: string[], stillWanted: () => boolean): Promise<string | null> {
+  for (const id of ids) {
+    if (!stillWanted()) return null;
+    try {
+      const s = await openWith(byId(id));
+      const has = await listsTorch(s.getVideoTracks()[0]);
+      s.getTracks().forEach((t) => t.stop());
+      if (has) return id;
+    } catch {
+      // A camera that would not open is one that cannot be used.
+    }
+  }
+  return null;
+}
+
+/** The back camera, or the one that turned out to have the torch. */
+async function openCamera(): Promise<MediaStream> {
+  if (torchCamera) {
+    try {
+      return await openWith(byId(torchCamera));
+    } catch {
+      torchCamera = null;
+    }
+  }
+  return openWith({});
+}
 
 /** The code nearest the centre: on a shelf the picture holds several, and the aimed one is that. */
 function nearestToCentre(found: DetectedCode[], width: number, height: number): DetectedCode | undefined {
@@ -74,7 +145,7 @@ export function CameraFeed({
       onTorchRef.current?.(null);
     };
 
-    const start = async () => {
+    const start = async (lightUp = false) => {
       onStatusRef.current?.("starting");
       if (!navigator.mediaDevices?.getUserMedia) {
         onStatusRef.current?.("unavailable");
@@ -82,10 +153,7 @@ export function CameraFeed({
       }
       try {
         const [s, detector] = await Promise.all([
-          navigator.mediaDevices.getUserMedia({
-            video: VIDEO_CONSTRAINTS,
-            audio: false,
-          }),
+          openCamera(),
           loadDetector(),
         ]);
         if (cancelled || document.hidden) {
@@ -114,14 +182,34 @@ export function CameraFeed({
           changing = false;
           if (cancelled || stream !== s) return;
           if (result === "ok") report(on);
-          else if (result === "failed") toast.error("Este teléfono no permite encender la linterna desde Sevenz.");
-          else {
+          else if (result === "failed") {
+            // MAYBE THE FLASH IS BESIDE ANOTHER CAMERA: looked for once, and only when asked for.
+            const ids = torchSearched
+              ? []
+              : otherBackCameras(
+                  await navigator.mediaDevices.enumerateDevices().catch(() => []),
+                  track.getSettings?.().deviceId,
+                );
+            torchSearched = true;
+            if (cancelled || stream !== s) return;
+            if (ids.length > 0) {
+              stop();
+              onStatusRef.current?.("starting");
+              torchCamera = await findTorchCamera(ids, () => !cancelled && !document.hidden);
+              if (cancelled || document.hidden) return;
+              if (!torchCamera) toast.error(NO_TORCH);
+              void start(torchCamera !== null);
+              return;
+            }
+            toast.error(NO_TORCH);
+          } else {
             // It would not turn off: closing the camera is the only thing that does it.
             stop();
             void start();
           }
         };
         report(false);
+        if (lightUp) void toggle(true);
         let busy = false;
         let turn = 0;
 
