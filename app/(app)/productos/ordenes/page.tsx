@@ -47,6 +47,7 @@ export default async function OrdenesPage() {
     country,
     { data: owner },
     { data: catalogLink },
+    { data: logo },
     publicables,
   ] = await Promise.all([
     supabase
@@ -93,6 +94,8 @@ export default async function OrdenesPage() {
     // lo que iOS Safari rechaza. Misma razón escrita en `productos/page.tsx`.
     getOwnerShellRow(supabase, user!.id),
     supabase.from("catalog_share_links").select("token").eq("owner_id", user!.id).maybeSingle(),
+    // The logo's file, so the shared link changes with it (lib/catalog/link-version.ts).
+    supabase.from("owners").select("logo_path").eq("id", user!.id).maybeSingle(),
     // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
     readAllPages<{ published_retail: boolean; published_wholesale: boolean }>((from, to) =>
       supabase
@@ -254,6 +257,7 @@ export default async function OrdenesPage() {
             publishedCount={publishedCount}
             businessName={owner?.business_name || "mi negocio"}
             initialToken={catalogLink?.token ?? null}
+            logoPath={(logo?.logo_path as string | null) ?? null}
             variante="tarjeta"
           />
         </OrdersShareCard>
@@ -271,6 +275,7 @@ export default async function OrdenesPage() {
                 publishedCount={publishedCount}
                 businessName={owner?.business_name || "mi negocio"}
                 initialToken={catalogLink?.token ?? null}
+                logoPath={(logo?.logo_path as string | null) ?? null}
               />
             }
           />

@@ -1,5 +1,8 @@
+import { withLogoVersion } from "@/lib/catalog/link-version";
 import { CatalogOpenedEvent } from "@/components/public/public-event";
 import type { Metadata } from "next";
+import { cache } from "react";
+import { CATALOG_PREVIEW_SIZE } from "@/lib/catalog/preview-image";
 import { StockBadge } from "@/components/stock-badge";
 import Image from "next/image";
 import Link from "next/link";
@@ -39,19 +42,86 @@ import {
 // enlace, no publico un sitio web. Que un buscador lo liste significaria que
 // su catalogo se encuentra sin tener el enlace, que es precisamente lo que no
 // pidio. El dia que alguien quiera eso, es una casilla, no un descuido.
-export const metadata: Metadata = {
-  title: "Catálogo — Sevenz",
-  description: "Mira los productos y sus precios.",
-  robots: { index: false, follow: false },
-  openGraph: {
-    title: "Catálogo",
-    description: "Mira los productos y sus precios.",
-    siteName: "Sevenz",
-    locale: "es_VE",
-    type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Sevenz" }],
-  },
-};
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE PREVIEW'S IMAGE IS THE BUSINESS'S LOGO, since 2026-11-25 (frame `2276:20283`)
+//
+// With a logo uploaded, `og:image` is `/c/<token>/vista-previa`: the logo plus
+// «Powered by» and the Sevenz logo, drawn by that route (its header explains the size
+// and why «Powered by» is inside the image). Without one, `/og.png`, as before. The
+// title and the description stay the frame's: «Catálogo» and «Mira los productos y
+// sus precios.».
+//
+// `twitter` IS DECLARED TOO, for the reason `[productId]/page.tsx` found on
+// 2026-10-27: metadata inherits key by key, the root layout's `twitter` block carries
+// `/og.png`, and WhatsApp reads both. Declaring only `openGraph` would have kept the
+// Sevenz card on a catalogue with a logo.
+//
+// AN OLD LINK MAY KEEP ITS OLD CARD FOR A WHILE: WhatsApp caches a preview per URL,
+// on its side. Nothing here can expire it; a freshly sent link is read again.
+const DESCRIPCION = "Mira los productos y sus precios.";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  // A failure here must not take the page down: it falls back to the generic card.
+  const shared = isSupabaseConfigured() ? await loadSharedCatalog(token) : null;
+  const imagen = shared?.owner_logo_path
+    ? {
+        // The same tag as the shared link (lib/catalog/link-version.ts), for a chat app
+        // that keeps images by address.
+        url: withLogoVersion(`/c/${token}/vista-previa`, shared.owner_logo_path),
+        ...CATALOG_PREVIEW_SIZE,
+        alt: shared.business_name || "Catálogo",
+      }
+    : { url: "/og.png", width: 1200, height: 630, alt: "Sevenz" };
+  return {
+    title: "Catálogo — Sevenz",
+    description: DESCRIPCION,
+    robots: { index: false, follow: false },
+    openGraph: {
+      title: "Catálogo",
+      description: DESCRIPCION,
+      siteName: "Sevenz",
+      locale: "es_VE",
+      type: "website",
+      images: [imagen],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "Catálogo",
+      description: DESCRIPCION,
+      images: [imagen.url],
+    },
+  };
+}
+
+// ONE READ PER REQUEST, shared by `generateMetadata` and the page through React
+// `cache()`: without it the whole catalogue (every product) would be fetched twice to
+// render one page. Errors are masked, as for every unauthenticated read (CLAUDE.md):
+// the detail goes to `console.error`, the caller only sees `null`.
+const loadSharedCatalog = cache(async (token: string): Promise<SharedCatalog | null> => {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("get_shared_catalog", {
+      p_token: token,
+    });
+    if (error) {
+      console.error("[catalogoPublico] rpc:", error.message);
+      return null;
+    }
+    return data as SharedCatalog | null;
+  } catch (error) {
+    console.error(
+      "[catalogoPublico] threw:",
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+});
 
 type SharedProduct = {
   id: string;
@@ -105,8 +175,19 @@ type SharedProduct = {
 };
 
 // The note about bolívares, shared by both headers (CT-170).
-const NOTA_DE_LA_TASA =
-  "Las equivalencias en bolívares se calculan con la tasa de hoy y pueden cambiar.";
+//
+// Reworded by the owner on 2026-11-25; until then it read «Las equivalencias en
+// bolívares se calculan con la tasa de hoy y pueden cambiar.». He wrote «se calculan»
+// and, asked, chose the singular: the subject is «el valor».
+//
+// Still shown only when some price is CALCULATED with the rate (`hayCalculadas`
+// below): with every bolívar price pinned by hand, the sentence would be false.
+//
+// THE SAME FOR A BUSINESS ON ITS OWN RATE (`rate_mode = 'CUSTOM'`), and that is a known
+// inaccuracy chosen by the owner: there the bolívars come from his rate, not the BCV's.
+// Offered on 2026-11-25 to drop «según el BCV» or hide the note in that case, he chose
+// «Igual para todos».
+const NOTA_DE_LA_TASA = "El valor en divisas se calcula a la tasa del día según el BCV.";
 
 type SharedCatalog = {
   // Migration 184: the chips — only categories with a published product, the
@@ -201,8 +282,6 @@ export default async function CatalogoPublicoPage({
 
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const supabase = await createClient();
-
   // ERRORES ENMASCARADOS, que es la regla de CLAUDE.md para todo lo que se
   // puede llamar sin sesion: el detalle real va a `console.error` y nunca a la
   // respuesta. Un mensaje de Postgres en pantalla cuenta la forma de la base
@@ -212,24 +291,8 @@ export default async function CatalogoPublicoPage({
   // lo prohibe, porque construir el arbol dentro de un try hace que un error de
   // renderizado lo atrape este catch en vez de la frontera de error que le
   // corresponde. Asi que aqui solo se decide, y el JSX se devuelve despues.
-  const shared = await (async (): Promise<SharedCatalog | null> => {
-    try {
-      const { data, error } = await supabase.rpc("get_shared_catalog", {
-        p_token: token,
-      });
-      if (error) {
-        console.error("[catalogoPublico] rpc:", error.message);
-        return null;
-      }
-      return data as SharedCatalog | null;
-    } catch (error) {
-      console.error(
-        "[catalogoPublico] threw:",
-        error instanceof Error ? error.message : error,
-      );
-      return null;
-    }
-  })();
+  // Since 2026-11-25 the try lives in `loadSharedCatalog`, shared with the metadata.
+  const shared = await loadSharedCatalog(token);
 
   // UN FALLO Y UN TOKEN INEXISTENTE DAN LA MISMA PANTALLA, a proposito: quien
   // pruebe tokens al azar no aprende nada de la diferencia. El detalle real ya

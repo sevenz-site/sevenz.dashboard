@@ -6,9 +6,16 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { SetupNotice } from "@/components/setup-notice";
 import { NuevaVenta } from "@/components/dashboard/nueva-venta";
 import { getOwnerRateContext } from "@/lib/exchange-rate/owner-rate";
+import type { PriceCurrency } from "@/lib/products/price";
 import type { ClientSummary, OwnerCountry } from "@/lib/types";
 
 export const metadata = { title: "Nueva venta — Sevenz" };
+
+// Whether a product was created in the last half hour (CT-182: see `creado` below). Read
+// per request, which is what a page that checks a session already is.
+function creadoHacePoco(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < 30 * 60 * 1000;
+}
 
 export default async function NuevaVentaPage({
   searchParams,
@@ -19,11 +26,11 @@ export default async function NuevaVentaPage({
   // SIN ÉL TAMBIÉN SE ENTRA, y esa es la novedad del 2026-10-18: se empieza
   // directamente por el producto y no se pregunta a quién hasta el paso 3, y
   // solo si algo queda fiado. Una venta de contado no necesita cliente.
-  searchParams: Promise<{ cliente?: string; desde?: string }>;
+  searchParams: Promise<{ cliente?: string; desde?: string; producto?: string; cantidad?: string; creado?: string }>;
 }) {
   if (!isSupabaseConfigured()) return <SetupNotice />;
 
-  const { cliente: clienteId, desde } = await searchParams;
+  const { cliente: clienteId, desde, producto: productoId, cantidad, creado } = await searchParams;
   // WHERE THE SALE STARTED. `?cliente=` alone does not say: the profile, a new client
   // and a payment with no fiados all set it. Only for the funnels.
   const entryPoint =
@@ -33,7 +40,9 @@ export default async function NuevaVentaPage({
         ? "new_client"
         : desde === "abono"
           ? "payment_no_fiados"
-          : "register";
+          : productoId
+            ? "scanner"
+            : "register";
   const supabase = await createClient();
   const {
     data: { user },
@@ -78,6 +87,57 @@ export default async function NuevaVentaPage({
     getOwnerRateContext(supabase, user.id),
   ]);
   const idsComodin = new Set((comodin ?? []).map((c) => c.id as string));
+
+  // CT-182: THE SCANNED PRODUCT (`?producto=`, from the scanner's «Vender» or «Guardar y
+  // vender»). The id comes from the URL, so it is checked against the session's owner
+  // explicitly (CLAUDE.md), and a trashed product does not count. A foreign or unknown id
+  // is dropped without a word: the sale opens empty, as if it had come with none.
+  //
+  // `&creado=1` (owner's report of 2026-11-23): the product was created a moment ago by the
+  // scanner's quick sheet, so its cart line gets «Editar», like a line created inside the
+  // sale. What the sheet needs to reopen as it was left is read from the product row. Only
+  // for a product created in the last half hour: the flag comes from the URL, and «Editar»
+  // saves the quick sheet's few fields, which on an older product would blank the ones it
+  // does not show (stock, wholesale price, supplier).
+  let productoInicial: {
+    id: string;
+    cantidad: number;
+    creadoEnVenta?: {
+      publicar: boolean;
+      descripcion: string | null;
+      costo: string | null;
+      costoMoneda?: PriceCurrency;
+    };
+  } | null = null;
+  if (productoId) {
+    const { data } = await supabase
+      .from("products")
+      .select("id, published_retail, description, cost, cost_currency, created_at")
+      .eq("id", productoId)
+      .eq("owner_id", user.id)
+      .is("trashed_at", null)
+      .maybeSingle();
+    const unidades = Number(cantidad);
+    if (data) {
+      const reciente = creadoHacePoco(data.created_at as string);
+      productoInicial = {
+        id: data.id as string,
+        cantidad: Number.isFinite(unidades) && unidades > 0 ? unidades : 1,
+        // A cost in a currency this sheet cannot show («Otro», typed in the catalogue's form
+        // in the meantime) is not reopened here: saving would file it as dollars.
+        ...(creado === "1" && reciente && data.cost_currency !== "OTHER"
+          ? {
+              creadoEnVenta: {
+                publicar: data.published_retail === true,
+                descripcion: (data.description as string | null) ?? null,
+                costo: data.cost == null ? null : String(data.cost).replace(".", ","),
+                costoMoneda: (data.cost_currency as PriceCurrency | null) ?? undefined,
+              },
+            }
+          : {}),
+      };
+    }
+  }
 
   // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
   // A failed read still draws an empty list, as when the error was dropped.
@@ -130,6 +190,7 @@ export default async function NuevaVentaPage({
           ownerId={user.id}
           ownerCountry={ownerCountry}
           rateContext={rateContext}
+          productoInicial={productoInicial}
         />
       );
     }
@@ -144,6 +205,7 @@ export default async function NuevaVentaPage({
       ownerId={user.id}
       ownerCountry={ownerCountry}
       rateContext={rateContext}
+      productoInicial={productoInicial}
     />
   );
 }

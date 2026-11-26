@@ -31,7 +31,7 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
-import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
+import { defaultAbonoMethod, type PaymentMethod } from "@/lib/payments/methods";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -327,10 +327,9 @@ export function AbonoReparto({
     numeroDeLibros: libros.length,
     porLinea: modoSeleccion,
   });
-  // The default follows the unit the bill is counted in: bolívares, Pago móvil; the book's own
-  // currency, Efectivo. See `defaultMethod`.
-  const metodo: PaymentMethod =
-    metodoElegido ?? defaultMethod(libro, totalInBolivars ? "VES" : libro);
+  // «Pago móvil» whatever unit the bill is counted in (owner's decision of 2026-11-25). See
+  // `defaultAbonoMethod`.
+  const metodo: PaymentMethod = metodoElegido ?? defaultAbonoMethod(libro);
 
   // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
   // con la tasa que él mismo sella, que es la que se guarda; estas son para

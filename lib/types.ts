@@ -164,6 +164,9 @@ export type Owner = {
   // When he switched off «Consejos de Sevenz», the inactivity nudges (migration 217). Null, or
   // absent before 217 runs, means he gets them.
   product_tips_opt_out_at?: string | null;
+  // Mi negocio › «Trabajar con códigos de barras» (CT-182, migration 219). Absent before 219
+  // runs, which reads as off: the app stays as it was.
+  barcodes_enabled?: boolean;
   created_at: string;
 };
 

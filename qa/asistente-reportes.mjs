@@ -549,7 +549,14 @@ try {
   // `count` llegaba nulo, y `null ?? 0 === 0` pintaba un PASS diciendo «no
   // queda nada» con la fila delante. Un detector que confirma lo que quiere
   // oír -- el mismo fallo que esta suite ya cazó en las comprobaciones 11 y 12.
-  const ahora = new Date().toISOString().slice(0, 10);
+  // The assistant's day is Venezuela's since 2026-11-25 (`lib/reports/assistant/day.ts`),
+  // so «today» here has to be the same one or the check looks at the wrong row.
+  const ahora = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   if (comoDueno) {
     const { count, error } = await comoDueno
       .from("report_assistant_notes")

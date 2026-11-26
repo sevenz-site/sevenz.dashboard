@@ -17,6 +17,7 @@ import {
 } from "@/lib/products/photos";
 import type { CostCurrency, PriceCurrency, PriceTier } from "@/lib/products/price";
 import { foldForSearch } from "@/lib/search/fold";
+import { normalizeBarcodeList } from "@/lib/barcodes/normalize";
 import { storageFileExists } from "@/lib/storage-file-exists";
 import {
   errorDeNombreDeCategoria,
@@ -204,6 +205,11 @@ export type ProductInput = {
   // category as it is» on an update and «no category» on a create, so a form
   // that does not know about categories can never wipe one by saving.
   categoryId?: string | null;
+  // BARCODES (CT-182, migration 219), several per product. Same rule as the two above:
+  // `undefined` means «this form does not manage codes -- leave them as they are», so a
+  // form that never shows the field (the switch is off, or an older screen) can never
+  // wipe a product's codes by saving. An empty list removes them all.
+  barcodes?: string[];
 };
 
 type Checked = {
@@ -550,6 +556,161 @@ async function categoriaPermitida(
 
 const CATEGORIA_AJENA = "No encontramos esa categoría. Elige otra o créala de nuevo.";
 
+// ── BARCODES (CT-182) ───────────────────────────────────────────────────────
+//
+// A CODE BELONGS TO ONE PRODUCT OF A BUSINESS, trashed products included (migration 219).
+// Checked BEFORE the product row is written, so a taken code refuses the whole save with a
+// sentence that names the other product -- instead of saving the product and then failing
+// on its codes. The unique index underneath still refuses a race between two devices;
+// `writeBarcodes` turns that into a message too.
+//
+// THE OWNER COMES FROM THE SESSION, never from the browser, and every read filters by it.
+const MAX_BARCODES_PER_PRODUCT = 20;
+
+async function checkBarcodes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  raw: string[] | undefined,
+  productId: string | null,
+): Promise<{ codes: string[] | undefined } | { error: string }> {
+  if (raw === undefined) return { codes: undefined };
+  const { codes, invalid } = normalizeBarcodeList(raw);
+  if (invalid.length > 0) {
+    return { error: `El código ${invalid[0]} no es válido. Revísalo o escanéalo de nuevo.` };
+  }
+  if (codes.length > MAX_BARCODES_PER_PRODUCT) {
+    return { error: `Un producto puede tener hasta ${MAX_BARCODES_PER_PRODUCT} códigos.` };
+  }
+  if (codes.length === 0) return { codes };
+
+  const { data, error } = await supabase
+    .from("product_barcodes")
+    .select("code, product_id, products(name, trashed_at)")
+    .eq("owner_id", ownerId)
+    // bounded: the codes of ONE product, at most MAX_BARCODES_PER_PRODUCT.
+    .in("code", codes);
+  // A FAILED READ REFUSES THE SAVE. Letting it through would let the unique index decide,
+  // after the product row is already written, and the shopkeeper would see half a save.
+  if (error) {
+    console.error("[checkBarcodes]", error.message);
+    return { error: "No pudimos revisar los códigos de barras. Intenta de nuevo." };
+  }
+  for (const row of data ?? []) {
+    if (row.product_id === productId) continue;
+    const other = (Array.isArray(row.products) ? row.products[0] : row.products) as
+      | { name: string; trashed_at: string | null }
+      | null;
+    const name = other?.name ?? "otro producto";
+    return {
+      error: other?.trashed_at
+        ? `El código ${row.code} ya es de «${name}», que está en la papelera. Restáuralo desde la papelera.`
+        : `El código ${row.code} ya es de «${name}».`,
+    };
+  }
+  return { codes };
+}
+
+// WHAT A SCANNED CODE IS, for the scanner on Home and inside a sale (CT-182).
+//
+// Four answers, and the trashed one is not a detail: without it a code of a product in the
+// bin would read «código nuevo», the shopkeeper would create a duplicate, and the unique
+// index would refuse it with a message he could not connect to anything.
+export type CodeLookup =
+  | { status: "invalid" }
+  | { status: "not_found"; code: string }
+  | { status: "trashed"; code: string; productId: string; name: string }
+  | { status: "found"; code: string; productId: string; name: string }
+  | { status: "error" };
+
+export async function productoPorCodigo(raw: string): Promise<CodeLookup> {
+  const { codes } = normalizeBarcodeList([raw]);
+  const code = codes[0];
+  if (!code) return { status: "invalid" };
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { status: "error" };
+    const { data, error } = await supabase
+      .from("product_barcodes")
+      .select("product_id, products(name, trashed_at)")
+      // The owner from the session: a code only ever answers this shop's products.
+      .eq("owner_id", user.id)
+      .eq("code", code)
+      .maybeSingle();
+    if (error) {
+      console.error("[productoPorCodigo]", error.message);
+      return { status: "error" };
+    }
+    if (!data) return { status: "not_found", code };
+    const product = (Array.isArray(data.products) ? data.products[0] : data.products) as
+      | { name: string; trashed_at: string | null }
+      | null;
+    if (!product) return { status: "not_found", code };
+    return product.trashed_at
+      ? { status: "trashed", code, productId: data.product_id as string, name: product.name }
+      : { status: "found", code, productId: data.product_id as string, name: product.name };
+  } catch (e) {
+    console.error("[productoPorCodigo] threw", e instanceof Error ? e.message : e);
+    return { status: "error" };
+  }
+}
+
+// THE CODES OF ONE PRODUCT, for its edit form. Ownership through the product, explicitly.
+//
+// NULL ON ANY FAILURE, NEVER AN EMPTY LIST. The form saves what it shows: if a failed read
+// came back as «no codes», the next save would send an empty list and delete every code
+// the product had. With null the form sends `undefined`, which leaves them untouched.
+export async function codigosDelProducto(productId: string): Promise<string[] | null> {
+  const { supabase, user, ok } = await ownsProduct(productId);
+  if (!user || !ok) return null;
+  const { data, error } = await supabase
+    .from("product_barcodes")
+    .select("code")
+    .eq("product_id", productId)
+    .eq("owner_id", user.id)
+    .order("created_at");
+  if (error) {
+    console.error("[codigosDelProducto]", error.message);
+    return null;
+  }
+  return (data ?? []).map((r) => r.code as string);
+}
+
+// Rewrites a product's codes whole (delete, insert), like its photos. Returns a sentence
+// for the shopkeeper when it fails, or null. The product itself is already saved by then.
+async function writeBarcodes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ownerId: string,
+  productId: string,
+  codes: string[] | undefined,
+): Promise<string | null> {
+  if (codes === undefined) return null;
+  const { error: eDel } = await supabase
+    .from("product_barcodes")
+    .delete()
+    .eq("product_id", productId)
+    .eq("owner_id", ownerId);
+  if (eDel) {
+    console.error("[writeBarcodes] delete:", eDel.message);
+    return "Guardamos el producto, pero no pudimos actualizar sus códigos de barras.";
+  }
+  if (codes.length === 0) return null;
+  const { error } = await supabase
+    .from("product_barcodes")
+    .insert(codes.map((code) => ({ owner_id: ownerId, product_id: productId, code })));
+  if (error) {
+    console.error("[writeBarcodes] insert:", error.message);
+    // 23505: another device gave one of these codes to another product between the check
+    // and this insert. The product is saved without its codes, and the sentence says so.
+    return error.code === "23505"
+      ? "Guardamos el producto, pero uno de sus códigos ya es de otro producto. Revisa sus códigos."
+      : "Guardamos el producto, pero no pudimos guardar sus códigos de barras. Vuelve a guardar.";
+  }
+  return null;
+}
+
 // ── IS THIS NAME ALREADY IN THE OWNER'S CATALOGUE? ─────────────────────────
 //
 // Owner's request of 2026-11-15: «El app debe mostrar modal de alerta cuando se crea un
@@ -633,6 +794,9 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
   if (!categoria.ok) return rechazar("foreign_category", CATEGORIA_AJENA);
 
+  const codigos = await checkBarcodes(supabase, user.id, input.barcodes, null);
+  if ("error" in codigos) return rechazar("validation", codigos.error);
+
   const { data, error } = await supabase
     .from("products")
     .insert({ owner_id: user.id, ...rowFrom(input, checked, user.id), category_id: categoria.value ?? null })
@@ -644,7 +808,10 @@ export async function createProduct(input: ProductInput): Promise<ProductResult>
     return rechazar("db_error", "No pudimos guardar el producto. Intenta de nuevo.");
   }
 
-  const aviso = await writeSatellites(supabase, data.id, checked, input, extras);
+  // Both run whatever the other says: a failed price write must not leave the codes unsaved.
+  const avisoSatelites = await writeSatellites(supabase, data.id, checked, input, extras);
+  const avisoCodigos = await writeBarcodes(supabase, user.id, data.id, codigos.codes);
+  const aviso = avisoSatelites ?? avisoCodigos;
   revalidatePath("/productos");
   const photoCount = await savedPhotoCount(supabase, data.id, photo);
 
@@ -748,6 +915,9 @@ export async function updateProduct(
   const categoria = await categoriaPermitida(supabase, user.id, input.categoryId);
   if (!categoria.ok) return { error: CATEGORIA_AJENA };
 
+  const codigos = await checkBarcodes(supabase, user.id, input.barcodes, productId);
+  if ("error" in codigos) return { error: codigos.error };
+
   const { error } = await supabase
     .from("products")
     .update({
@@ -763,7 +933,10 @@ export async function updateProduct(
     return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
   }
 
-  const aviso = await writeSatellites(supabase, productId, checked, input, extras);
+  // Both run whatever the other says: a failed price write must not leave the codes unsaved.
+  const avisoSatelites = await writeSatellites(supabase, productId, checked, input, extras);
+  const avisoCodigos = await writeBarcodes(supabase, user.id, productId, codigos.codes);
+  const aviso = avisoSatelites ?? avisoCodigos;
   revalidatePath("/productos");
   const photoCount = await savedPhotoCount(supabase, productId, fila.photo_path);
 

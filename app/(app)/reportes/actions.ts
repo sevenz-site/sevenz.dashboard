@@ -3,6 +3,8 @@
 import { trackServer } from "@/lib/mixpanel-server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assistantDay } from "@/lib/reports/assistant/day";
+import { hasUnreadAssistantNote } from "@/lib/reports/assistant/unread";
 
 // EL UMBRAL DE «POR AGOTARSE».
 //
@@ -76,7 +78,8 @@ export async function calificarAsistente(
   //
   // Y LA FECHA SE CALCULA AQUÍ, no llega del navegador: un `day` que mandara
   // el cliente dejaría calificar la nota de cualquier otro día.
-  const hoy = new Date().toISOString().slice(0, 10);
+  // The same day the note was written under (Venezuela's, since 2026-11-25).
+  const hoy = assistantDay();
   const { error } = await supabase
     .from("report_assistant_notes")
     .update({ rating })
@@ -87,4 +90,16 @@ export async function calificarAsistente(
     return { ok: false, error: "No pudimos guardar tu respuesta." };
   }
   return { ok: true };
+}
+
+// The red dot on «Reportes», re-asked when a tab that slept comes back (the day may
+// have turned over meanwhile). Takes no owner id: it resolves the session itself, so
+// nobody can ask about another business. The logic is in `lib/reports/assistant/unread.ts`.
+export async function getAssistantNoteUnread(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  return hasUnreadAssistantNote(supabase, user.id);
 }

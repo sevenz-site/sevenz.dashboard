@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition, type ComponentType, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChartColumn, Home, Loader2, Menu, Package, Plus, Users } from "lucide-react";
+import { ChartColumn, Home, Loader2, Menu, Package, Plus, ScanBarcode, Users } from "lucide-react";
+import { useBarcodeScanner } from "@/components/barcode/scanner-provider";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
@@ -15,6 +16,7 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { usePantallaVacia } from "@/components/dashboard/pantalla-vacia";
+import { UnreadReportDot } from "@/components/dashboard/unread-report-context";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -238,6 +240,7 @@ function NavItem({
 // comentario de `MobileNav`, al final del archivo, que cuenta el cuelgue.
 function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
   const pathname = usePathname();
+  const scanner = useBarcodeScanner();
   const router = useRouter();
   const { guard } = useUnsavedChangesGuard();
   const { toggleSidebar } = useSidebar();
@@ -735,6 +738,34 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
       {/* `pantallaVacia` se suma a la lista: con el estado vacío del catálogo
           a la vista, su propio botón «Crear producto» hace este sobrar. Ver
           `pantalla-vacia.ts`, y el comentario de `pantallaVacia` arriba. */}
+      {/* THE SCAN BUTTON (CT-182) -- option A of «Propuesta · Escáner de códigos», approved
+          by the owner on 2026-11-23: a second round floating button right above «Registrar»,
+          on exactly the screens where «Registrar» shows (same condition), and only when the
+          business works with codes. ON THE CATALOGUE TOO, above «Crear producto», since the
+          owner's request of the same day («En catálogo sobre el botón flotante "Crear
+          producto" debe estar el botón flotante para escanear producto»); it used to be
+          left out there. Its known cost: on Inicio it sits over part of the Pedidos card,
+          accepted by the owner («La tarjeta de pedidos es clickeable entera»), and on the
+          catalogue it covers more of the right column's share buttons than `CT-150`
+          already measured. A list scrolls out from under it. */}
+      {scanner.enabled && !enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && !enReportes && (
+        <button
+          type="button"
+          aria-label="Escanear código"
+          onClick={() => {
+            if (guardia()) return;
+            scanner.openCamera();
+          }}
+          className={cn(
+            "fixed right-4 z-40 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-colors",
+            "active:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:hidden",
+            // One 56px button and a 12px gap above «Registrar».
+            "bottom-[calc(var(--nav-bar-h)+env(safe-area-inset-bottom)+1rem+3.5rem+0.75rem)]",
+          )}
+        >
+          <ScanBarcode className="size-6" aria-hidden="true" />
+        </button>
+      )}
       {!enSubirLibreta && !enMiNegocio && !enPedidos && !pantallaVacia && !enAbonoRegistrado && !enVentaRegistrada && !enReportes && (
       <button
         type="button"
@@ -815,7 +846,14 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
               className="flex flex-1"
             >
               <NavItem active={pathname === item.href} className="w-full">
-                {glyph(item.href, item.icon)}
+                {/* The red dot of an unread assistant analysis (2026-11-25), on the
+                    icon's corner like the notifications badge. Only Reportes has one. */}
+                <span className="relative flex">
+                  {glyph(item.href, item.icon)}
+                  {item.href === "/reportes" ? (
+                    <UnreadReportDot className="absolute -top-0.5 -right-1" />
+                  ) : null}
+                </span>
                 {item.label}
               </NavItem>
             </Link>

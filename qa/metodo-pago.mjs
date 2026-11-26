@@ -33,8 +33,8 @@ const check = (nombre, pasa, detalle = "") => {
 const M = await import("../lib/payments/methods.ts");
 
 // ── 1. PURE ───────────────────────────────────────────────────────────────
-check("1a. Venezuela: ocho métodos, en el orden del dueño",
-  M.methodsForBook("USD").map((m) => m.label).join("|") === "Pago móvil|Efectivo|Punto|Transferencia|Binance / USDT|Zelle|Paypal|Zinli");
+check("1a. Venezuela: nueve métodos, en el orden del dueño",
+  M.methodsForBook("USD").map((m) => m.label).join("|") === "Pago móvil|Efectivo|Punto|Biopago|Transferencia|Binance / USDT|Zelle|Paypal|Zinli");
 check("1b. Colombia (COP o null): cinco, Efectivo primero",
   M.methodsForBook("COP").map((m) => m.label).join("|") === "Efectivo|Nequi|QR|Punto de venta|Transferencia"
   && M.methodsForBook(null).length === 5);
@@ -42,6 +42,12 @@ check("1c. por defecto: bolívares → Pago móvil; dólares o euros → Efectiv
   M.defaultMethod("USD", "VES") === "mobile_payment" && M.defaultMethod("EUR", "VES") === "mobile_payment"
   && M.defaultMethod("USD", "USD") === "cash" && M.defaultMethod("EUR", "EUR") === "cash"
   && M.defaultMethod(null, null) === "cash" && M.defaultMethod("COP", "COP") === "cash");
+check("1c2. el ABONO abre siempre en Pago móvil (decisión del 2026-11-25); Colombia, en Efectivo",
+  M.defaultAbonoMethod("USD") === "mobile_payment" && M.defaultAbonoMethod("EUR") === "mobile_payment"
+  && M.defaultAbonoMethod(null) === "cash" && M.defaultAbonoMethod("COP") === "cash");
+check("1c3. Biopago vale en Venezuela y no en Colombia",
+  M.isMethodForBook("biopago", "USD") && M.isMethodForBook("biopago", "EUR")
+  && !M.isMethodForBook("biopago", null) && !M.isMethodForBook("biopago", "COP") && M.methodLabel("biopago", "USD") === "Biopago");
 check("1d. Pago móvil se puede elegir cobrando en dólares (decisión del dueño)", M.isMethodForBook("mobile_payment", "USD"));
 check("1e. Zelle no vale en Colombia ni Nequi en Venezuela; un valor inventado tampoco",
   !M.isMethodForBook("zelle", null) && !M.isMethodForBook("nequi", "USD") && !M.isMethodForBook("bitcoin", "USD")
@@ -168,6 +174,20 @@ try {
     Math.abs((usd2.mobile_payment ?? 0) + 10) < 0.005 && Math.abs((usd2.zelle ?? 0) - 10) < 0.005, JSON.stringify(usd2));
   check("4d. y la suma sigue siendo «Ventas» + «Abonos»",
     Math.abs(suma2 - ((g.ventas.USD ?? 0) + (g.abonos.USD ?? 0))) < 0.005, `${suma2} vs ${(g.ventas.USD ?? 0) + (g.abonos.USD ?? 0)}`);
+
+  // ── BIOPAGO (migration 220): the three doors that store a method ──
+  const { data: repBio, error: eRepBio } = await dueno.rpc("registrar_abono_repartido", {
+    p_lineas: [{ fiado_id: f2, amount: 1, entry_currency: "USD", entry_amount: 1, payment_method: "biopago" }],
+  });
+  check("5b. un abono por Biopago se guarda", !eRepBio && repBio?.ok === true, eRepBio?.message ?? JSON.stringify(repBio));
+  const { data: v2 } = await dueno.from("sales").insert({ owner_id: owner, client_id: c2.id }).select("id").single();
+  const { data: l2 } = await dueno.from("sale_lines").insert({ sale_id: v2.id, name: "ZZ QA 2", quantity: 1, unit_price: 4, currency: "USD" }).select("id").single();
+  const bio = await dueno.from("sale_payments").insert({ sale_id: v2.id, currency: "USD", amount: 4, entry_currency: "USD", entry_amount: 4, payment_method: "biopago" });
+  check("5a. un pago de una venta por Biopago se guarda", !bio.error, bio.error?.message ?? "");
+  const { data: devBio, error: eDevBio } = await dueno.rpc("registrar_devolucion_contado", {
+    p_sale_id: v2.id, p_line_id: l2.id, p_quantity: 1, p_fiados: [], p_a_favor: 0, p_efectivo: 4, p_metodo: "biopago",
+  });
+  check("5c. y una devolución en dinero por Biopago también", !eDevBio && devBio?.ok === true, eDevBio?.message ?? JSON.stringify(devBio));
 } catch (e) {
   check("la prueba corrió entera", false, e instanceof Error ? e.message : String(e));
 } finally {

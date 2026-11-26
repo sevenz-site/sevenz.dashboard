@@ -213,6 +213,9 @@ export const MANIFEST = {
     product_hides: { via: "owner" },
     // 184: one per product; the composite key keeps a product off another owner's
     product_categories: { via: "owner" },
+    // 219 (CT-182): a product's barcodes; the owner reads and writes his own, and the policy
+    // also checks that the product is his
+    product_barcodes: { via: "owner" },
     sale_returns: { via: "owner" },
     // 183 (CT-162): inventory notices; the owner reads and marks read, only a definer writes
     stock_alerts: { via: "owner" },
@@ -499,6 +502,10 @@ export const MANIFEST = {
     "app/(app)/productos/actions.ts#buscarProductos": "atacada",
     // 2026-11-15: answers yes / no about the caller's own catalogue; asked for B's name.
     "app/(app)/productos/actions.ts#productNameTaken": "atacada",
+    // v0.13.0 (CT-182): a scan answers only about the caller's own products, and a product's
+    // codes are read through its owner. Asked with B's code and with B's product id.
+    "app/(app)/productos/actions.ts#productoPorCodigo": "atacada",
+    "app/(app)/productos/actions.ts#codigosDelProducto": "atacada",
     "app/(app)/productos/actions.ts#createProduct": "atacada",
     // 184: takes only a name and writes it for auth.uid(); no id of anyone's travels
     "app/(app)/devoluciones/actions.ts#registrarDevolucionDeContado": "cubierta: qa:devoluciones-contado, la función comprueba al dueño con sus propios derechos",
@@ -525,13 +532,20 @@ export const MANIFEST = {
     "app/(app)/profile/actions.ts#updatePaymentMethod": "atacada",
     "app/(app)/profile/actions.ts#guardarAvisosWhatsapp": "atacada",
     "app/(app)/profile/actions.ts#guardarConsejosSevenz": "atacada",
+    // v0.13.0 (219): the «Códigos de barras» switch. Writes only the caller's own row.
+    "app/(app)/profile/actions.ts#guardarCodigosDeBarras": "atacada",
     "app/(app)/profile/actions.ts#registrarPreguntaAvisos": "atacada",
     // v0.6.0 (202): marks the «tu resumen cambia» notice as seen. Writes only the caller's own row.
     "app/(app)/profile/actions.ts#registrarAvisoDelResumen": "atacada",
     "app/(app)/profile/actions.ts#updateBusinessSettings": "atacada",
     "app/(app)/reportes/actions.ts#calificarAsistente": "atacada",
+    // v0.13.0: the red dot on «Reportes». No argument: it resolves the session itself.
+    "app/(app)/reportes/actions.ts#getAssistantNoteUnread": "atacada",
     "app/(app)/reportes/actions.ts#guardarUmbralDeStock": "atacada",
     "app/(app)/ventas/actions.ts#buscarProductosParaVenta": "atacada",
+    // v0.13.0: the currencies and rates of the caller's own business. No argument.
+    "app/(app)/ventas/actions.ts#contextoParaMonto": "atacada",
+    "app/(app)/ventas/actions.ts#monedasDelNegocio": "atacada",
     "app/(app)/ventas/actions.ts#cuentaDelCliente": "atacada",
     "app/(app)/ventas/actions.ts#datosDelCliente": "atacada",
     "app/(app)/ventas/actions.ts#eliminarVenta": "atacada",

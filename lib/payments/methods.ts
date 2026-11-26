@@ -7,7 +7,8 @@
 //
 // THE VALUES ARE ENGLISH, the labels Spanish. A value is stored in `sale_payments.payment_method`
 // and `movements.payment_method` (migration 214), which outlive the code, and the check
-// constraint there lists exactly these. A new method is a migration first, then a line here.
+// constraints (214, now 220) list exactly these. A new method is a migration first, then a line
+// here: with the line and no migration, the database refuses the payment.
 //
 // THE LIST DEPENDS ON THE BOOK, not on a country lookup: a payment in the USD or EUR book is a
 // Venezuelan business, one in the COP book (spelled NULL in `movements`) a Colombian one. The
@@ -18,6 +19,8 @@ export const PAYMENT_METHODS = [
   "mobile_payment",
   "cash",
   "card",
+  // Migration 220, 2026-11-25. Venezuela only.
+  "biopago",
   "bank_transfer",
   "binance_usdt",
   "zelle",
@@ -34,6 +37,8 @@ const VENEZUELA: { value: PaymentMethod; label: string }[] = [
   { value: "mobile_payment", label: "Pago móvil" },
   { value: "cash", label: "Efectivo" },
   { value: "card", label: "Punto" },
+  // Owner's request of 2026-11-25. Beside «Punto»: both are a terminal on the counter.
+  { value: "biopago", label: "Biopago" },
   { value: "bank_transfer", label: "Transferencia" },
   { value: "binance_usdt", label: "Binance / USDT" },
   { value: "zelle", label: "Zelle" },
@@ -74,6 +79,22 @@ export function defaultMethod(
 ): PaymentMethod {
   if (esColombia(bookCurrency)) return "cash";
   return entryCurrency === "VES" ? "mobile_payment" : "cash";
+}
+
+/**
+ * The method an ABONO opens with: «Pago móvil», whatever currency is typed. Owner's decision of
+ * 2026-11-25: «En el registro de abono colocar por defecto el método de pago "Pago móvil"».
+ *
+ * IT DISPLACES, FOR ABONOS ONLY, HIS RULE OF 2026-11-17 ABOVE, and he chose it with that rule and
+ * its cost in front of him: a dollar abono paid in cash and never corrected is filed as a Pago
+ * móvil, and the Reportes chart says so with nothing to warn anyone. The sale and the return keep
+ * the rule of 2026-11-17.
+ *
+ * A Colombian business still opens on «Efectivo»: Pago móvil is not in its list, and the server
+ * would refuse it.
+ */
+export function defaultAbonoMethod(bookCurrency: string | null | undefined): PaymentMethod {
+  return esColombia(bookCurrency) ? "cash" : "mobile_payment";
 }
 
 /** Whether `value` is a method this book accepts. The server's check, before the database's. */

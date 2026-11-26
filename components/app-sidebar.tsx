@@ -24,6 +24,7 @@ import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { InstallAppDialog } from "@/components/install-app";
 import { suscribirseANada } from "@/lib/install-prompt";
 import { installSource } from "@/lib/install-source";
+import { UnreadReportDot } from "@/components/dashboard/unread-report-context";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Inicio", icon: Home, dataTour: undefined },
@@ -131,6 +132,9 @@ export function AppSidebar({ businessName }: { businessName: string }) {
                     >
                       <item.icon />
                       <span>{item.label}</span>
+                      {/* The red dot of an unread assistant analysis (2026-11-25), at
+                          the end of the row like the libreta counter below. */}
+                      {item.href === "/reportes" ? <UnreadReportDot className="ml-auto" /> : null}
                       {item.href === "/import" && isProcessing ? (
                         <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
                           <Loader2 className="size-3.5 animate-spin" />

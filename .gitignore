@@ -66,3 +66,6 @@ SUBIR-LIBRETA-PLAN.md
 # Help-centre capture tooling: raw PNGs are scratch; the WebP output lives in Web/public/ayuda.
 /scripts/ayuda/raw/
 /scripts/ayuda/raw-portadas/
+
+# Rendered marketing videos (Reels): build output, never part of this public repo.
+/output/

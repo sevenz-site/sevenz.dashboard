@@ -100,7 +100,11 @@ export function CatalogBrandHeader({
             ⌖&nbsp;&nbsp;{address}
           </p>
         ) : null}
-        {note ? <p className="w-full max-w-[560px] text-xs leading-[17px]">{note}</p> : null}
+        {/* `text-muted-foreground` since 2026-11-25, owner's request: the note about the
+            rate sits one level below the address instead of reading as loud as it. The
+            header's #272727 stays for everything else. The dark header without
+            customisation (`PublicHeader`) already shows it in its own muted tone. */}
+        {note ? <p className="w-full max-w-[560px] text-xs leading-[17px] text-muted-foreground">{note}</p> : null}
       </div>
     </header>
   );

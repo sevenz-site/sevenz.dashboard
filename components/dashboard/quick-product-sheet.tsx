@@ -18,14 +18,17 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
 import { createProduct, productNameTaken, updateProduct } from "@/app/(app)/productos/actions";
+import { contextoParaMonto } from "@/app/(app)/ventas/actions";
 import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
   currencyName,
   formatPriceAmount,
+  marginFromPrice,
   parseTypedAmount,
   type PriceCurrency,
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
+import { BarcodeField } from "@/components/barcode/barcode-field";
 
 // REGISTRAR UN PRODUCTO SIN SALIR DE LA VENTA — frame `1389:9169`, 2026-10-18.
 //
@@ -56,7 +59,16 @@ import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 // tendero el trabajo que esta hoja existe para quitarle.
 // What the sheet typed beyond name, price and currency, which the product row does not carry
 // back to the cart. Kept on the cart line so «Editar» reopens the sheet as it was left.
-export type DatosRapidos = { publicar: boolean; descripcion: string | null };
+export type DatosRapidos = {
+  publicar: boolean;
+  descripcion: string | null;
+  // The unit cost as typed (CT-182, owner's decision of 2026-11-23). Optional so a line
+  // created before this field existed still reopens.
+  costo?: string | null;
+  // The currency of that cost, its own since 2026-11-25. Absent on a line created before: that
+  // cost was saved in the price's currency.
+  costoMoneda?: PriceCurrency;
+};
 
 // A product this sheet created, as «Editar» reopens it.
 export type ProductoRapido = DatosRapidos & {
@@ -76,6 +88,8 @@ export function QuickProductSheet({
   onCreado,
   editando = null,
   onEditado,
+  codigos,
+  textoBoton,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -92,7 +106,15 @@ export function QuickProductSheet({
   // the product instead of creating one. Without it the sheet is exactly what it was.
   editando?: ProductoRapido | null;
   onEditado?: (productId: string, cantidad: number, datos: DatosRapidos) => void;
+  // BARCODES (CT-182). Undefined -- the business does not work with codes -- hides the field
+  // and sends nothing, so the product's codes are never touched. A list shows the field with
+  // those codes already in it (a scan that found no product).
+  codigos?: string[];
+  // The button's words when the scanner opened the sheet: «Guardar y vender» from Home,
+  // «Guardar y agregar» inside a sale (frames 8 and 12). Without it, the total as before.
+  textoBoton?: string;
 }) {
+  const [listaDeCodigos, setListaDeCodigos] = useState<string[]>(codigos ?? []);
   const [nombre, setNombre] = useState(editando?.nombre ?? "");
   const [precio, setPrecio] = useState(editando ? String(editando.precio).replace(".", ",") : "");
   const [moneda, setMoneda] = useState<PriceCurrency>(editando?.moneda ?? monedas[0] ?? "USD");
@@ -111,6 +133,23 @@ export function QuickProductSheet({
   const [publicar, setPublicar] = useState(editando?.publicar ?? true);
   const [photoPath, setPhotoPath] = useState<string | null>(editando?.photoPath ?? null);
   const [descripcion, setDescripcion] = useState(editando?.descripcion ?? "");
+  // «COSTO UNITARIO (OPCIONAL)», THE ONE CATALOGUE FIELD ADDED HERE. Owner's decision of
+  // 2026-11-23, asked whether this sheet should carry every field of the catalogue's
+  // «Crear producto»: «agreguemos solo el input de costo». It displaces, by one field, the
+  // decision written at the top of this file (six fields, because twenty with a customer
+  // waiting means the product never gets written down); the rest of that reasoning stands.
+  //
+  // WITH ITS OWN CURRENCY, since 2026-11-25: «el campo de "Costo unitario" la moneda debe ser un
+  // dropdown para que el usuario pueda seleccionar entre "Dólares" y "Euros", Dólares como
+  // default». It displaces «in the price's currency, with no selector of its own» of 2026-11-23.
+  // Dollars whatever the price is in, as he asked. A Colombian business has one currency, so
+  // there is nothing to choose and it stays in pesos.
+  const monedasDeCosto: PriceCurrency[] = monedas.includes("COP") ? ["COP"] : ["USD", "EUR"];
+  const [costoMoneda, setCostoMoneda] = useState<PriceCurrency>(
+    (editando?.costo ? (editando.costoMoneda ?? editando.moneda) : editando?.costoMoneda) ?? monedasDeCosto[0],
+  );
+  const [costo, setCosto] = useState(editando?.costo ?? "");
+  const { ref: refCosto, onChange: alTeclearCosto } = useGroupedAmount(costo, setCosto);
   const [error, setError] = useState<string | null>(null);
   const [guardando, startTransition] = useTransition();
 
@@ -120,6 +159,9 @@ export function QuickProductSheet({
   // doscientos treinta y cuatro. De este número sale el total que el tendero
   // confirma, así que el que manda es el que él escribió.
   const unitario = parseTypedAmount(precio) ?? 0;
+  // Null when empty or not a positive number: then no cost is saved at all.
+  const costoParsed = parseTypedAmount(costo);
+  const costoNumero = costoParsed != null && costoParsed > 0 ? costoParsed : null;
   // LOS MILES, MIENTRAS SE TECLEA.
   const { ref: refPrecio, onChange: alTeclearPrecio } = useGroupedAmount(precio, setPrecio);
   // La coma como separador decimal, igual que en la ficha pública: un tendero
@@ -174,6 +216,12 @@ export function QuickProductSheet({
       // repeated name, so the message asks to look before saving again.
       let r: Awaited<ReturnType<typeof createProduct>>;
       try {
+        // THE MARGIN OF A COST IN ANOTHER CURRENCY NEEDS THE RATE, which this sheet does not
+        // carry: asked for here, only then. Without a rate the margin is left empty and the
+        // product is saved, like in the catalogue's form; a margin computed as if both
+        // currencies were worth the same would be a believable, false figure in Reportes.
+        const rates =
+          costoNumero != null && costoMoneda !== moneda ? ((await contextoParaMonto())?.rates ?? null) : null;
         const datos = {
           name: nombre.trim(),
           unit: null,
@@ -204,10 +252,15 @@ export function QuickProductSheet({
           priceWholesale: null,
           fixedRetail: {},
           fixedWholesale: {},
-          cost: null,
-          costCurrency: null,
+          // THE COST AND ITS MARGIN, like the catalogue: the margin is stored, and Reportes
+          // reads it, so it is computed here.
+          cost: costoNumero != null ? costo : null,
+          costCurrency: costoNumero != null ? costoMoneda : null,
           costCurrencyOther: null,
-          marginRetailPct: null,
+          marginRetailPct:
+            costoNumero != null
+              ? (marginFromPrice(costoNumero, costoMoneda, unitario, moneda, rates)?.toString() ?? null)
+              : null,
           marginWholesalePct: null,
           stockOpening: null,
           supplier: null,
@@ -219,6 +272,7 @@ export function QuickProductSheet({
           publishedWholesale: false,
           photoPath,
           description: descripcion.trim() || null,
+          barcodes: codigos === undefined ? undefined : listaDeCodigos,
         };
         // THE SAME FIELDS EITHER WAY. The product was created from this sheet with no cost,
         // stock or wholesale price, so writing them back as null changes nothing the owner
@@ -239,7 +293,7 @@ export function QuickProductSheet({
         setError(r.error ?? "No pudimos guardar el producto. Intenta de nuevo.");
         return;
       }
-      const escrito = { publicar, descripcion: descripcion.trim() || null };
+      const escrito = { publicar, descripcion: descripcion.trim() || null, costo: costoNumero != null ? costo : null, costoMoneda };
       if (editando) onEditado?.(editando.productId, unidades, escrito);
       else if (r.id) onCreado(r.id, unidades, escrito);
       onOpenChange(false);
@@ -251,14 +305,34 @@ export function QuickProductSheet({
       {/* `dvh` y no `vh`: en un teléfono con la barra del navegador a la vista,
           `vh` mide el viewport grande. Y `overflow-y-auto` porque esta hoja
           tiene siete campos y a 375px no caben sin desplazar. */}
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-xl">
+      <SheetContent
+        side="bottom"
+        className="max-h-[90dvh] overflow-y-auto rounded-t-xl"
+        // THE FIRST FIELD GETS THE FOCUS, AND IT IS NEVER THE CODE. Radix focuses the first
+        // focusable element, and since the scanner put «Código de barras» first that was the
+        // code just read, selected: one key and it was gone (owner's report of 2026-11-23,
+        // «se puede editar por error el código y registrar mal»). The name is what the
+        // shopkeeper types next, so it gets it, as before the code field existed.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          document.getElementById("qp-nombre")?.focus();
+        }}
+      >
         <SheetHeader>
           <SheetTitle className="text-xl font-medium">
-            {editando ? "Editar producto" : "Registrar producto"}
+            {/* «Crear producto» when the scanner opened it (frames 8 and 12 of the scanner
+                flow, approved 2026-11-23; owner's request of the same day to align the
+                title). The ordinary sheet of a sale keeps «Registrar producto», its own
+                frame `1389:9169`. `textoBoton` is only ever set by the scanner. */}
+            {editando ? "Editar producto" : textoBoton ? "Crear producto" : "Registrar producto"}
           </SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-5 p-4">
+          {/* First, as frame 8 draws it: the code is what brought the shopkeeper here. */}
+          {codigos !== undefined ? (
+            <BarcodeField values={listaDeCodigos} onChange={setListaDeCodigos} idPrefix="qp-codigo" />
+          ) : null}
           <div className="flex flex-col gap-1">
             <Label htmlFor="qp-nombre">Nombre del producto</Label>
             <Input
@@ -270,8 +344,41 @@ export function QuickProductSheet({
             />
           </div>
 
+          {/* THE COST COMES FIRST, and the price says «de venta» (owner's request of 2026-11-25:
+              «el input de costo va arriba de precio unitario (ajustar label a "Precio de venta
+              unitario")»). It is the catalogue form's order, and beside a cost «Precio unitario»
+              alone could be read as what the product cost. */}
           <div className="flex flex-col gap-1">
-            <Label htmlFor="qp-precio">Precio unitario</Label>
+            <Label htmlFor="qp-costo">Costo unitario (opcional)</Label>
+            <div className="flex items-start gap-1">
+              <Input
+                id="qp-costo"
+                className="min-w-0 flex-1"
+                inputMode="decimal"
+                value={costo}
+                ref={refCosto}
+                onChange={alTeclearCosto}
+                placeholder="00"
+              />
+              {/* One currency only (Colombia): said, not offered. */}
+              {monedasDeCosto.length > 1 ? (
+                <MonedaMenu
+                  label="Moneda del costo"
+                  value={costoMoneda}
+                  opciones={monedasDeCosto}
+                  onSelect={setCostoMoneda}
+                />
+              ) : (
+                <span className="flex h-9 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <CurrencyFlagIcon currency={costoMoneda} className="size-4 shrink-0" />
+                  {nombreDeMoneda(costoMoneda)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="qp-precio">Precio de venta unitario</Label>
             <div className="flex items-start gap-1">
               <Input
                 id="qp-precio"
@@ -302,28 +409,7 @@ export function QuickProductSheet({
 
                   MISMO MONTAJE QUE `abono-monto.tsx` Y `nueva-venta.tsx`: si
                   a uno hay que cambiarle algo, a los tres. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 shrink-0 gap-2"
-                    aria-label="Moneda del precio"
-                  >
-                    <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
-                    <span className="text-xs">{currencyName(moneda)}</span>
-                    <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {monedas.map((c) => (
-                    <DropdownMenuItem key={c} onSelect={() => setMoneda(c)}>
-                      <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
-                      {currencyName(c)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <MonedaMenu label="Moneda del precio" value={moneda} opciones={monedas} onSelect={setMoneda} />
             </div>
           </div>
 
@@ -395,7 +481,7 @@ export function QuickProductSheet({
           <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={intentarGuardar}>
             {guardando
               ? "Guardando…"
-              : `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
+              : textoBoton ?? `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
           </Button>
         </div>
       </SheetContent>
@@ -410,5 +496,44 @@ export function QuickProductSheet({
         }}
       />
     </Sheet>
+  );
+}
+
+// «Dólares», as the frame writes it: `currencyName` is lowercase, for the middle of a sentence.
+function nombreDeMoneda(c: PriceCurrency): string {
+  const n = currencyName(c);
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
+// THE CURRENCY MENU of the two amounts of this sheet, one drawing for both.
+function MonedaMenu({
+  label,
+  value,
+  opciones,
+  onSelect,
+}: {
+  label: string;
+  value: PriceCurrency;
+  opciones: PriceCurrency[];
+  onSelect: (c: PriceCurrency) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" className="h-9 shrink-0 gap-2" aria-label={label}>
+          <CurrencyFlagIcon currency={value} className="size-4 shrink-0" />
+          <span className="text-xs">{nombreDeMoneda(value)}</span>
+          <ChevronDown className="size-4 shrink-0 opacity-60" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {opciones.map((c) => (
+          <DropdownMenuItem key={c} onSelect={() => onSelect(c)}>
+            <CurrencyFlagIcon currency={c} className="size-4 shrink-0" />
+            {nombreDeMoneda(c)}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

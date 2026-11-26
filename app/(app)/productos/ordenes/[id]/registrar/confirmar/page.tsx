@@ -24,6 +24,7 @@ import {
   OrderAddedLines,
   OrderAddProductButton,
 } from "@/components/dashboard/order-add-product";
+import { OrderScanner } from "@/components/barcode/order-scanner";
 
 // STEP `2/4 Confirmar pedido` — frame `1652:12831`, read with the desktop
 // bridge on 2026-10-25.
@@ -323,6 +324,21 @@ export default async function ConfirmarBloquePage({
           teclado arriba no queda nada pegado al borde de abajo. Aquí no hay
           campos, pero el componente es el mismo para todo el flujo y copiar
           sus clases a mano es justo cómo se rompió la segunda vez. */}
+      {/* CT-182: the floating scan button and the gun, adding to this block (owner's
+          request of 2026-11-23). Outside `StickyActions` on purpose: it is fixed on its
+          own, and inside a transformed container `fixed` would stop meaning the screen. */}
+      <OrderScanner
+        pedidoId={pedido.id}
+        moneda={bloque.moneda}
+        ownerId={ownerId}
+        lineasDelBloque={bloque.lineas.map((l) => ({
+          id: l.id,
+          productId: l.productId,
+          cantidadPedida: l.cantidadPedida,
+        }))}
+        lineasDelPedido={lineasDelPedido}
+      />
+
       <StickyActions>
         {/* THE TWO BUTTONS, STACKED AND 8px APART — frame `2210:22299`, and on
             the web too: the owner chose option A on 2026-11-19 (frame

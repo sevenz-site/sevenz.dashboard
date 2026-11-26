@@ -1151,6 +1151,30 @@ es una captura y se rehace.
 de la app pegadas en frames vacíos, y la primera de la `v0.8.0` igual. Esas dos ya
 aprobadas se quedan como están; la de la `v0.8.0` se rehizo editable.
 
+### TODOS LOS FRAMES USAN AUTOLAYOUT
+
+**Regla del dueño, 2026-11-25**: *«Nueva regla para los diseños en figma, todos los
+frames deben usar autolayout. Agrégalo a la norma»*.
+
+**La regla**: todo frame que se deja en Figma usa autolayout, el de la pantalla y cada
+uno de los que lleva dentro: cabecera, contenido, fila, campo, tarjeta, botón, barra de
+abajo, nota. Nada se coloca con coordenadas sueltas. Los espacios son `itemSpacing` y
+paddings, y lo que ocupa el ancho va en «Fill», no con un ancho fijo copiado del padre.
+
+**Por qué importa, además de ser suya**: con coordenadas sueltas, cambiar un rótulo o
+meter un botón obliga a mover a mano todo lo de abajo. Con autolayout la pantalla se
+reacomoda sola, que es para lo que él quiere los frames editables.
+
+**Lo que no cuenta**: una sección, un vector, un icono o un grupo clonado de otro frame
+del archivo, y una capa que de verdad flota sobre la pantalla (un botón flotante, el velo
+de una hoja), que va con posición absoluta dentro de un padre con autolayout.
+
+**Cómo se comprueba antes de entregar**: se recorre cada frame y se buscan los
+`layoutMode === 'NONE'` que tengan hijos. Uno solo, fuera de lo de arriba, y se rehace.
+
+**Lo anterior se queda como está.** Un frame viejo se convierte cuando haya que tocarlo
+por otra razón. Los de esta regla para adelante nacen así.
+
 ## SI HAY FRAME, SE ABRE EL FRAME. SIEMPRE.
 
 **Un enlace a un frame de Figma es una instrucción de leerlo, no una
@@ -2074,6 +2098,23 @@ sufijo falla igual de entera y de silenciosa. Por eso
 `"sin_parametros"` (los hay y ninguno toma valores) y `"url_suffix"`— aunque
 los dos primeros se envíen igual: la tabla no es solo una comprobación, es el
 único sitio del repo donde consta qué aprobó Meta.
+
+## Los Reels de Sevenz
+
+Videos verticales para Instagram y TikTok que enseñan una función de la app grabada de
+verdad. Dos reglas del dueño, del 2026-11-25, al revisar el primero
+(`reel-calculadora-de-tasa.mp4`):
+
+1. **El acento es el naranja de la marca, `--brand` `#F66B02`. Nunca amarillo ni ámbar.**
+   *«El amarillo utilizado no es el color principal de la marca, usa el naranja que está
+   nombrado en el design system como brand (#F66B02)»*. Vale para todo lo que resalta en
+   el video: la palabra destacada de cada texto, la pastilla del paso, el botón del cierre,
+   el borde de una imagen que se enseña, y el círculo que marca cada toque. Es la misma
+   regla de `DESIGN-SYSTEM.md` («El naranja de la marca es `--brand`, y no es `amber`»),
+   y con el mismo límite: el naranja va sobre fondo oscuro, y no como texto sobre blanco.
+2. **Los textos van centrados.** *«Textos centrados. Agrégalo a las reglas de los
+   reels»*. Esto incluye el gancho, los pasos (pastilla y frase), los avisos sobre la
+   pantalla y el cierre. No hay texto alineado a la izquierda en ninguna parte del video.
 
 ## Toda decisión se documenta, y cada tipo tiene su sitio
 

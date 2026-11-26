@@ -68,6 +68,15 @@ const nextConfig: NextConfig = {
       // the exact name, because the app icon is renamed on every redesign
       // (`-v2` today, see app/layout.tsx) and a new name must not fall back
       // under the rule unnoticed.
+      // THE BARCODE READER'S WASM (CT-182), ~950 KB served from our own origin instead of
+      // jsDelivr (risk review of 2026-11-23). `public/` files are served with max-age=0,
+      // which would revalidate it on every scanner opening over a weak signal. Its name
+      // carries the zxing-wasm version, so a new version is a new URL and it can be cached
+      // forever. `qa:zxing-wasm` fails if the file and the installed package drift apart.
+      {
+        source: "/wasm/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
       {
         source:
           "/((?!login$|signup$|favicon\\.ico$|icon-[^/]*\\.png$|apple-touch-icon\\.png$).*)",

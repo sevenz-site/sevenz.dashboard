@@ -180,6 +180,7 @@ export function PagoCampos({
   botonPegadoAbajo = false,
   avisoSiFiado,
   mostrarTotal = true,
+  pideDescripcion = true,
   moneda,
   ownerId,
   total,
@@ -226,6 +227,8 @@ export function PagoCampos({
   // palabras sin que este fichero tenga que conocer el caso.
   avisoSiFiado?: React.ReactNode;
   mostrarTotal?: boolean;
+  /** False in a sale with no product: its description was asked in «Monto» and names the sale. */
+  pideDescripcion?: boolean;
   // THE SUBMIT LABEL. The sheet in the sale wizard says «Pagar»; the full
   // screen of frame `1564:11028` says «Pagar $00.00», with the figure. One
   // prop instead of two copies of six hundred lines.
@@ -783,9 +786,11 @@ export function PagoCampos({
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <MovementDescriptionField id="pago-nota" value={descripcion} onChange={setDescripcion} />
-      </div>
+      {pideDescripcion ? (
+        <div className="flex flex-col gap-1">
+          <MovementDescriptionField id="pago-nota" value={descripcion} onChange={setDescripcion} />
+        </div>
+      ) : null}
 
       <Pie pegado={botonPegadoAbajo}>
         {/* ENCIMA DEL BOTON Y DENTRO DEL PIE. Fuera del pie se quedaria

@@ -567,6 +567,73 @@ try {
     credito: credito(),
   });
   check("9c. 60 líneas exactas: ENTRAN", r11.ok === true, r11.ok ? "ok" : r11.error);
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 11. A SALE WITH NO PRODUCT («Omitir», 2026-11-25)
+  // ══════════════════════════════════════════════════════════════════════
+  const sinProducto = (montos, extra = {}) => ({
+    clientId: cliente.id,
+    lineas: [],
+    pagos: [],
+    credito: [],
+    sinProducto: { montos, descripcion: extra.descripcion },
+    ...extra.entrada,
+  });
+  const pagar = (currency, amount) => ({ currency, amount, entryCurrency: currency, entryAmount: amount, paymentMethod: "cash" });
+  const lineasDe = async (id) =>
+    (await admin.from("sale_lines").select("product_id, name, quantity, unit_price, currency, tier, unit_cost, stock_taken").eq("sale_id", id).order("currency")).data ?? [];
+
+  const s1 = await registrar(
+    sinProducto([{ currency: "USD", amount: 25 }, { currency: "EUR", amount: 10.5 }], {
+      descripcion: "  Recarga de teléfono  ",
+      entrada: { pagos: [pagar("USD", 25), pagar("EUR", 10.5)] },
+    }),
+  );
+  const l1 = s1.ok ? await lineasDe(s1.saleId) : [];
+  check("11a. contado en dólares y euros, con descripción: entra con una línea por moneda",
+    s1.ok && l1.length === 2 && l1.every((l) => l.product_id === null && l.name === "Recarga de teléfono" && Number(l.quantity) === 1 && l.unit_cost === null)
+      && Number(l1[0].unit_price) === 10.5 && Number(l1[1].unit_price) === 25 && s1.fiado.length === 0,
+    s1.ok ? JSON.stringify(l1) : s1.error);
+  check("11b. y no descuenta existencias de nada", l1.every((l) => l.stock_taken == null), JSON.stringify(l1.map((l) => l.stock_taken)));
+
+  const s2 = await registrar(
+    sinProducto([{ currency: "USD", amount: 20 }, { currency: "EUR", amount: 8 }], {
+      descripcion: "   ",
+      entrada: { pagos: [pagar("USD", 5)], credito: [{ currency: "USD", plazoDias: 7, cuotas: null }, { currency: "EUR", plazoDias: 7, cuotas: null }] },
+    }),
+  );
+  const l2 = s2.ok ? await lineasDe(s2.saleId) : [];
+  check("11c. sin descripción se llama «Venta sin producto registrado»", l2.length === 2 && l2.every((l) => l.name === "Venta sin producto registrado"), s2.ok ? "" : s2.error);
+  check("11d. y lo que falta queda fiado por moneda: $15 y €8",
+    s2.ok && s2.fiado.find((f) => f.currency === "USD")?.amount === 15 && s2.fiado.find((f) => f.currency === "EUR")?.amount === 8, JSON.stringify(s2.fiado ?? s2.error));
+
+  // THE CLIENT'S LINK READS IT THE SAME.
+  const tokenS = `qasp${Math.random().toString(36).slice(2, 14)}`;
+  await admin.from("share_links").insert({ client_id: cliente.id, token: tokenS });
+  const { data: enlace } = await anon.rpc("get_shared_balance", { p_token: tokenS });
+  const contadoS = (enlace?.ventas_de_contado ?? []).filter((x) => x.sale_id === s1.saleId);
+  check("11e. el enlace del cliente la lista con su nombre, en contado y en fiado",
+    contadoS.length === 2 && contadoS.every((x) => (x.lineas ?? x.productos ?? []).some((l) => l.name === "Recarga de teléfono"))
+      && (enlace?.movements ?? []).some((m) => JSON.stringify(m).includes("Venta sin producto registrado")),
+    `${contadoS.length} de contado`);
+
+  const rechazos = [
+    ["11f. con productos Y monto a la vez", sinProducto([{ currency: "USD", amount: 5 }], { entrada: { lineas: [{ ...linea }], credito: credito() } })],
+    ["11g. dos montos en la misma moneda", sinProducto([{ currency: "USD", amount: 5 }, { currency: "USD", amount: 6 }], { entrada: { pagos: [pagar("USD", 11)] } })],
+    ["11h. una moneda que el negocio no maneja", sinProducto([{ currency: "COP", amount: 5000 }], { entrada: { pagos: [pagar("COP", 5000)] } })],
+    ["11i. monto cero", sinProducto([{ currency: "USD", amount: 0 }])],
+    ["11j. monto negativo", sinProducto([{ currency: "USD", amount: -5 }])],
+    ["11k. monto que no es número", sinProducto([{ currency: "USD", amount: "abc" }])],
+    ["11l. cobrar más de lo que suma", sinProducto([{ currency: "USD", amount: 5 }], { entrada: { pagos: [pagar("USD", 6)] } })],
+    ["11m. fiado sin plazo pactado", sinProducto([{ currency: "USD", amount: 5 }])],
+    ["11n. fiado al mostrador", sinProducto([{ currency: "USD", amount: 5 }], { entrada: { clientId: mostrador.id, credito: [{ currency: "USD", plazoDias: 7, cuotas: null }] } })],
+    ["11o. a nombre del cliente de otro negocio", sinProducto([{ currency: "USD", amount: 5 }], { entrada: { clientId: ajeno.id, pagos: [pagar("USD", 5)] } })],
+    ["11p. lista de montos vacía y sin productos", sinProducto([])],
+  ];
+  for (const [nombre, entrada] of rechazos) {
+    const r = await registrar(entrada);
+    check(`${nombre}: rechazada`, r.ok === false, r.ok ? "SE GUARDÓ" : r.error);
+  }
 } catch (e) {
   // ── UNA EXCEPCIÓN ES UNA FILA ROJA, NO UN SILENCIO ──────────────────
   //

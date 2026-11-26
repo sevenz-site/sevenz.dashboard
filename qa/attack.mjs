@@ -323,6 +323,14 @@ try {
       xssCat.includes("alert(4)") ? "" : "la bienvenida no llegó a la página");
     const h = (await fetch(`${BASE}/login`)).headers;
     const faltan = [["content-security-policy", /frame-ancestors 'none'/], ["x-frame-options", /DENY/i], ["x-content-type-options", /nosniff/], ["referrer-policy", /./]].filter(([k, re]) => !re.test(h.get(k) ?? "")).map(([k]) => k);
+    // v0.13.0: the catalogue's link-preview image, a public route (`/c/<token>/vista-previa`).
+    // An invented token and an injection must get the generic image, never an error body;
+    // and a path cannot be smuggled in: the logo's path comes from the database, not the URL.
+    for (const [n, tok] of [["token inventado", "zz-no-existe"], ["inyección SQL en el token", encodeURIComponent("x' or '1'='1")], ["ruta de archivo en el token", encodeURIComponent("../../logos/x")]]) {
+      const r = await fetch(`${BASE}/c/${tok}/vista-previa`, { redirect: "manual" });
+      const t = r.status === 302 ? "" : await r.text();
+      rec("http · catálogo", `imagen de la tarjeta con ${n}`, (r.status === 302 && /\/og\.png$/.test(r.headers.get("location") ?? "")) || (r.status === 404 && !/syntax|42601|PGRST|supabase\.co|at \w/i.test(t)) ? "BLOQUEADO" : "VULN", `${r.status} ${r.headers.get("location") ?? ""}`);
+    }
     rec("http · cabeceras", "contra clickjacking y sniffing", faltan.length ? "VULN" : "BLOQUEADO", faltan.length ? `faltan ${faltan.join(", ")}` : "");
   }
 
