@@ -21,6 +21,9 @@
 //      in dev and deletes what it wrote in the `finally`. It needs migration 218 in dev; check
 //      B0 says so if it is missing.
 //
+// SINCE MIGRATION 223 (2026-11-26) the weekly cap counts by phone within a business: A16-A22 and
+// B22-B25. B needs 223 in dev; B25 says so if it is missing.
+//
 // Output is read by the owner, so it stays in Spanish.
 
 import { createClient } from "@supabase/supabase-js";
@@ -109,6 +112,9 @@ const longDate = (d, tz) => new Intl.DateTimeFormat("es-CO", { day: "numeric", m
     balance_usd: over.usd ?? 100,
     balance_eur: over.eur ?? 0,
     ultimo_aviso: over.ultimo ?? null,
+    // Migration 223. Omitted means the row of a database still on 218.
+    ...(over.phone === undefined ? {} : { phone: over.phone }),
+    ...(over.owner ? { owner_id: over.owner } : {}),
   });
   const due = (ymd, plazo, n, k, country = "VE", h = 12, m = 0) => createdFor(localAt(ymd, country, h, m), plazo, n, k);
   const plan = (rows) => planInstallmentNotices(rows, now);
@@ -181,6 +187,55 @@ const longDate = (d, tz) => new Intl.DateTimeFormat("es-CO", { day: "numeric", m
   p = plan([fila({ client: "c-z", plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }), fila({ client: "c-w", plazo: 8, created_at: due(addDays(today, 2), 8, 1, 1) }), fila({ client: "c-v", plazo: 10, created_at: due(addDays(today, -15), 10, 1, 1) })]);
   check("A15. entre clientes, los firmes van delante de los previos (los topes diarios los alcanza el primero)",
     p.notices.map((x) => x.kind === "soon").join() === "false,false,true", p.notices.map((x) => x.kind).join());
+
+  // ── MIGRATION 223: THE CAP COUNTS BY PHONE, WITHIN A BUSINESS (owner, 2026-11-26) ──
+  const TEL_A = "584163100001";
+  p = plan([
+    fila({ client: "c-kari", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+    fila({ client: "c-hermana", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+  ]);
+  check("A16. dos fichas del mismo negocio con el MISMO número, las dos con firme hoy: sale UNO y el otro cuenta como «mismo_numero»",
+    p.notices.length === 1 && p.heldBySharedPhone === 1, `${p.notices.length} avisos · ${p.heldBySharedPhone} retenidos por número`);
+
+  // The production case of 25 and 26 November: «(Hermana)» got hers yesterday; «(kari)» is due today.
+  p = plan([
+    fila({ client: "c-hermana", phone: TEL_A, plazo: 10, created_at: due(addDays(today, 20), 10, 1, 1), ultimo: localAt(addDays(today, -1), "VE", 9).toISOString() }),
+    fila({ client: "c-kari", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+  ]);
+  check("A17. el caso de Karina: a una ficha le llegó ayer y la otra vence hoy, en el mismo número → hoy no sale nada",
+    p.notices.length === 0 && p.heldByWeeklyCap === 1, `${p.notices.length} avisos · ${p.heldByWeeklyCap} retenidos por la semana`);
+
+  p = plan([
+    fila({ client: "c-a", owner: "o-1", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+    fila({ client: "c-b", owner: "o-2", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+  ]);
+  check("A18. el mismo número cliente de DOS negocios: sale uno de cada uno («Solo mismo negocio»)",
+    p.notices.length === 2 && p.heldBySharedPhone === 0 && new Set(p.notices.map((x) => x.ownerId)).size === 2, `${p.notices.length} avisos`);
+
+  p = plan([
+    fila({ client: "c-a", owner: "o-1", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+    fila({ client: "c-b", owner: "o-2", phone: TEL_A, plazo: 10, created_at: due(addDays(today, 20), 10, 1, 1), ultimo: localAt(addDays(today, -1), "VE", 9).toISOString() }),
+  ]);
+  check("A19. el aviso de ayer de OTRO negocio al mismo número no frena el de este", p.notices.length === 1 && p.notices[0].ownerId === "o-1", `${p.notices.length} avisos`);
+
+  p = plan([
+    fila({ client: "c-previo", phone: TEL_A, plazo: 8, created_at: due(addDays(today, 2), 8, 1, 1) }),
+    fila({ client: "c-firme", phone: TEL_A, plazo: 10, created_at: due(addDays(today, -15), 10, 1, 1) }),
+  ]);
+  check("A20. dentro del número, el firme de una ficha gana al previo de otra",
+    p.notices.length === 1 && p.notices[0].clientId === "c-firme" && p.notices[0].kind === "d15", JSON.stringify(p.notices.map((x) => [x.clientId, x.kind])));
+
+  p = plan([
+    fila({ client: "c-kari", plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+    fila({ client: "c-hermana", plazo: 10, created_at: due(addDays(today, -7), 10, 1, 1) }),
+  ]);
+  check("A21. filas sin «phone» (base en la 218): se agrupa por cliente, como antes, y salen las dos",
+    p.notices.length === 2 && p.heldBySharedPhone === 0, `${p.notices.length} avisos`);
+
+  p = plan([
+    fila({ client: "c-solo", phone: TEL_A, plazo: 18, cuotas: 2, created_at: due(addDays(today, -7), 18, 2, 1) }),
+  ]);
+  check("A22. un solo cliente con dos cuotas el mismo día: no cuenta como «mismo_numero»", p.notices.length === 1 && p.heldBySharedPhone === 0, `${p.heldBySharedPhone}`);
 }
 
 // ── B. THE WHOLE PATH IN DEV ─────────────────────────────────────────────
@@ -221,11 +276,22 @@ try {
     { n: "sin permiso", c: "VE", plazo: 8, k: 1, off: 2, sinPermiso: true },
     { n: "de foto", c: "VE", plazo: 8, k: 1, off: 2, source: "photo_import" },
     { n: "colombia", c: "CO", plazo: 8, k: 1, off: 2, cop: true },
+    // Migration 223. `tel` shares one number between records; the 9x suffixes are never an index.
+    { n: "familia uno", c: "VE", plazo: 10, k: 1, off: -7, tel: TEL + "90" },
+    // 15 days past due: the older cuota, so this one wins the phone, and B22b checks the message
+    // carries ITS name, ITS cuota and ITS link, not the sibling's.
+    { n: "familia dos", c: "VE", plazo: 10, k: 1, off: -15, tel: TEL + "90" },
+    // Karina, 25 and 26 November: «(Hermana)» was warned yesterday and is not due today.
+    { n: "karina hermana", c: "VE", plazo: 10, k: 1, off: 20, tel: TEL + "91", avisado: true, avisadoDias: 1 },
+    { n: "karina kari", c: "VE", plazo: 10, k: 1, off: -7, tel: TEL + "91" },
+    // One phone, two businesses: each sends its own.
+    { n: "dos bodegas ve", c: "VE", plazo: 8, k: 1, off: 2, tel: TEL + "92" },
+    { n: "dos bodegas co", c: "CO", plazo: 8, k: 1, off: 2, cop: true, tel: TEL + "92" },
   ];
 
   for (const [i, x] of casos.entries()) {
     const owner = x.c === "VE" ? ve.id : co.id;
-    const tel = `${x.c === "VE" ? TEL : "5730099130"}${String(i).padStart(2, "0")}`;
+    const tel = x.tel ?? `${x.c === "VE" ? TEL : "5730099130"}${String(i).padStart(2, "0")}`;
     await admin.from("client_whatsapp_consents").delete().eq("phone", tel);
     const { data: cl, error: eC } = await admin.from("clients").insert({ owner_id: owner, name: PREFIJO + x.n, whatsapp: tel, is_flagged: !!x.flagged }).select("id").single();
     if (eC) throw new Error(`cliente ${x.n}: ${eC.message}`);
@@ -259,7 +325,7 @@ try {
     if (x.avisado) {
       const { error: eW } = await admin.from("whatsapp_sends").insert({
         owner_id: owner, template: "installment_due_soon", period_key: `qa:${cl.id}`, audience: "client", recipient: tel,
-        client_id: cl.id, reminder: true, ok: true, sent_at: new Date(Date.now() - 3 * 864e5).toISOString(),
+        client_id: cl.id, reminder: true, ok: true, sent_at: new Date(Date.now() - (x.avisadoDias ?? 3) * 864e5).toISOString(),
       });
       if (eW) throw new Error(`aviso previo ${x.n}: ${eW.message}`);
     }
@@ -306,6 +372,27 @@ try {
   const coMsg = uno("colombia");
   check("B17. un negocio colombiano: sale, en el libro único", coMsg && !/[€]/.test(params(coMsg).amount_due ?? "€") && params(coMsg).installment === "pago",
     JSON.stringify(params(coMsg)));
+
+  const alNumero = (tel) => interceptados.filter((m) => m.to === tel);
+  check("B22. dos fichas del mismo negocio con el mismo número y firme hoy: a ese número le llega UNO",
+    alNumero(TEL + "90").length === 1 && (resumen.omitidos.mismo_numero ?? 0) >= 1,
+    `${alNumero(TEL + "90").length} mensajes · ${JSON.stringify(resumen.omitidos)}`);
+  const familiar = alNumero(TEL + "90")[0];
+  const fichaDos = casos.find((x) => x.n === "familia dos");
+  const { data: enlaceDos } = await admin.from("share_links").select("token").eq("client_id", fichaDos.id);
+  const tokenBoton = (familiar?.template?.components ?? []).find((c) => c.type === "button")?.parameters?.[0]?.text;
+  check("B22b. ese único mensaje lleva el nombre, la cuota y el enlace de la ficha elegida, sin mezclar con la otra",
+    params(familiar).client_name === PREFIJO + "familia dos" && params(familiar).days_overdue === "15" &&
+      (enlaceDos ?? []).some((l) => l.token === tokenBoton),
+    `${params(familiar).client_name} · ${params(familiar).days_overdue} días · enlace ${tokenBoton && (enlaceDos ?? []).some((l) => l.token === tokenBoton) ? "de la ficha" : "OTRO"}`);
+  check("B23. el caso de Karina en la base: a «(Hermana)» le llegó ayer, «(kari)» vence hoy → no le llega nada a ese número",
+    alNumero(TEL + "91").length === 0, `${alNumero(TEL + "91").length} mensajes`);
+  const dosBodegas = alNumero(TEL + "92");
+  check("B24. el mismo número cliente de dos negocios: le llega uno de cada uno",
+    dosBodegas.length === 2 && new Set(dosBodegas.map((m) => params(m).business_name)).size === 2,
+    JSON.stringify(dosBodegas.map((m) => params(m).business_name)));
+  const { data: filaCand } = await admin.rpc("whatsapp_cuotas_candidatas").select("client_id,phone").eq("client_id", casos.find((x) => x.n === "karina kari").id);
+  check("B25. la base devuelve «phone» normalizado (migración 223)", filaCand?.[0]?.phone === TEL + "91", JSON.stringify(filaCand));
 
   const antes = interceptados.filter((m) => m.to?.startsWith(TEL) || m.to?.startsWith("5730099130")).length;
   const segunda = await sendInstallmentNotices();

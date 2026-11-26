@@ -37,6 +37,18 @@ import { enviarPlantilla } from "@/lib/whatsapp/kapso";
 // The receipt of a payment does not count against this cap (my reading, stated to the owner on
 // 2026-11-22: it confirms a fact the shopkeeper just registered).
 //
+// AND SINCE 2026-11-26 «CLIENT» MEANS THE PHONE, WITHIN ONE BUSINESS. Owner's «Opción A» and «Solo
+// mismo negocio», after production showed one phone carrying two records of the same bodega
+// («Karina castillo (kari)» and «(Hermana)») get `overdue_debt_warning` on the 25th for one and on
+// the 26th for the other. The cap was per record, so two records were two caps. Now the group is
+// owner + phone (migration 223): the firm notice first, then the oldest cuota, then the oldest
+// fiado, ACROSS everyone on that phone, and one goes out. The others are held, counted as
+// `mismo_numero`, and not sent later. A phone that is a client of two bodegas still gets one from
+// each: a business must not lose its reminder because another one sent first.
+//
+// Without `phone` in the rows (a database still on 218) the group falls back to the client, which
+// is the behaviour before 223, and says so in the log.
+//
 // THE DAY IS COUNTED IN THE BUSINESS'S ZONE (`zonaDelNegocio`, PL-1, migration 168): Caracas for
 // Venezuela, Bogota for everyone else. «Today» and the cuota's date come from the same clock.
 //
@@ -66,7 +78,10 @@ export type CandidateRow = {
   balance: number | string | null;
   balance_usd: number | string | null;
   balance_eur: number | string | null;
+  /** The business's last cuota notice to this client OR this phone (migration 223). */
   ultimo_aviso: string | null;
+  /** Normalized phone, the send gate's `recipient`. Absent on a database still on 218. */
+  phone?: string | null;
 };
 
 export type NoticeKind = "soon" | "d7" | "d15";
@@ -94,8 +109,10 @@ export type PlannedNotice = {
 
 export type PlanResult = {
   notices: PlannedNotice[];
-  /** Clients with something due today that the weekly cap held back. */
+  /** Phones (per business) with something due today that the weekly cap held back. */
   heldByWeeklyCap: number;
+  /** Notices held because someone else on the same phone of the same business got today's. */
+  heldBySharedPhone: number;
   /** Overdue cuotas not sent because the client is already flagged. */
   heldByFlag: number;
 };
@@ -137,11 +154,13 @@ export function daysBefore(plazoDias: number, cuotas: number): number {
  */
 export function planInstallmentNotices(rows: CandidateRow[], now: Date): PlanResult {
   type Candidate = PlannedNotice & { createdAt: string };
-  const byClient = new Map<string, Candidate[]>();
+  // Keyed by business + phone since migration 223; by client when the row carries no phone.
+  const byRecipient = new Map<string, Candidate[]>();
   const lastNotice = new Map<string, { at: string | null; tz: string }>();
   let heldByFlag = 0;
 
   for (const r of rows) {
+    const key = r.phone ? `${r.owner_id}:${r.phone}` : `client:${r.client_id}`;
     const tz = zonaDelNegocio(r.country);
     const today = dayIn(now, tz);
     const n = r.cuotas && r.cuotas > 1 ? r.cuotas : 1;
@@ -179,7 +198,7 @@ export function planInstallmentNotices(rows: CandidateRow[], now: Date): PlanRes
         continue;
       }
 
-      const list = byClient.get(r.client_id) ?? [];
+      const list = byRecipient.get(key) ?? [];
       list.push({
         kind,
         template: kind === "soon" ? TEMPLATE_DUE_SOON : TEMPLATE_OVERDUE,
@@ -200,17 +219,23 @@ export function planInstallmentNotices(rows: CandidateRow[], now: Date): PlanRes
           amount_due: amountDue,
         },
       });
-      byClient.set(r.client_id, list);
+      byRecipient.set(key, list);
     }
-    lastNotice.set(r.client_id, { at: r.ultimo_aviso, tz });
+    // THE LATEST OF THE GROUP. Rows of one phone can disagree: each also counts its own client's
+    // notices, so a record whose number was corrected carries a notice the others do not.
+    const prev = lastNotice.get(key);
+    // Compared as instants, not as text: «…+00:00» and «…Z» are the same moment written two ways.
+    const at = !prev?.at ? r.ultimo_aviso : !r.ultimo_aviso ? prev.at : Date.parse(r.ultimo_aviso) > Date.parse(prev.at) ? r.ultimo_aviso : prev.at;
+    lastNotice.set(key, { at, tz });
   }
 
   const notices: PlannedNotice[] = [];
   let heldByWeeklyCap = 0;
-  for (const [clientId, list] of byClient) {
+  let heldBySharedPhone = 0;
+  for (const [key, list] of byRecipient) {
     // THE WEEKLY CAP, counted in calendar days of the business: a notice sent last Monday blocks
     // until this Monday, whatever minute the cron ran each time.
-    const last = lastNotice.get(clientId);
+    const last = lastNotice.get(key);
     if (last?.at && daysBetween(dayIn(new Date(last.at), last.tz), dayIn(now, last.tz)) < 7) {
       heldByWeeklyCap++;
       continue;
@@ -225,12 +250,15 @@ export function planInstallmentNotices(rows: CandidateRow[], now: Date): PlanRes
     const { createdAt: _createdAt, ...chosen } = list[0];
     void _createdAt;
     notices.push(chosen);
+    // Other PEOPLE on this phone who were due today. A second cuota of the chosen client was
+    // never counted before 223 and is not now.
+    heldBySharedPhone += new Set(list.filter((c) => c.clientId !== chosen.clientId).map((c) => c.clientId)).size;
   }
 
   // Overdue before early across clients too: the shared daily caps of the send gate (MS-37) are
   // reached first by whoever is sent first, and the firm notice is the one that cannot wait.
   notices.sort((a, b) => Number(a.kind === "soon") - Number(b.kind === "soon"));
-  return { notices, heldByWeeklyCap, heldByFlag };
+  return { notices, heldByWeeklyCap, heldBySharedPhone, heldByFlag };
 }
 
 export type InstallmentNoticesSummary = {
@@ -278,9 +306,15 @@ export async function sendInstallmentNotices(now: Date = new Date()): Promise<In
     console.error("[avisos de cuota] whatsapp_cuotas_candidatas no devuelve pendiente: la 218 de la base es la vieja");
     throw new Error("La función de candidatos de la base no está al día (migración 218).");
   }
+  // A database still on 218 has no `phone`: the plan groups by client, which is the behaviour
+  // before 223. Not an error -- either deploy order is safe -- but it must not pass for the fix.
+  if (rows.length > 0 && !("phone" in rows[0])) {
+    console.warn("[avisos de cuota] whatsapp_cuotas_candidatas no devuelve phone: la base no tiene la 223, el tope sigue por cliente");
+  }
   const plan = planInstallmentNotices(rows, now);
   summary.candidatos = plan.notices.length;
   skip("tope_semanal", plan.heldByWeeklyCap);
+  skip("mismo_numero", plan.heldBySharedPhone);
   skip("mala_paga", plan.heldByFlag);
 
   for (const n of plan.notices) {
