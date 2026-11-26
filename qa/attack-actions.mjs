@@ -218,6 +218,13 @@ try {
     // second one so the delete control has something of its own to delete.
     ctx[`cat${quien}`] = (await svc.from("product_categories").insert({ owner_id: o.id, name: `Categoría de ${quien}` }).select("id").single()).data?.id;
   }
+  // Migration 219: a barcode on each product, B's being the one A scans and asks for.
+  const CODE_A = "7591234567894";
+  const CODE_B = "7591058001109";
+  for (const [o, p, code] of [[A, ctx.pA, CODE_A], [B, ctx.pB, CODE_B]]) {
+    const { error } = await svc.from("product_barcodes").insert({ owner_id: o.id, product_id: p, code });
+    if (error) throw new Error(`product_barcodes: ${error.message}`);
+  }
   ctx.catA2 = (await svc.from("product_categories").insert({ owner_id: A.id, name: "Categoría de A para borrar" }).select("id").single()).data?.id;
   ctx.mA = ctx.mA.id; ctx.codigoB = ctx.mB.transaction_code; ctx.mB = ctx.mB.id;
   // B's logo, the file the logo attack tries to take over and delete.
@@ -349,6 +356,10 @@ try {
     // asked for B's product name it says «not taken», and the control proves it does say
     // «taken» for one of A's.
     { clave: P("productos/actions.ts#productNameTaken"), fase: 2, ataques: [["pregunta si existe el nombre del producto de B", A.cookie, () => ["Producto de B"]]], juzgar: (r) => r.valor === false, control: [A.cookie, () => ["Producto de A"]], exito: (r) => funciono(r) && r.valor === true },
+    // v0.13.0 (CT-182). The scan echoes the code it was sent, so the verdict is the status
+    // and the absence of a product id, not the leak filter.
+    { clave: P("productos/actions.ts#productoPorCodigo"), fase: 2, ataques: [["escanea el código de barras del producto de B", A.cookie, () => [CODE_B]]], juzgar: (r) => r.valor?.status === "not_found" && !r.valor?.productId, control: [A.cookie, () => [CODE_A]], exito: (r) => funciono(r) && r.valor?.status === "found" && r.valor?.productId === ctx.pA },
+    { clave: P("productos/actions.ts#codigosDelProducto"), fase: 2, ataques: [["pide los códigos del producto de B", A.cookie, () => [ctx.pB]], ["un anónimo los pide", null, () => [ctx.pB]]], juzgar: (r) => r.valor === null || r.valor instanceof Error || r.status !== 200, control: [A.cookie, () => [ctx.pA]], exito: (r) => funciono(r) && JSON.stringify(r.valor) === JSON.stringify([CODE_A]) },
     { clave: P("ventas/actions.ts#buscarProductosParaVenta"), fase: 2, ataques: [["busca el producto de B por su nombre", A.cookie, () => ["Producto de B"]]], control: [A.cookie, () => ["Producto de A"]], exito: (r) => funciono(r) && JSON.stringify(r.valor).includes("Producto de A") },
 
     // ── FASE 2: writes by id ──
@@ -437,7 +448,9 @@ try {
     { clave: P("productos/actions.ts#renombrarCategoria"), fase: 2, ataques: [["renombra la categoría de B", A.cookie, () => [ctx.catB, "HACKED"]]], control: [A.cookie, () => [ctx.catA, "Categoría de A"]] },
     { clave: P("productos/actions.ts#eliminarCategoria"), fase: 2, ataques: [["elimina la categoría de B", A.cookie, () => [ctx.catB]]], control: [A.cookie, () => [ctx.catA2]] },
     ...[["actions.ts#getNotifications"], ["actions.ts#getUnreadNotificationCount"], ["actions.ts#completeOnboarding"], ["productos/actions.ts#getOrCreateCatalogLink"], ["ventas/actions.ts#resolverMostrador"],
-        ["profile/actions.ts#registrarPreguntaAvisos"], ["profile/actions.ts#registrarAvisoDelResumen"]].map(([k]) => ({
+        ["profile/actions.ts#registrarPreguntaAvisos"], ["profile/actions.ts#registrarAvisoDelResumen"],
+        // v0.13.0: three reads of the caller's own business, with no argument.
+        ["reportes/actions.ts#getAssistantNoteUnread"], ["ventas/actions.ts#contextoParaMonto"], ["ventas/actions.ts#monedasDelNegocio"]].map(([k]) => ({
       clave: P(k), fase: 2, ataques: [["un anónimo la llama", null, () => []]], control: [A.cookie, () => []],
     })),
     { clave: P("actions.ts#recordImportNotification"), fase: 2, ataques: [["un anónimo la llama", null, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]]], control: [A.cookie, () => [{ fileName: "zz", status: "done", movementsCount: 1 }]] },
@@ -445,6 +458,10 @@ try {
     { clave: P("profile/actions.ts#guardarAvisosWhatsapp"), fase: 2, ataques: [["un anónimo la llama", null, () => [false, "zz"]]], control: [A.cookie, () => [false, "zz"]] },
     // «Consejos de Sevenz» (migration 217). The control runs with A's cookie, so a missing
     // column or grant shows up as a failed control.
+    // «Códigos de barras» (migration 219): the switch of the caller's own business.
+    { clave: P("profile/actions.ts#guardarCodigosDeBarras"), fase: 2, ataques: [["un anónimo la llama", null, () => [true]]], control: [A.cookie, () => [true]],
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("barcodes_enabled").eq("id", A.id).single()).data?.barcodes_enabled === true
+        && (await svc.from("owners").select("barcodes_enabled").eq("id", B.id).single()).data?.barcodes_enabled === false },
     { clave: P("profile/actions.ts#guardarConsejosSevenz"), fase: 2, ataques: [["un anónimo la llama", null, () => [false]]], control: [A.cookie, () => [true]] },
     // Payment methods (migration 179, 2026-11-02). The controls run with A's
     // own cookie, so a missing grant on the new table shows up here as a
