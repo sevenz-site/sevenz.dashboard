@@ -103,6 +103,10 @@ export async function signup(_prevState: SignupState, formData: FormData): Promi
         whatsapp: whatsapp || null,
         country,
         referral_source: referralSource,
+        // THE TERMS ACCEPTANCE, as a flag the trigger stamps with its own clock
+        // (migration 222). Only reaches here with the box ticked: it is checked
+        // above. Until 222 nothing stored it from 2026-09-23 on.
+        accepted_terms: true,
         // EL CONSENTIMIENTO DE LOS AVISOS POR WHATSAPP.
         //
         // Se manda la FRASE, no un booleano: es lo que esa persona leyó encima
