@@ -394,10 +394,16 @@ export type EventProps = {
     has_description: boolean;
     description_length: number;
     show_address: boolean;
+    // Migration 225 (2026-11-26): the WhatsApp button and the extra link's kind.
+    show_whatsapp: boolean;
+    link_kind: "website" | "instagram" | "facebook" | "tiktok" | null;
     changed: string[];
   };
   "Catalog Customization Rejected": {
-    reason: "no_session" | "invalid_color" | "welcome_too_long" | "welcome_has_link" | "description_too_long" | "description_has_link" | "invalid_cover" | "cover_gone" | "db_error";
+    reason:
+      | "no_session" | "invalid_color" | "welcome_too_long" | "welcome_has_link" | "description_too_long" | "description_has_link" | "invalid_cover" | "cover_gone" | "db_error"
+      // Migration 225 (2026-11-26).
+      | "whatsapp_missing" | "link_kind_missing" | "link_too_long" | "link_not_https" | "link_invalid" | "link_shortener" | "link_whatsapp" | "link_wrong_network";
   };
   "Payment Method Changed": { action: "add" | "update" | "delete" };
   "Owner Notices Changed": { enabled: boolean };

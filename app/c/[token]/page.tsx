@@ -21,6 +21,8 @@ import { CatalogSearchGrid } from "@/components/public/catalog-search-grid";
 import { ProductShareButton } from "@/components/dashboard/product-share-button";
 import { previewPriceLine } from "@/lib/products/preview-price";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { CatalogContactButtons } from "@/components/public/catalog-contact-buttons";
+import { catalogWhatsappHref, checkExtraLink } from "@/lib/catalog/extra-link";
 import {
   formatPriceAmount,
   priceIn,
@@ -210,6 +212,16 @@ type SharedCatalog = {
   catalog_cover_path?: string | null;
   catalog_welcome?: string | null;
   catalog_address?: string | null;
+  // Migration 225 (2026-11-26): «Contactar vía WhatsApp» and the extra link. Optional for
+  // the same reason as the branding: absent until 225 runs, and then nothing is drawn.
+  catalog_show_whatsapp?: boolean | null;
+  catalog_link_kind?: string | null;
+  catalog_link_url?: string | null;
+  // SE PINTA OTRA VEZ DESDE EL 2026-11-26, pero solo si el dueño lo elige (migración
+  // 225, la casilla «Mostrar «Contactar vía WhatsApp» en mi catálogo», apagada de salida).
+  // Lo de abajo es la historia de por qué se había quitado, y sigue siendo la razón de
+  // que sea una casilla y no un botón para todos.
+  //
   // YA NO SE PINTA. Hasta el 2026-10-15 esta pagina tenia un boton
   // «Escribenos por WhatsApp» que abria `wa.me/<numero del dueno>`; el dueno
   // lo quito, y de paso cierra `CT-11` — ese enlace llevaba el numero del
@@ -361,6 +373,22 @@ export default async function CatalogoPublicoPage({
   }
   const hayCalculadas = [...bolivares.values()].some((b) => !b.pinned);
 
+  // MIGRATION 225: the owner's WhatsApp button and extra link, in whichever header this
+  // catalogue uses. Drawn in the owner's own preview too: that screen exists to show what
+  // the customer sees (the same reason «Compartir» is drawn there).
+  const contacto = (
+    <CatalogContactButtons
+      whatsappHref={shared.catalog_show_whatsapp ? catalogWhatsappHref(shared.owner_whatsapp) : null}
+      linkKind={shared.catalog_link_kind}
+      linkUrl={shared.catalog_link_url}
+      tone={hasCatalogBranding(shared) ? "light" : "dark"}
+    />
+  );
+  const hayContacto = Boolean(
+    (shared.catalog_show_whatsapp && catalogWhatsappHref(shared.owner_whatsapp)) ||
+      (shared.catalog_link_url && checkExtraLink(shared.catalog_link_kind, shared.catalog_link_url).ok),
+  );
+
   return (
     // ON THE WEB THE CATALOGUE USES THE FULL WIDTH, since 2026-11-15: frame `2115:21823`
     // (CT-170) draws it so, with 48px at the sides and four products a row, and the owner
@@ -410,6 +438,7 @@ export default async function CatalogoPublicoPage({
           back={esVistaPrevia ? { href: "/productos", label: "Volver al catálogo" } : undefined}
           backSlot={<BackToBalance />}
           note={hayCalculadas ? NOTA_DE_LA_TASA : undefined}
+          actions={hayContacto ? contacto : undefined}
         />
       ) : (
       <PublicHeader
@@ -451,7 +480,11 @@ export default async function CatalogoPublicoPage({
            pierde al subirlo: la primera versión miraba solo si el negocio es
            venezolano, y el aviso salía arriba Y abajo a la vez. */
         subtitle={hayCalculadas ? NOTA_DE_LA_TASA : undefined}
-      />
+      >
+        {/* Migration 225, frame `2291:25099`: under the note, in the band's own
+            `children` slot, the same place the balance page puts its WhatsApp button. */}
+        {hayContacto ? contacto : null}
+      </PublicHeader>
       )}
 
       <div className="flex flex-col gap-6 px-4 py-6 md:px-12">

@@ -9,6 +9,7 @@ import { mensajeDeError } from "@/lib/errores-legibles";
 import { trackServer } from "@/lib/mixpanel-server";
 import type { EventProps } from "@/lib/analytics/events";
 import { WELCOME_MAX } from "@/lib/catalog/welcome";
+import { checkExtraLink } from "@/lib/catalog/extra-link";
 
 // SAVES «PERSONALIZAR CATÁLOGO» (CT-170, phase 1, frames `2115:21868` and `2115:21966`).
 //
@@ -58,6 +59,11 @@ export type CatalogBrandingInput = {
   description?: string;
   // Ignored since 2026-11-18: the box is saved from Mi negocio. Kept so an older tab still saves.
   showAddress?: boolean;
+  // Migration 225. Optional: a tab opened before them sends none, and then the saved values
+  // are kept as they are instead of being switched off by a form that never showed them.
+  showWhatsapp?: boolean;
+  linkKind?: string | null;
+  linkUrl?: string | null;
 };
 
 type RejectReason = EventProps["Catalog Customization Rejected"]["reason"];
@@ -112,11 +118,30 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     return rechazar("invalid_cover", "La portada no es válida. Vuelve a subirla.");
   }
 
+  // Migration 225: the extra link, through the same rule the screen and the page use.
+  const sendsContact = input.showWhatsapp !== undefined || input.linkUrl !== undefined;
+  const link = checkExtraLink(input.linkKind, input.linkUrl);
+  if (!link.ok) return rechazar(link.reason, link.error);
+
   const { data: before, error: readError } = await supabase
     .from("owners")
-    .select("brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address")
+    .select(
+      sendsContact
+        ? "brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address, whatsapp, catalog_show_whatsapp, catalog_link_kind, catalog_link_url"
+        : "brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address",
+    )
     .eq("id", user.id)
-    .single();
+    .single<{
+      brand_color: string | null;
+      catalog_cover_path: string | null;
+      catalog_welcome: string | null;
+      brand_description: string | null;
+      catalog_show_address: boolean | null;
+      whatsapp?: string | null;
+      catalog_show_whatsapp?: boolean | null;
+      catalog_link_kind?: string | null;
+      catalog_link_url?: string | null;
+    }>();
   if (readError) {
     return rechazar("db_error", mensajeDeError("guardar tu catálogo", readError, "profile"));
   }
@@ -126,6 +151,13 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     return rechazar("cover_gone", "La portada que subiste ya no está disponible. Vuelve a subirla y guarda de nuevo.");
   }
 
+  // The box can only be ON with a number to open: an owner with no WhatsApp in Mi negocio
+  // would publish a button that goes nowhere. The screen disables it; this is the second line.
+  const showWhatsapp = Boolean(input.showWhatsapp);
+  if (sendsContact && showWhatsapp && !(before?.whatsapp ?? "").replace(/\D/g, "")) {
+    return rechazar("whatsapp_missing", "Agrega tu número de WhatsApp en Mi negocio para mostrar el botón.");
+  }
+
   const { error } = await supabase
     .from("owners")
     .update({
@@ -133,6 +165,9 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
       catalog_cover_path: coverPath,
       catalog_welcome: welcome.text,
       brand_description: description.text,
+      ...(sendsContact
+        ? { catalog_show_whatsapp: showWhatsapp, catalog_link_kind: link.kind, catalog_link_url: link.url }
+        : {}),
     })
     .eq("id", user.id);
   if (error) {
@@ -155,6 +190,10 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
     previousCover !== coverPath && "cover",
     (before?.catalog_welcome ?? null) !== welcome.text && "welcome",
     (before?.brand_description ?? null) !== description.text && "description",
+    sendsContact && Boolean(before?.catalog_show_whatsapp) !== showWhatsapp && "whatsapp",
+    sendsContact &&
+      ((before?.catalog_link_url ?? null) !== link.url || (before?.catalog_link_kind ?? null) !== link.kind) &&
+      "link",
   ].filter((x): x is string => Boolean(x));
   trackServer(
     "Catalog Customized",
@@ -168,6 +207,10 @@ export async function saveCatalogBranding(input: CatalogBrandingInput): Promise<
       description_length: description.text ? [...description.text].length : 0,
       // The saved value, read from the row: since 2026-11-18 this screen no longer sets it.
       show_address: Boolean(before?.catalog_show_address),
+      // Migration 225 (2026-11-26). The kind, never the URL: which networks owners point
+      // at says whether the list of four is the right one.
+      show_whatsapp: sendsContact ? showWhatsapp : Boolean(before?.catalog_show_whatsapp),
+      link_kind: sendsContact ? link.kind : null,
       changed,
     },
     user.email,

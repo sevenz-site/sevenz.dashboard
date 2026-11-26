@@ -21,7 +21,11 @@ export default async function PersonalizarCatalogoPage({
   const supabase = await getRequestClient();
   const { data: owner, error } = await supabase
     .from("owners")
-    .select("business_name, logo_path, address, brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address")
+    // Migration 225 adds the last four. Without it this read fails and the screen says so
+    // instead of drawing an empty form (see above), which is why 225 runs before this code.
+    .select(
+      "business_name, logo_path, address, brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address, whatsapp, catalog_show_whatsapp, catalog_link_kind, catalog_link_url",
+    )
     .eq("id", user.id)
     .single();
 
@@ -48,6 +52,10 @@ export default async function PersonalizarCatalogoPage({
       welcome={owner.catalog_welcome ?? null}
       description={owner.brand_description ?? null}
       showAddress={Boolean(owner.catalog_show_address)}
+      whatsapp={owner.whatsapp ?? null}
+      showWhatsapp={Boolean(owner.catalog_show_whatsapp)}
+      linkKind={owner.catalog_link_kind ?? null}
+      linkUrl={owner.catalog_link_url ?? null}
       backHref={fromProfile ? "/profile" : "/productos"}
       backLabel={fromProfile ? "Volver a Mi negocio" : "Volver a Catálogo"}
     />

@@ -15,13 +15,18 @@
 //      would pass.
 //   7. THE REAL SERVER ACTION, over HTTP (needs `npm run dev`): it adjusts #1E88E5 to
 //      #3092E7 before storing it, and refuses a welcome message with a link.
+//   8. MIGRATION 225, the WhatsApp button and the extra link: the link rule on the pure
+//      function (the label must match the host, no shorteners, no WhatsApp links), the
+//      database's constraints, what get_shared_catalog returns, and the real action
+//      saving a good link and refusing a disguised one without writing anything.
 //
-// Needs migration 210 in the database it points at. Writes only in dev, on the QA owner,
+// Needs migrations 210, 211 and 225 in the database it points at. Writes only in dev, on the QA owner,
 // and puts his branding back as it found it.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { resolveBrandColor } from "../lib/catalog/brand-color.ts";
 import { checkDescription, checkWelcome } from "../lib/catalog/welcome.ts";
+import { catalogWhatsappHref, checkExtraLink } from "../lib/catalog/extra-link.ts";
 import { cookieDeDueno, idDeLaAccion, llamarAccion } from "./server-action.mjs";
 
 const env = Object.fromEntries(
@@ -65,7 +70,8 @@ function check(nombre, pasa, detalle) {
   console.log(`${pasa ? "PASS" : "FAIL"}  ${nombre}${detalle ? `  — ${detalle}` : ""}`);
 }
 
-const COLUMNAS = "brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address, address";
+const COLUMNAS =
+  "brand_color, catalog_cover_path, catalog_welcome, brand_description, catalog_show_address, address, catalog_show_whatsapp, catalog_link_kind, catalog_link_url";
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff, 0xd9]);
 let dueno = null;
 let antes = null;
@@ -100,12 +106,32 @@ try {
   );
   check("2f. la descripción: 501 se rechazan, 500 pasan, y sin enlaces", !checkDescription("a".repeat(501)).ok && checkDescription("a".repeat(500)).ok && !checkDescription("Visita tienda.com").ok);
 
+  // ── 8a-8f. The extra link (225), on the pure function ───────────────────
+  const l = (k, u) => checkExtraLink(k, u);
+  check("8a. un Instagram de verdad pasa, con o sin www.", l("instagram", "https://instagram.com/minichino").ok && l("instagram", "https://www.instagram.com/minichino/").ok);
+  check(
+    "8b. «Instagram» que lleva a otro sitio se rechaza, también disfrazado",
+    l("instagram", "https://facebook.com/x").reason === "link_wrong_network" &&
+      l("instagram", "https://instagram.com.evil.net/x").reason === "link_wrong_network" &&
+      l("instagram", "https://evilinstagram.com/x").reason === "link_wrong_network" &&
+      l("instagram", "https://instagram.com@evil.net/x").reason === "link_invalid",
+  );
+  check("8c. acortadores y enlaces de WhatsApp se rechazan en cualquier tipo", l("website", "https://bit.ly/x").reason === "link_shortener" && l("website", "https://wa.me/584121234567").reason === "link_whatsapp");
+  check("8d. sin https:// o sin tipo se rechaza", l("website", "http://tienda.com").reason === "link_not_https" && l("website", "tienda.com").reason === "link_not_https" && l(null, "https://tienda.com").reason === "link_kind_missing");
+  check("8e. CONTROL: un sitio web cualquiera con https pasa, y vacío es «sin enlace»", l("website", "https://linktr.ee/minichino").ok && JSON.stringify(l("instagram", "  ")) === JSON.stringify({ ok: true, kind: null, url: null }));
+  check(
+    "8f. WhatsApp abre con el saludo y solo dígitos; sin número no hay botón",
+    catalogWhatsappHref("+58 412-123 4567") === "https://wa.me/584121234567?text=Hola%2C%20vi%20tu%20cat%C3%A1logo%20y%20quiero%20hacerte%20una%20consulta." &&
+      catalogWhatsappHref(null) === null &&
+      catalogWhatsappHref("sin número") === null,
+  );
+
   // ── 3. As the owner ────────────────────────────────────────────────────
   if (!env.QA_OWNER_EMAIL) throw new Error("falta QA_OWNER_EMAIL en .env.local");
   ({ data: dueno } = await admin.from("owners").select("id").eq("email", env.QA_OWNER_EMAIL).single());
   const { data: otro } = await admin.from("owners").select("id, brand_color").neq("id", dueno.id).limit(1).single();
   ({ data: antes } = await admin.from("owners").select(COLUMNAS).eq("id", dueno.id).single());
-  if (!antes) throw new Error("no pude leer la marca del dueño de QA: ¿corrieron las migraciones 210 y 211 en dev?");
+  if (!antes) throw new Error("no pude leer la marca del dueño de QA: ¿corrieron las migraciones 210, 211 y 225 en dev?");
   const { data: enlace } = await admin.from("catalog_share_links").select("token").eq("owner_id", dueno.id).single();
   if (!enlace) throw new Error("el dueño de QA no tiene enlace de catálogo");
 
@@ -154,6 +180,26 @@ try {
   const { data: conDesc } = await publico.rpc("get_shared_catalog", { p_token: enlace.token });
   check("5e. la descripción de la marca NO viaja al cliente", conDesc && !JSON.stringify(conDesc).includes("ZZ QA descripción privada") && !("brand_description" in conDesc));
 
+  // ── 8g-8j. Migration 225 in the database and in what the customer receives ──
+  const { error: eTipo } = await admin.from("owners").update({ catalog_link_kind: "whatsapp", catalog_link_url: "https://x.com" }).eq("id", dueno.id);
+  const { error: eHttp } = await admin.from("owners").update({ catalog_link_kind: "website", catalog_link_url: "http://x.com" }).eq("id", dueno.id);
+  const { error: eSuelto } = await admin.from("owners").update({ catalog_link_kind: "website", catalog_link_url: null }).eq("id", dueno.id);
+  check("8g. la base rechaza un tipo que no existe, un http:// y un tipo sin enlace", Boolean(eTipo && eHttp && eSuelto), [eTipo?.message, eHttp?.message, eSuelto?.message].join(" | "));
+  check("8h. la casilla de WhatsApp nace apagada (lo que tenía el dueño de QA antes de la suite)", antes.catalog_show_whatsapp === false, String(antes.catalog_show_whatsapp));
+  const { error: e8i } = await yo
+    .from("owners")
+    .update({ catalog_show_whatsapp: true, catalog_link_kind: "instagram", catalog_link_url: "https://instagram.com/zzqa" })
+    .eq("id", dueno.id);
+  const { data: conBotones } = await publico.rpc("get_shared_catalog", { p_token: enlace.token });
+  check(
+    "8i. el dueño los guarda con su sesión y el cliente los recibe",
+    !e8i && conBotones?.catalog_show_whatsapp === true && conBotones?.catalog_link_kind === "instagram" && conBotones?.catalog_link_url === "https://instagram.com/zzqa",
+    e8i?.message ?? JSON.stringify({ w: conBotones?.catalog_show_whatsapp, k: conBotones?.catalog_link_kind }),
+  );
+  await admin.from("owners").update({ catalog_show_whatsapp: false, catalog_link_kind: null, catalog_link_url: null }).eq("id", dueno.id);
+  const { data: sinBotones } = await publico.rpc("get_shared_catalog", { p_token: enlace.token });
+  check("8j. CONTROL: apagados, el cliente recibe «false» y ningún enlace", sinBotones?.catalog_show_whatsapp === false && sinBotones?.catalog_link_url === null && sinBotones?.catalog_link_kind === null);
+
   // ── 6. The nightly cleanup ─────────────────────────────────────────────
   const suelta = `${dueno.id}/cover-zz-qa-suelta-${Date.now()}.jpg`;
   await admin.storage.from("logos").upload(suelta, JPG, { contentType: "image/jpeg", upsert: true });
@@ -198,6 +244,28 @@ try {
     );
     const { data: tras7d } = await admin.from("owners").select("brand_description").eq("id", dueno.id).single();
     check("7d. la acción rechaza una descripción con enlace, y no guarda nada", r7d.ok === false && tras7d.brand_description === DESC, r7d.error);
+
+    // ── 8k-8m. Migration 225 through the real action ─────────────────────
+    const base = { brandColor: "#1E88E5", coverPath: cover, welcome: "", description: DESC };
+    const r8k = await llamarAccion(BASE, "/productos/personalizar", accion, cookie, [
+      { ...base, showWhatsapp: false, linkKind: "tiktok", linkUrl: "https://www.tiktok.com/@zzqa" },
+    ]);
+    const { data: tras8k } = await admin.from("owners").select(COLUMNAS).eq("id", dueno.id).single();
+    check("8k. la acción guarda un TikTok de verdad", r8k.ok === true && tras8k.catalog_link_kind === "tiktok" && tras8k.catalog_link_url === "https://www.tiktok.com/@zzqa", JSON.stringify(r8k));
+    const r8l = await llamarAccion(
+      BASE,
+      "/productos/personalizar",
+      accion,
+      cookie,
+      [{ ...base, showWhatsapp: false, linkKind: "instagram", linkUrl: "https://bit.ly/zzqa" }],
+      '{"ok":',
+    );
+    const { data: tras8l } = await admin.from("owners").select("catalog_link_kind, catalog_link_url").eq("id", dueno.id).single();
+    check("8l. la acción rechaza un «Instagram» acortado, y no guarda nada", r8l.ok === false && tras8l.catalog_link_url === "https://www.tiktok.com/@zzqa", r8l.error);
+    // An older open tab sends none of the new keys: what the owner saved must survive it.
+    const r8m = await llamarAccion(BASE, "/productos/personalizar", accion, cookie, [{ ...base }]);
+    const { data: tras8m } = await admin.from("owners").select("catalog_link_url").eq("id", dueno.id).single();
+    check("8m. una pestaña vieja que no manda los campos nuevos no borra el enlace", r8m.ok === true && tras8m.catalog_link_url === "https://www.tiktok.com/@zzqa", JSON.stringify(r8m));
   }
 } catch (error) {
   check("la suite terminó", false, error instanceof Error ? error.message : String(error));
@@ -212,6 +280,9 @@ try {
         brand_description: antes.brand_description,
         catalog_show_address: antes.catalog_show_address,
         address: antes.address,
+        catalog_show_whatsapp: antes.catalog_show_whatsapp,
+        catalog_link_kind: antes.catalog_link_kind,
+        catalog_link_url: antes.catalog_link_url,
       })
       .eq("id", dueno.id);
     if (error) console.error("NO PUDE DEVOLVER la marca del dueño de QA:", error.message);

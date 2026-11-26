@@ -39,6 +39,7 @@ export function CatalogBrandHeader({
   welcome,
   address,
   note,
+  actions,
   back,
   backSlot,
 }: {
@@ -49,6 +50,9 @@ export function CatalogBrandHeader({
   welcome?: string | null;
   address?: string | null;
   note?: ReactNode;
+  // Migration 225: «Contactar vía WhatsApp» and the extra link (`CatalogContactButtons`),
+  // under the address and above the note, as frames `2291:25036` and `2291:25137` draw them.
+  actions?: ReactNode;
   back?: { href: string; label: string };
   // `BackToBalance`, which draws itself only when the client came from his balance link.
   backSlot?: ReactNode;
@@ -100,6 +104,8 @@ export function CatalogBrandHeader({
             ⌖&nbsp;&nbsp;{address}
           </p>
         ) : null}
+        {/* 6px on top of the 10px gap: the frames' 16 between the address and the buttons. */}
+        {actions ? <div className="w-full pt-1.5">{actions}</div> : null}
         {/* `text-muted-foreground` since 2026-11-25, owner's request: the note about the
             rate sits one level below the address instead of reading as loud as it. The
             header's #272727 stays for everything else. The dark header without

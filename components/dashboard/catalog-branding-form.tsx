@@ -16,6 +16,20 @@ import { fileToResizedBlob } from "@/lib/image";
 import { BRAND_DEFAULT, normalizeHex } from "@/lib/catalog/brand-color";
 import { DESCRIPTION_MAX, WELCOME_MAX, checkDescription, checkWelcome } from "@/lib/catalog/welcome";
 import { saveCatalogBranding } from "@/app/(app)/productos/personalizar/actions";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LinkKindIcon } from "@/components/icons/social";
+import { CatalogContactButtons } from "@/components/public/catalog-contact-buttons";
+import {
+  LINK_KINDS,
+  LINK_KIND_LABEL,
+  LINK_KIND_PLACEHOLDER,
+  LINK_MAX,
+  catalogWhatsappHref,
+  checkExtraLink,
+  isLinkKind,
+  type LinkKind,
+} from "@/lib/catalog/extra-link";
 
 // «PERSONALIZAR CATÁLOGO» (CT-170, phase 1). Frames, read with `get_design_context` on
 // 2026-11-15 and approved by the owner on 2026-11-12: `2115:21868` (phone), `2115:21921`
@@ -62,6 +76,11 @@ type Props = {
   description: string | null;
   // The SAVED value; it is set in Mi negocio since 2026-11-18. Only the preview reads it.
   showAddress: boolean;
+  // Migration 225. `whatsapp` is the number in Mi negocio; the box needs one to turn on.
+  whatsapp: string | null;
+  showWhatsapp: boolean;
+  linkKind: string | null;
+  linkUrl: string | null;
   // Where the back arrow goes: Mi negocio when entered from there, Catálogo otherwise.
   backHref: string;
   backLabel: string;
@@ -91,6 +110,12 @@ export function CatalogBrandingForm(props: Props) {
   const [welcome, setWelcome] = useState(props.welcome ?? "");
   const [description, setDescription] = useState(props.description ?? "");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [showWhatsapp, setShowWhatsapp] = useState(props.showWhatsapp);
+  const [linkKind, setLinkKind] = useState<LinkKind | null>(isLinkKind(props.linkKind) ? props.linkKind : null);
+  const [linkUrl, setLinkUrl] = useState(props.linkUrl ?? "");
+  // The link's error shows once the owner leaves the field (or taps a disabled «Guardar»,
+  // which blurs it): «empieza con https://» under the first letter he types is noise.
+  const [linkTouched, setLinkTouched] = useState(false);
 
   const chosen = normalizeHex(colorText);
   const colorInvalid = colorText.trim() !== "" && !chosen;
@@ -100,6 +125,8 @@ export function CatalogBrandingForm(props: Props) {
   const descriptionCheck = checkDescription(description);
   const descriptionLength = [...description].length;
   const shownAddress = props.showAddress && props.address?.trim() ? props.address : null;
+  const whatsappHref = catalogWhatsappHref(props.whatsapp);
+  const linkCheck = checkExtraLink(linkKind, linkUrl);
 
   // An upload nobody saved, about to be replaced or dropped: nothing will ever point at it.
   // Best effort -- failing to remove it costs a few KB, and the nightly cleanup takes it.
@@ -138,19 +165,24 @@ export function CatalogBrandingForm(props: Props) {
   }
 
   function save() {
-    if (colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok) return;
+    if (colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok || !linkCheck.ok) return;
     startTransition(async () => {
       const result = await saveCatalogBranding({
         brandColor: chosen,
         coverPath,
         welcome,
         description,
+        showWhatsapp: showWhatsapp && Boolean(whatsappHref),
+        linkKind,
+        linkUrl,
       });
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
       if (result.appliedColor) setColorText(result.appliedColor);
+      // An emptied field saves «no link»; the selector follows so it does not keep a label.
+      if (!linkUrl.trim()) setLinkKind(null);
       toast.success("Tu catálogo quedó actualizado.");
       router.refresh();
     });
@@ -294,6 +326,81 @@ export function CatalogBrandingForm(props: Props) {
           {!welcomeCheck.ok ? <p className="text-xs leading-[17px] text-destructive">{welcomeCheck.error}</p> : null}
         </div>
 
+        {/* ── BOTÓN DE WHATSAPP, migration 225, frames `2291:25171` to `2291:25293` ───
+            OFF by default (owner's answer of 2026-11-26, «Sí apagada»). Disabled with no
+            number in Mi negocio: a ticked box would publish a button that opens nothing. */}
+        <div className="flex flex-col gap-2">
+          <span className="text-sm leading-5 font-medium">Botón de WhatsApp</span>
+          <label className="flex items-start gap-2.5 rounded-[8px] border bg-background p-3 text-sm leading-5 has-[button:disabled]:opacity-60">
+            <Checkbox
+              className="mt-0.5"
+              checked={showWhatsapp && Boolean(whatsappHref)}
+              disabled={!whatsappHref}
+              onCheckedChange={(v) => setShowWhatsapp(v === true)}
+            />
+            Mostrar «Contactar vía WhatsApp» en mi catálogo
+          </label>
+          {whatsappHref ? (
+            <p className="text-xs leading-[17px] text-muted-foreground">
+              Tus clientes te escriben al número de Mi negocio: {props.whatsapp}.
+            </p>
+          ) : (
+            <p className="text-xs leading-[17px] text-muted-foreground">
+              <Link href="/profile" className="underline underline-offset-2">
+                Agrega tu número de WhatsApp en Mi negocio
+              </Link>{" "}
+              para mostrar el botón.
+            </p>
+          )}
+        </div>
+
+        {/* ── ENLACE ADICIONAL, migration 225, frames `2291:25171` to `2293:25491` ───
+            The label is chosen, never typed (owner's answer of 2026-11-26); the rule that
+            the link matches it is `lib/catalog/extra-link.ts`. Empty field = no button. */}
+        <div className="flex flex-col gap-2">
+          <label htmlFor="catalog-link-url" className="text-sm leading-5 font-medium">
+            Enlace adicional
+          </label>
+          <Select value={linkKind ?? ""} onValueChange={(v) => setLinkKind(isLinkKind(v) ? v : null)}>
+            <SelectTrigger
+              aria-label="Qué enlace es"
+              className="h-10 w-full rounded-[10px] bg-background px-3 text-base data-[size=default]:h-10 md:text-[15px] [&_svg:not([class*='size-'])]:size-[18px]"
+            >
+              <SelectValue placeholder="Elige qué enlace es" />
+            </SelectTrigger>
+            {/* `popper`: bounded under its trigger (DESIGN-SYSTEM.md, unbounded popovers). */}
+            <SelectContent position="popper">
+              {LINK_KINDS.map((kind) => (
+                <SelectItem key={kind} value={kind}>
+                  <LinkKindIcon kind={kind} className="size-[18px]" />
+                  {LINK_KIND_LABEL[kind]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input
+            id="catalog-link-url"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onBlur={() => setLinkTouched(true)}
+            maxLength={LINK_MAX + 50}
+            placeholder={linkKind ? LINK_KIND_PLACEHOLDER[linkKind] : "https://"}
+            aria-invalid={linkTouched && !linkCheck.ok}
+            className="h-10 w-full rounded-[10px] border bg-background px-3 text-base leading-[22px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-[15px]"
+          />
+          {linkTouched && !linkCheck.ok ? (
+            <p className="text-xs leading-[17px] text-destructive">{linkCheck.error}</p>
+          ) : null}
+          <p className="text-xs leading-[17px] text-muted-foreground">
+            Sale como un botón en tu catálogo, debajo de tu nombre, con el nombre y el icono que elijas. Opcional.
+          </p>
+        </div>
+
         {/* ── LOGO, nodes `2115:21861` / `2115:21914` ──────────────────────── */}
         <div className="flex flex-col gap-2">
           <span className="text-sm leading-5 font-medium">Logo</span>
@@ -318,7 +425,7 @@ export function CatalogBrandingForm(props: Props) {
           <Button
             type="button"
             className="h-10 w-full md:w-[180px]"
-            disabled={pending || uploading || colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok}
+            disabled={pending || uploading || colorInvalid || !welcomeCheck.ok || !descriptionCheck.ok || !linkCheck.ok}
             onClick={save}
           >
             {pending ? "Guardando…" : "Guardar cambios"}
@@ -347,6 +454,14 @@ export function CatalogBrandingForm(props: Props) {
               coverUrl={coverPreview}
               welcome={welcomeCheck.ok ? welcomeCheck.text : null}
               address={shownAddress}
+              actions={
+                <CatalogContactButtons
+                  whatsappHref={showWhatsapp ? whatsappHref : null}
+                  linkKind={linkKind}
+                  linkUrl={linkCheck.ok ? linkCheck.url : null}
+                  tone="light"
+                />
+              }
             />
           </div>
           <p className="px-4 py-4 text-xs leading-[17px] text-muted-foreground">

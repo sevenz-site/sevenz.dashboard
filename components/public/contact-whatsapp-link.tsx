@@ -1,6 +1,8 @@
 "use client";
 
 import { WhatsappIcon } from "@/components/icons/whatsapp";
+import { cn } from "@/lib/utils";
+import { PUBLIC_CONTACT_BUTTON, PUBLIC_CONTACT_TONE } from "@/components/public/contact-button-styles";
 
 // El botón "Contactar vía WhatsApp" de la pantalla del cliente, con su aviso
 // a Mixpanel. Lo que mide y por qué está en `app/api/share-contact/route.ts`,
@@ -16,13 +18,36 @@ import { WhatsappIcon } from "@/components/icons/whatsapp";
 // la petición en cuanto el mismo clic se lleva la página por delante, que es
 // exactamente cuando ocurre. Es la misma razón por la que `lib/mixpanel.ts`
 // lo usa desde que se escribió.
-export function ContactWhatsappLink({ token, href }: { token: string; href: string }) {
+//
+// ALSO THE CATALOGUE'S BUTTON since 2026-11-26 (migration 225, frames `2291:25034`), so
+// the customer sees one button on his balance and on the catalogue, not two lookalikes.
+// Two things the catalogue needs that the balance page did not:
+//   - `token` is OPTIONAL. Without it nothing is sent: `/api/share-contact` resolves a
+//     BALANCE token to its owner, and a catalogue has none. Measuring catalogue contacts
+//     is a separate event, with its own business question, not built yet.
+//   - `tone="light"` for the catalogue's white header (CatalogBrandHeader). The dark
+//     tone's green, `--brand-whatsapp` #7EC070, is 2.2:1 on white: unreadable. The light
+//     tone takes `emerald-700`, the green of the order screen's «Contactar vía WhatsApp»,
+//     on white already (5.5:1).
+
+export function ContactWhatsappLink({
+  token,
+  href,
+  tone = "dark",
+  className,
+}: {
+  token?: string;
+  href: string;
+  tone?: "dark" | "light";
+  className?: string;
+}) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => {
+        if (!token) return;
         try {
           void fetch("/api/share-contact", {
             method: "POST",
@@ -53,7 +78,12 @@ export function ContactWhatsappLink({ token, href }: { token: string; href: stri
 
          `h-10` y `text-[17px]`, también del otro: la altura que `DESIGN-SYSTEM.md`
          pide para cualquier botón con etiqueta, y que despeja un pulgar. */
-      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-brand-secondary px-4 text-[17px] text-brand-whatsapp outline-none transition-colors hover:bg-white/10 focus-visible:border-white focus-visible:ring-3 focus-visible:ring-white/40"
+      className={cn(
+        PUBLIC_CONTACT_BUTTON,
+        PUBLIC_CONTACT_TONE[tone],
+        tone === "dark" ? "text-brand-whatsapp" : "text-emerald-700",
+        className,
+      )}
     >
       {/* El nombre del negocio está en el encabezado, justo encima. El botón
           lo repetía y en un nombre largo se partía en dos líneas. */}
@@ -62,7 +92,7 @@ export function ContactWhatsappLink({ token, href }: { token: string; href: stri
           de la ficha del cliente: los dos botones dicen lo mismo a los dos
           lados del mismo trato, y tenerlos espejados se leía como dos cosas
           distintas. */}
-      <WhatsappIcon className="size-5" />
+      <WhatsappIcon className="size-5 shrink-0" />
     </a>
   );
 }
