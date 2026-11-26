@@ -11,7 +11,10 @@ import { guardarCodigosDeBarras } from "@/app/(app)/profile/actions";
 // MI NEGOCIO › «CÓDIGOS DE BARRAS» (CT-182). Frames 1 and 2 of «Propuesta · Escáner de
 // códigos: el flujo completo», approved by the owner on 2026-11-23.
 //
-// Off by default, and off means the app is exactly what it was: no scan button, no code
+// ON BY DEFAULT since migration 221 (owner's request of 2026-11-26, «debe estar activada por
+// defecto, tanto a los que crean su cuenta como los que ya están usando sevenz»). It was off by
+// default from 2026-11-23 to then, so that a shop without codes saw no change; now that shop turns
+// it off here. Off still means the app is exactly what it was: no scan button, no code
 // field, no gun listener. The guard that keeps a gun burst out of money fields is NOT tied
 // to this switch -- it runs always (owner's decision of 2026-11-23), because a gun plugged
 // in before switching this on types into whatever field is focused.

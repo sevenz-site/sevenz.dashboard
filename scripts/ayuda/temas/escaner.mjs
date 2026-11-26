@@ -1,8 +1,8 @@
 // «Escanear códigos de barras» (v0.13.0, CT-182), plus the new step of «Mi negocio» and the
 // re-take of «Registrar un abono» step 5 (the abono now opens on «Pago móvil»). Demo business.
 //
-// IT WRITES IN DEV, and undoes it: it turns on the demo's «Trabajar con códigos de barras» (the
-// first step is pressing that switch), puts one code on «Arroz» so the scanner has something to
+// IT WRITES IN DEV, and undoes it: it makes sure the demo's «Trabajar con códigos de barras» is on
+// (on by default since migration 221), puts one code on «Arroz» so the scanner has something to
 // find, and at the end deletes that code BY ID and puts the switch back as it found it. Nothing
 // is sold: the sale step stops at the cart.
 //
@@ -25,7 +25,9 @@ const { data: antes } = await admin.from("owners").select("barcodes_enabled").eq
 let filaCodigo = null;
 try {
   // ── 1. The switch, in Mi negocio (also step 12 of «Mi negocio»). ──────────
-  await admin.from("owners").update({ barcodes_enabled: false }).eq("id", M.ownerId);
+  // On by default since migration 221 (2026-11-26): the picture shows it on, as a new
+  // business finds it. Until then it showed it off, about to be pressed.
+  await admin.from("owners").update({ barcodes_enabled: true }).eq("id", M.ownerId);
   await go("/profile", 5000);
   // Mi negocio renders its form twice (phone and desktop layouts, one hidden): the visible one.
   const SWITCH = "js:[...document.querySelectorAll('#codigos-de-barras')].find(b=>b.getBoundingClientRect().height>0)";
@@ -34,9 +36,6 @@ try {
   await sleep(500);
   await shot(S, 1, SWITCH, { pad: 6 });
   await shot("mi-negocio", 12, CARD, { pad: 6 });
-  await click(SWITCH, { wait: 3000 });
-  await waitFor("document.body.innerText.includes('Ya tienes el botón para escanear')||document.body.innerText.includes('Códigos de barras activados')");
-  await sleep(1500);
 
   // ── 2. The scan button on Inicio. ──────────────────────────────────────────
   await go("/dashboard", 5000);
