@@ -516,8 +516,9 @@ export async function guardarConsejosSevenz(activar: boolean): Promise<{ error: 
 }
 
 // «TRABAJAR CON CÓDIGOS DE BARRAS» (CT-182). Owner's decision of 2026-11-23: scanning is
-// optional per business, off by default. It saves on its own, like the switches next to
-// it, so it never waits for «Guardar cambios».
+// optional per business. On by default since migration 221 (owner, 2026-11-26); it was off by
+// default until then. It saves on its own, like the switches next to it, so it never waits
+// for «Guardar cambios».
 //
 // Turning it off deletes no code: the codes stay on their products and come back if it is
 // turned on again. Only the owner's own row, by the session's id.
@@ -542,6 +543,12 @@ export async function guardarCodigosDeBarras(activar: boolean): Promise<{ error:
   // 2026-11-23 (CT-182). What it decides: whether the scanner earns more investment (a
   // native camera, weighed codes, box codes) or stays a niche feature. Filed under the
   // owner; a gesture in settings, so exact, not a floor.
+  //
+  // SINCE MIGRATION 221 (2026-11-26) THE SWITCH STARTS ON, so this event mostly counts the
+  // opposite gesture: `enabled: false` is a business saying it does not want the scanner. If
+  // many turn it off, the button is clutter for them and the default deserves a second look;
+  // if few do, on by default was right. Who actually works with codes is now read from
+  // `Barcode Scanned`, not from this event.
   trackServer("Barcodes Setting Changed", user.id, { enabled: activar }, user.email);
   revalidatePath("/", "layout");
   return { error: null };
