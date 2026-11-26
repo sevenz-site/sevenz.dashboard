@@ -16,6 +16,7 @@ import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { usePantallaVacia } from "@/components/dashboard/pantalla-vacia";
+import { UnreadReportDot } from "@/components/dashboard/unread-report-context";
 
 // The four places the bar navigates to, in order, before Menú. Exact pathname
 // matching, not startsWith: a client's own screen replaces this whole bar
@@ -845,7 +846,14 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
               className="flex flex-1"
             >
               <NavItem active={pathname === item.href} className="w-full">
-                {glyph(item.href, item.icon)}
+                {/* The red dot of an unread assistant analysis (2026-11-25), on the
+                    icon's corner like the notifications badge. Only Reportes has one. */}
+                <span className="relative flex">
+                  {glyph(item.href, item.icon)}
+                  {item.href === "/reportes" ? (
+                    <UnreadReportDot className="absolute -top-0.5 -right-1" />
+                  ) : null}
+                </span>
                 {item.label}
               </NavItem>
             </Link>

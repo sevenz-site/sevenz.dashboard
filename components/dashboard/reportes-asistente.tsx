@@ -9,6 +9,7 @@ import { calificarAsistente } from "@/app/(app)/reportes/actions";
 import { cn } from "@/lib/utils";
 import { partirPorImportes } from "@/lib/reports/assistant/importes";
 import { ENLACES, type Enlace } from "@/lib/reports/assistant/links";
+import { useUnreadReport } from "@/components/dashboard/unread-report-context";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL ASISTENTE — frame `1804:15424`
@@ -74,6 +75,7 @@ export function ReportesAsistente() {
   const [calificacion, setCalificacion] = useState<"useful" | "not_useful" | null>(null);
   const [, startTransition] = useTransition();
   const pedido = useRef(false);
+  const { clear: clearReportDot } = useUnreadReport();
 
   useEffect(() => {
     // UNA SOLA VEZ POR MONTAJE. En desarrollo React monta dos veces a
@@ -85,6 +87,11 @@ export function ReportesAsistente() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: Nota) => {
         setNota(d);
+        // READ, SO THE RED DOT ON «REPORTES» GOES (2026-11-25). Only once a note with
+        // text is on screen: a failed request leaves the dot for the next visit, since
+        // nothing was read. The server agrees on its own, because this same request
+        // just wrote today's note.
+        if (d.summary) clearReportDot();
         // HOW MANY SEE THE SUMMARY, and how many get the fallback. It is the base to read
         // `AI Report Rated` against. Filed under the owner.
         track("AI Report Viewed", { degraded: d.degraded });
@@ -94,7 +101,9 @@ export function ReportesAsistente() {
         if (d.rating) setCalificacion(d.rating);
       })
       .catch(() => setFallo(true));
-  }, []);
+    // `clearReportDot` is stable (useCallback); listing it costs nothing, since the
+    // `pedido` guard above already holds the fetch to one per mount.
+  }, [clearReportDot]);
 
   // NI ESQUELETO ETERNO NI BLOQUE VACÍO. Si la petición se cae del todo
   // --sin red, sesión caducada-- el bloque desaparece en vez de quedarse

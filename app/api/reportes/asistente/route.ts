@@ -8,6 +8,7 @@ import { buildFacts } from "@/lib/reports/assistant/facts";
 import { buildFallbackNote, type AssistantNote } from "@/lib/reports/assistant/fallback";
 import { generarNota } from "@/lib/reports/assistant/gemini";
 import { comoEnlace } from "@/lib/reports/assistant/links";
+import { assistantDay } from "@/lib/reports/assistant/day";
 
 // ═══════════════════════════════════════════════════════════════════════
 // EL RESUMEN DEL DÍA
@@ -92,7 +93,8 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "No autenticado." }, { status: 401 });
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  // Venezuela's date, not UTC's, since 2026-11-25: see `lib/reports/assistant/day.ts`.
+  const hoy = assistantDay();
   const service = createServiceClient();
 
   // ── 1. ¿YA HAY NOTA DE HOY? ───────────────────────────────────────

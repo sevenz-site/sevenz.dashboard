@@ -30,6 +30,8 @@ import { getCurrentUser, getOwnerShellRow, getRequestClient } from "@/lib/supaba
 import { getImportUsageForOwner } from "@/lib/import-usage";
 import { getBarcodeSettings } from "@/lib/barcodes/setting-server";
 import { BarcodeScannerProvider } from "@/components/barcode/scanner-provider";
+import { hasUnreadAssistantNote } from "@/lib/reports/assistant/unread";
+import { UnreadReportProvider } from "@/components/dashboard/unread-report-context";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   if (!isSupabaseConfigured()) {
@@ -48,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const stockAlertsDue =
     (await cookies()).get(STOCK_ALERTS_DAY_COOKIE)?.value !== stockAlertsDayValue(user.id);
 
-  const [{ data: owner }, unreadCount, importUsage, motivo, mustReset, barcodes] = await Promise.all([
+  const [{ data: owner }, unreadCount, importUsage, motivo, mustReset, barcodes, reportUnread] = await Promise.all([
     // Shared with the page and the rate helpers through React cache(): one
     // `owners` read per request instead of one per caller.
     getOwnerShellRow(supabase, user.id),
@@ -72,6 +74,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     mustResetPassword(supabase),
     // CT-182: whether the scan button, the code field and the gun's sheets are on.
     getBarcodeSettings(supabase, user.id),
+    // The red dot on «Reportes» (2026-11-25): two one-row reads. See
+    // lib/reports/assistant/unread.ts.
+    hasUnreadAssistantNote(supabase, user.id),
   ]);
 
   if (mustReset) {
@@ -88,6 +93,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <TourProvider active={!owner?.onboarding_completed_at}>
         <UnsavedChangesProvider>
           <UnreadNotificationsProvider initialCount={unreadCount}>
+          <UnreadReportProvider initialUnread={reportUnread}>
           {/* The barcode scanner (CT-182). Wraps the whole shell because its gun guard is on
               for every screen, switch or no switch. */}
           <BarcodeScannerProvider
@@ -137,6 +143,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </SidebarInset>
           </SidebarProvider>
           </BarcodeScannerProvider>
+          </UnreadReportProvider>
           </UnreadNotificationsProvider>
         </UnsavedChangesProvider>
       </TourProvider>
