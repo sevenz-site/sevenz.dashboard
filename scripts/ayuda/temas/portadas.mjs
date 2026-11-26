@@ -16,6 +16,30 @@ const only = process.argv.slice(2);
 const want = (s) => !only.length || only.includes(s);
 
 if (want("registrar-un-fiado")) { await go("/ventas/nueva", 7000); await snap("registrar-un-fiado"); }
+// v0.13.0. Read only: the amount step, before anything is saved.
+if (want("vender-sin-producto")) {
+  await go("/ventas/nueva", 7000);
+  await click("Omitir", { wait: 2500 });
+  await type("js:document.querySelector('#venta-monto-USD')", "5", { wait: 800 });
+  await type("js:document.querySelector('#venta-descripcion')", "Recarga de teléfono", { wait: 800 });
+  await snap("vender-sin-producto");
+}
+// v0.13.0. The viewer needs the demo's switch on: turned on here and put back as it was. The
+// camera is a drawing (headless Chrome has none), the same one `escaner.mjs` uses.
+if (want("escanear-codigos-de-barras")) {
+  const { admin } = await import("./_admin.mjs");
+  const { data: antes } = await admin.from("owners").select("barcodes_enabled").eq("id", M.ownerId).single();
+  await admin.from("owners").update({ barcodes_enabled: true }).eq("id", M.ownerId);
+  try {
+    const { CAMERA } = await import("./_camera.mjs");
+    await go("/dashboard", 6000);
+    await js(CAMERA);
+    await click("js:document.querySelector('[aria-label=\"Escanear código\"]')", { wait: 3500 });
+    await snap("escanear-codigos-de-barras");
+  } finally {
+    await admin.from("owners").update({ barcodes_enabled: antes.barcodes_enabled }).eq("id", M.ownerId);
+  }
+}
 if (want("registrar-un-abono")) {
   await go(`/abonos/nuevo?cliente=${M.clientes.julia}&desde=cliente`, 6000);
   // $4 since v0.10.0: Julia owes less than the $20 this typed, and the screen refuses more.
