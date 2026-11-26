@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { productoParaEdicionRapida, type EdicionRapida } from "@/app/(app)/productos/actions";
 import dynamic from "next/dynamic";
 import { ImageOff, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -87,6 +88,7 @@ export function PasoProducto({
   umbralDeStock,
   monedaFija,
   pantalla = "sale_products",
+  onProductoEditado,
 }: {
   catalogo: ProductosParaVenta | null;
   onCatalogo: (c: ProductosParaVenta) => void;
@@ -107,6 +109,12 @@ export function PasoProducto({
   monedaFija?: PriceCurrency;
   /** The `screen` property of the search and filter events. */
   pantalla?: "sale_products" | "order_add_product";
+  /**
+   * «Editar» in the product's detail (owner's request of 2026-11-26). Only the direct sale
+   * passes it, so an order's «Agregar al pedido» shows no button. Called after the product is
+   * saved, so the sale can re-price the cart lines of that product.
+   */
+  onProductoEditado?: (productId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   // WHICH CURRENCIES A CARD AND THE PRODUCT SHEET MAY OFFER. The ledger's, or the
@@ -133,6 +141,27 @@ export function PasoProducto({
   const [recarga, setRecarga] = useState(0);
   // The last product search failed to reach the server.
   const [sinConexion, setSinConexion] = useState(false);
+  // THE PRODUCT BEING EDITED FROM ITS DETAIL, with the fields the server says the quick sheet
+  // may change (`productoParaEdicionRapida`). The detail closes when the sheet opens: two
+  // sheets stacked would leave the detail showing the old price under the new one.
+  const [editandoDetalle, setEditandoDetalle] = useState<EdicionRapida | null>(null);
+  const [abriendoEdicion, startAbriendoEdicion] = useTransition();
+  function editarDesdeElDetalle(productId: string) {
+    startAbriendoEdicion(async () => {
+      try {
+        const r = await productoParaEdicionRapida(productId);
+        if ("error" in r) {
+          toast.error(r.error);
+          return;
+        }
+        setDetalle(null);
+        setEditandoDetalle(r);
+      } catch (e) {
+        console.error("[PasoProducto] open product to edit:", e);
+        toast.error("No pudimos abrir el producto. Revisa tu conexión e intenta de nuevo.");
+      }
+    });
+  }
   // PAGES OF TEN AND A CATEGORY FILTER (owner's request of 2026-11-15). Both reset the
   // page to 1 when the search or the chip changes, in the handlers below and not in an
   // effect, so a new filter never asks the server for page 4 of a shorter list.
@@ -344,6 +373,7 @@ export function PasoProducto({
           // stays, saying why there is nothing to choose.
           rotuloDeMonedaFija={monedaFija ? "Moneda del pedido" : undefined}
           monedaExtra={monedaFija}
+          onEditar={onProductoEditado && !abriendoEdicion ? () => editarDesdeElDetalle(detalle.id) : undefined}
           onAgregar={({ quantity, currency }) => {
             onAgregar({
               productId: detalle.id,
@@ -363,6 +393,37 @@ export function PasoProducto({
           cerrarse, y esta hoja trae dentro un formulario entero con sus
           propios `useState`: dejarla montada haría que la segunda vez abriera
           con lo que se escribió la primera. */}
+      {/* EDITING FROM THE DETAIL: nothing is being added, so no quantity, and «Guardar». */}
+      {editandoDetalle && onProductoEditado ? (
+        <QuickProductSheet
+          open
+          onOpenChange={(next: boolean) => !next && setEditandoDetalle(null)}
+          ownerId={ownerId}
+          monedas={catalogo?.monedasDelLibro ?? []}
+          onCreado={() => {}}
+          editando={{
+            productId: editandoDetalle.productId,
+            nombre: editandoDetalle.nombre,
+            precio: editandoDetalle.precio,
+            moneda: editandoDetalle.moneda,
+            cantidad: 1,
+            photoPath: editandoDetalle.photoPath,
+            publicar: editandoDetalle.publicar,
+            descripcion: editandoDetalle.descripcion,
+            costo: editandoDetalle.costo,
+            costoMoneda: editandoDetalle.costoMoneda ?? undefined,
+          }}
+          delCatalogo={editandoDetalle.bloqueos}
+          sinCantidad
+          onEditado={(productId) => {
+            setEditandoDetalle(null);
+            // The grid is asked again, so the card shows the new name and price.
+            setRecarga((n) => n + 1);
+            onProductoEditado(productId);
+          }}
+        />
+      ) : null}
+
       {creando ? (
         <QuickProductSheet
           open

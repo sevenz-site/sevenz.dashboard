@@ -12,6 +12,7 @@ import { recalcularSelloDelPedido } from "@/lib/orders/monedas-pendientes";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { mensajeDeError } from "@/lib/errores-legibles";
+import { withLogoVersion } from "@/lib/catalog/link-version";
 // ═══════════════════════════════════════════════════════════════════════
 // AQUÍ VIVÍAN `createClientWithMovement` Y `addMovement`, Y SE BORRARON
 // EL 2026-10-24 POR ORDEN DEL DUEÑO
@@ -40,7 +41,15 @@ import { mensajeDeError } from "@/lib/errores-legibles";
 // de meter en la base filas que el resto de la app ya no sabe explicar.
 
 
-export async function getOrCreateShareLink(clientId: string): Promise<{ token: string } | { error: string }> {
+// `path` IS THE LINK'S PATH, `/s/<token>` plus `?v=` and the tag of the business's logo
+// when it has one (2026-11-26, the same rule as the catalogue link,
+// `lib/catalog/link-version.ts`): WhatsApp keeps a card per address, so a logo uploaded
+// after a client's link was shared would never show on it. The page ignores `v`, so
+// every link already sent keeps opening. `token` stays for the callers that build a deeper
+// link (a transaction), which keeps the plain address.
+export async function getOrCreateShareLink(
+  clientId: string,
+): Promise<{ token: string; path: string } | { error: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -61,7 +70,14 @@ export async function getOrCreateShareLink(clientId: string): Promise<{ token: s
     .eq("client_id", clientId)
     .maybeSingle();
 
-  if (existing) return { token: existing.token };
+  // A failed read of the logo is not a failed link: it gives the plain address.
+  const { data: owner } = await supabase.from("owners").select("logo_path").eq("id", user.id).maybeSingle();
+  const conVersion = (token: string) => ({
+    token,
+    path: withLogoVersion(`/s/${token}`, (owner?.logo_path as string | null | undefined) ?? null),
+  });
+
+  if (existing) return conVersion(existing.token);
 
   const { data: created, error } = await supabase
     .from("share_links")
@@ -71,7 +87,7 @@ export async function getOrCreateShareLink(clientId: string): Promise<{ token: s
 
   if (error || !created) return { error: "No pudimos generar el link." };
 
-  return { token: created.token };
+  return conVersion(created.token);
 }
 
 // Soft-deletes a movement the owner registered by mistake. The row stays in

@@ -109,7 +109,7 @@ export function ClientHeaderActions({
           resolve(null);
           return;
         }
-        resolve(`${publicLinkBase()}/s/${result.token}`);
+        resolve(`${publicLinkBase()}${result.path}`);
       });
     });
   }

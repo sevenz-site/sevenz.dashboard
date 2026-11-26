@@ -520,6 +520,8 @@ export const MANIFEST = {
     "app/(app)/productos/actions.ts#setProductPublished": "atacada",
     "app/(app)/productos/actions.ts#trashProduct": "atacada",
     "app/(app)/productos/actions.ts#updateProduct": "atacada",
+    "app/(app)/productos/actions.ts#productoParaEdicionRapida": "atacada",
+    "app/(app)/productos/actions.ts#editarProductoDesdeVenta": "atacada",
     "app/(app)/productos/ordenes/actions.ts#descartarPedido": "atacada",
     "app/(app)/productos/ordenes/actions.ts#quitarLineaDelPedido": "atacada",
     "app/(app)/productos/ordenes/actions.ts#quitarMonedaDelPedido": "atacada",

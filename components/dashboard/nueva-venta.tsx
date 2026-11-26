@@ -9,9 +9,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { productoParaEdicionRapida, type EdicionRapida } from "@/app/(app)/productos/actions";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -652,6 +654,52 @@ export function NuevaVenta({
     await guardar(nuevo);
   }
 
+
+  // A PRODUCT EDITED FROM ITS DETAIL (2026-11-26) RE-PRICES ITS LINES ALREADY IN THE CART.
+  // Rebuilt from the saved row, never from what was typed, as the cart's own «Editar» does
+  // (`alEditar` in `PasoCarrito`): the quantities stay, the currency moves to the first one the
+  // product still offers, and lines that end up equal are merged. A product not in the cart
+  // changes nothing here; the grid refreshes itself.
+  async function reprecioDeLineas(productId: string) {
+    if (!lineas.some((l) => l.productId === productId)) return;
+    for (let intento = 0; intento < 2; intento++) {
+      try {
+        const r = await productoParaVentaPorId(productId);
+        const nuevo = r.productos.find((x) => x.id === productId);
+        if (!nuevo) break;
+        setLineas((xs) =>
+          xs
+            .map((l) => {
+              if (l.productId !== productId) return l;
+              const unidades = Math.max(l.quantity, cantidadMinima(nuevo.producto));
+              const escalon = escalonParaCantidad(nuevo.producto, unidades);
+              const bloque = escalon === "wholesale" ? nuevo.producto.wholesale : nuevo.producto.retail;
+              const ofrecidas = monedasDelBloque(bloque ?? null, r.rates).filter((c) =>
+                r.monedasDelLibro.includes(c),
+              );
+              return {
+                ...l,
+                name: nuevo.name,
+                unit: nuevo.unit,
+                photoPath: nuevo.photoPath,
+                producto: nuevo.producto,
+                quantity: unidades,
+                currency: ofrecidas.includes(l.currency) ? l.currency : ofrecidas[0] ?? l.currency,
+              } satisfies LineaVenta;
+            })
+            .reduce<LineaVenta[]>((acc, l) => agregar(acc, l), []),
+        );
+        return;
+      } catch (e) {
+        console.error("[NuevaVenta] re-price edited product:", e);
+        if (intento === 0) await new Promise((ok) => setTimeout(ok, 1500));
+      }
+    }
+    // Said plainly, as in the cart: the worst case is charging the old price without knowing.
+    toast.error(
+      "Guardamos los cambios del producto, pero el carrito sigue con los datos anteriores. Quítalo y agrégalo de nuevo.",
+    );
+  }
   return (
     // SIN `p-4` PROPIO, desde el 2026-10-18. `AppMain` ya envuelve toda
     // pantalla en 16px; este añadía otros 16 encima y el flujo entero salía
@@ -747,6 +795,7 @@ export function NuevaVenta({
           onIrAlCarrito={() => setPaso(2)}
           ownerId={ownerId}
           umbralDeStock={umbralDeStock}
+          onProductoEditado={(productId) => void reprecioDeLineas(productId)}
         />
       ) : null}
 
@@ -980,9 +1029,37 @@ function PasoCarrito({
   onSeguirComprando: () => void;
   onIrAPago: () => void;
 }) {
-  // THE LINE WHOSE PRODUCT IS BEING EDITED, by index. Only lines created in this sale have it.
+  // THE LINE WHOSE PRODUCT IS BEING EDITED, by index. Every line has «Editar» since
+  // 2026-11-26 (owner's request); until then only the lines created in this sale had it.
   const [editando, setEditando] = useState<number | null>(null);
   const lineaEditada = editando == null ? null : lineas[editando] ?? null;
+  // A CATALOGUE PRODUCT'S FIELDS, read from the server when its «Editar» is tapped: the cart
+  // line carries its prices, not its cost, description or what may be edited. The sheet
+  // opens once they are here. See `editarProductoDesdeVenta` for why it never wipes a field.
+  const [delCatalogo, setDelCatalogo] = useState<EdicionRapida | null>(null);
+  const [abriendo, startAbriendo] = useTransition();
+
+  function editarDelCatalogo(indice: number, productId: string) {
+    startAbriendo(async () => {
+      try {
+        const r = await productoParaEdicionRapida(productId);
+        if ("error" in r) {
+          toast.error(r.error);
+          return;
+        }
+        setDelCatalogo(r);
+        setEditando(indice);
+      } catch (e) {
+        console.error("[PasoCarrito] open catalogue product:", e);
+        toast.error("No pudimos abrir el producto. Revisa tu conexión e intenta de nuevo.");
+      }
+    });
+  }
+
+  function cerrarEdicion() {
+    setEditando(null);
+    setDelCatalogo(null);
+  }
 
   // AFTER SAVING, EVERY LINE OF THAT PRODUCT IS REBUILT FROM THE SAVED ROW, never from what
   // was typed: the cart prices from the product's whole block (tiers, pinned prices), the
@@ -991,7 +1068,7 @@ function PasoCarrito({
   // are merged, as `agregar` does when adding.
   async function alEditar(productId: string, cantidad: number, datos: DatosRapidos) {
     const indice = editando;
-    setEditando(null);
+    cerrarEdicion();
     for (let intento = 0; intento < 2; intento++) {
       try {
         const r = await productoParaVentaPorId(productId);
@@ -1042,6 +1119,16 @@ function PasoCarrito({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      {/* «AGREGAR MÁS PRODUCTOS», above the lines (owner's request of 2026-11-26, placed
+          where he circled: between the progress bar and the first card). It goes back to
+          1/4, the same as the back arrow. The style is step 1's «Agregar producto» (outline,
+          40 tall, full width, the «+»), but NOT its text: that one creates a new product,
+          and two buttons with the same words doing different things was put to the owner,
+          who chose «Agregar más productos» that day. */}
+      <Button type="button" variant="outline" className="h-10 w-full" onClick={onSeguirComprando}>
+        <Plus className="size-5" aria-hidden="true" />
+        Agregar más productos
+      </Button>
       {lineas.map((l, i) => (
         <TarjetaDeLinea
           key={`${l.productId}-${l.currency}`}
@@ -1052,7 +1139,13 @@ function PasoCarrito({
           onCantidad={(q) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, quantity: q } : x)))}
           onMoneda={(c) => onCambiar(lineas.map((x, j) => (j === i ? { ...x, currency: c } : x)))}
           onQuitar={() => onCambiar(lineas.filter((_, j) => j !== i))}
-          onEditar={l.creadoEnVenta ? () => setEditando(i) : undefined}
+          onEditar={
+            l.creadoEnVenta
+              ? () => setEditando(i)
+              : abriendo
+                ? undefined
+                : () => editarDelCatalogo(i, l.productId)
+          }
         />
       ))}
 
@@ -1074,6 +1167,31 @@ function PasoCarrito({
             photoPath: lineaEditada.photoPath,
             ...lineaEditada.creadoEnVenta,
           }}
+          onEditado={alEditar}
+        />
+      ) : null}
+
+      {/* A CATALOGUE PRODUCT, mounted only while editing for the same reason as above. */}
+      {lineaEditada && !lineaEditada.creadoEnVenta && delCatalogo?.productId === lineaEditada.productId ? (
+        <QuickProductSheet
+          open
+          onOpenChange={(next: boolean) => !next && cerrarEdicion()}
+          ownerId={ownerId}
+          monedas={monedasDelLibro}
+          onCreado={() => {}}
+          editando={{
+            productId: delCatalogo.productId,
+            nombre: delCatalogo.nombre,
+            precio: delCatalogo.precio,
+            moneda: delCatalogo.moneda,
+            cantidad: lineaEditada.quantity,
+            photoPath: delCatalogo.photoPath,
+            publicar: delCatalogo.publicar,
+            descripcion: delCatalogo.descripcion,
+            costo: delCatalogo.costo,
+            costoMoneda: delCatalogo.costoMoneda ?? undefined,
+          }}
+          delCatalogo={delCatalogo.bloqueos}
           onEditado={alEditar}
         />
       ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { avisarCuentaPausada } from "@/lib/cuenta-pausada";
 import { ProductPhotoInput } from "@/components/dashboard/product-photo-input";
-import { createProduct, productNameTaken, updateProduct } from "@/app/(app)/productos/actions";
+import {
+  createProduct,
+  editarProductoDesdeVenta,
+  productNameTaken,
+  updateProduct,
+  type BloqueosDeEdicion,
+} from "@/app/(app)/productos/actions";
 import { contextoParaMonto } from "@/app/(app)/ventas/actions";
 import { DuplicateProductNameDialog } from "@/components/dashboard/duplicate-product-name-dialog";
 import {
@@ -90,6 +96,8 @@ export function QuickProductSheet({
   onEditado,
   codigos,
   textoBoton,
+  delCatalogo,
+  sinCantidad = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -113,7 +121,16 @@ export function QuickProductSheet({
   // The button's words when the scanner opened the sheet: «Guardar y vender» from Home,
   // «Guardar y agregar» inside a sale (frames 8 and 12). Without it, the total as before.
   textoBoton?: string;
+  // A CATALOGUE PRODUCT, not one this sheet created (owner's request of 2026-11-26). Present
+  // only together with `editando`. The save goes through `editarProductoDesdeVenta`, which
+  // keeps every field this sheet does not show; these are the fields it cannot edit without
+  // losing data, decided on the server, shown here locked with «edítalo en el catálogo».
+  delCatalogo?: BloqueosDeEdicion;
+  // Opened from the product's detail, where nothing is being added: no «¿Cuántas unidades
+  // compra?» and a plain «Guardar». The cart's «Editar» keeps the quantity, as before.
+  sinCantidad?: boolean;
 }) {
+  const bloqueo = delCatalogo ?? { precio: false, moneda: false, foto: false, costo: false };
   const [listaDeCodigos, setListaDeCodigos] = useState<string[]>(codigos ?? []);
   const [nombre, setNombre] = useState(editando?.nombre ?? "");
   const [precio, setPrecio] = useState(editando ? String(editando.precio).replace(".", ",") : "");
@@ -172,7 +189,9 @@ export function QuickProductSheet({
   // Antes el estado era un número que nunca bajaba de 1, así que no hacía
   // falta; ahora el tendero puede dejarlo vacío o en 0 mientras teclea, y sin
   // esto el botón ofrecería guardar un producto de cero unidades.
-  const listo = nombre.trim() !== "" && unitario > 0 && unidades > 0;
+  // A locked price (a product sold only wholesale) is not the sheet's to fill: the server
+  // keeps the stored one, so an empty field there must not stop the save.
+  const listo = nombre.trim() !== "" && (unitario > 0 || bloqueo.precio) && unidades > 0;
 
   // Los botones «−» y «+» siguen funcionando igual y respetan lo tecleado:
   // leen lo que hay, suman o restan uno, y no bajan de 1.
@@ -215,6 +234,37 @@ export function QuickProductSheet({
       // before the answer was lost, and `createProduct` does not refuse a
       // repeated name, so the message asks to look before saving again.
       let r: Awaited<ReturnType<typeof createProduct>>;
+      if (editando && delCatalogo) {
+        try {
+          r = await editarProductoDesdeVenta(editando.productId, {
+            nombre: nombre.trim(),
+            precio,
+            moneda,
+            publicar,
+            photoPath,
+            descripcion: descripcion.trim() || null,
+            costo: costoNumero != null ? costo : null,
+            costoMoneda,
+          });
+        } catch (e) {
+          console.error("[QuickProductSheet] save catalogue product:", e);
+          setError("No pudimos confirmar que se guardó, revisa tu conexión e intenta de nuevo.");
+          return;
+        }
+        if (avisarCuentaPausada(r.error)) return;
+        if (r.error) {
+          setError(r.error);
+          return;
+        }
+        onEditado?.(editando.productId, unidades, {
+          publicar,
+          descripcion: descripcion.trim() || null,
+          costo: costoNumero != null ? costo : null,
+          costoMoneda,
+        });
+        onOpenChange(false);
+        return;
+      }
       try {
         // THE MARGIN OF A COST IN ANOTHER CURRENCY NEEDS THE RATE, which this sheet does not
         // carry: asked for here, only then. Without a rate the margin is left empty and the
@@ -329,6 +379,12 @@ export function QuickProductSheet({
         </SheetHeader>
 
         <div className="flex flex-col gap-5 p-4">
+          {delCatalogo ? (
+            <p className="text-sm text-muted-foreground">
+              Aquí cambias lo básico. El inventario, el precio al mayor y el resto de los datos se editan en el
+              catálogo.
+            </p>
+          ) : null}
           {/* First, as frame 8 draws it: the code is what brought the shopkeeper here. */}
           {codigos !== undefined ? (
             <BarcodeField values={listaDeCodigos} onChange={setListaDeCodigos} idPrefix="qp-codigo" />
@@ -359,9 +415,10 @@ export function QuickProductSheet({
                 ref={refCosto}
                 onChange={alTeclearCosto}
                 placeholder="00"
+                disabled={bloqueo.costo}
               />
-              {/* One currency only (Colombia): said, not offered. */}
-              {monedasDeCosto.length > 1 ? (
+              {/* One currency only (Colombia): said, not offered. Locked too: said. */}
+              {monedasDeCosto.length > 1 && !bloqueo.costo ? (
                 <MonedaMenu
                   label="Moneda del costo"
                   value={costoMoneda}
@@ -375,6 +432,7 @@ export function QuickProductSheet({
                 </span>
               )}
             </div>
+            {bloqueo.costo ? <EnElCatalogo>Su costo está en otra moneda. Para cambiarlo,</EnElCatalogo> : null}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -388,6 +446,7 @@ export function QuickProductSheet({
                 ref={refPrecio}
                 onChange={alTeclearPrecio}
                 placeholder="00"
+                disabled={bloqueo.precio}
               />
               {/* EL DESPLEGABLE DE LA APP, NO EL DEL SISTEMA.
                   Instrucción del dueño el 2026-10-23.
@@ -409,10 +468,23 @@ export function QuickProductSheet({
 
                   MISMO MONTAJE QUE `abono-monto.tsx` Y `nueva-venta.tsx`: si
                   a uno hay que cambiarle algo, a los tres. */}
-              <MonedaMenu label="Moneda del precio" value={moneda} opciones={monedas} onSelect={setMoneda} />
+              {bloqueo.moneda ? (
+                <span className="flex h-9 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <CurrencyFlagIcon currency={moneda} className="size-4 shrink-0" />
+                  {nombreDeMoneda(moneda)}
+                </span>
+              ) : (
+                <MonedaMenu label="Moneda del precio" value={moneda} opciones={monedas} onSelect={setMoneda} />
+              )}
             </div>
+            {bloqueo.precio ? (
+              <EnElCatalogo>Este producto solo se vende al mayor. Para cambiar su precio,</EnElCatalogo>
+            ) : bloqueo.moneda ? (
+              <EnElCatalogo>Tiene precios en varias monedas. Para cambiarlas,</EnElCatalogo>
+            ) : null}
           </div>
 
+          {sinCantidad ? null : (
           <div className="flex flex-col gap-1">
             <Label>¿Cuántas unidades compra?</Label>
             <div className="flex items-center gap-1">
@@ -451,6 +523,7 @@ export function QuickProductSheet({
               </Button>
             </div>
           </div>
+          )}
 
           <label className="flex items-center justify-between gap-2 rounded-xl border px-3 py-3.5">
             <span className="text-sm">Publicar producto en catálogo</span>
@@ -459,7 +532,11 @@ export function QuickProductSheet({
 
           <div className="flex flex-col gap-2">
             <Label>Foto (opcional)</Label>
-            <ProductPhotoInput ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+            {bloqueo.foto ? (
+              <EnElCatalogo>Tiene varias fotos. Para cambiarlas,</EnElCatalogo>
+            ) : (
+              <ProductPhotoInput ownerId={ownerId} value={photoPath} onChange={setPhotoPath} />
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
@@ -481,7 +558,10 @@ export function QuickProductSheet({
           <Button type="button" className="h-10 w-full" disabled={!listo || guardando} onClick={intentarGuardar}>
             {guardando
               ? "Guardando…"
-              : textoBoton ?? `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`}
+              : textoBoton ??
+                (sinCantidad || bloqueo.precio
+                  ? "Guardar"
+                  : `${editando ? "Guardar" : "Agregar"} ${formatPriceAmount(total, moneda)}`)}
           </Button>
         </div>
       </SheetContent>
@@ -535,5 +615,15 @@ function MonedaMenu({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// THE ONE SENTENCE OF A LOCKED FIELD (2026-11-26): why it is locked, then where it is edited.
+// Every caller ends its sentence with «Para cambiarlo,» or similar, and this finishes it.
+function EnElCatalogo({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-xs leading-[17px] text-muted-foreground">
+      {children} edítalo en el catálogo.
+    </p>
   );
 }

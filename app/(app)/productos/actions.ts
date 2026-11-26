@@ -7,7 +7,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
 import { MENSAJE_CUENTA_PAUSADA } from "@/lib/cuenta-pausada";
-import { parseAmount } from "@/lib/products/price";
+import { formatAmountForInput, marginFromPrice, parseAmount, parseTypedAmount } from "@/lib/products/price";
+import { precioDelMargen } from "@/lib/products/margin-price";
+import { cargarProductoParaEditar } from "@/lib/products/datos-del-flujo";
+import type { ProductRow } from "@/lib/products/catalog";
+import { contextoParaMonto } from "@/app/(app)/ventas/actions";
 import { MAX_DESCRIPTION_LENGTH } from "@/lib/products/description";
 import {
   LEGACY_MAX_PRODUCT_PHOTOS,
@@ -958,6 +962,197 @@ export async function updateProduct(
     user.email,
   );
   return { error: aviso };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// EDITING A CATALOGUE PRODUCT FROM INSIDE A SALE (owner's request of 2026-11-26)
+//
+// «Editar» on a cart line and in the product's detail opens the sale's quick sheet, and
+// «si desea editar más información debe ir al catálogo». That sheet shows six fields; a
+// catalogue product has many more (stock, supplier, category, wholesale price and minimum,
+// prices pinned per currency, more photos, codes). The sheet's own save writes the ones it
+// does not show as EMPTY, which is right for a product it created and would WIPE them on any
+// other: the water with 40 units, a wholesale price and a pinned bolívar price would come
+// back with no stock, no wholesale and one currency, and nothing would say so.
+//
+// So this does what the catalogue editor does on save, and nothing of its own: it loads the
+// product exactly as the editor does (`cargarProductoParaEditar`), rebuilds the same
+// `ProductInput` the editor would send untouched (`producto-flujo.tsx`, field by field),
+// lays the sheet's fields over it, and saves through the same `updateProduct`. Barcodes,
+// category and photos 2 to 5 travel as `undefined`, which `updateProduct` reads as «leave
+// them». The margins are recomputed as the editor recomputes them on any save, with the
+// same rule (`precioDelMargen`, moved to `lib/` for this).
+//
+// WHAT THE SHEET CANNOT EDIT WITHOUT LOSING DATA IS LOCKED, decided here and NOT trusted
+// from the browser: the save re-reads the locks and keeps the stored value of a locked
+// field whatever was sent.
+//   · the price, when the product has no retail price (sold only wholesale);
+//   · its currency, when it sells in more than one, has a pinned price, or is priced in a
+//     currency this business does not charge in;
+//   · the photo, when it has more than one;
+//   · the cost, when its currency is not one the sheet offers («Otra», bolívares).
+// ═══════════════════════════════════════════════════════════════════════
+
+export type BloqueosDeEdicion = { precio: boolean; moneda: boolean; foto: boolean; costo: boolean };
+
+export type EdicionRapida = {
+  productId: string;
+  nombre: string;
+  precio: number;
+  moneda: PriceCurrency;
+  photoPath: string | null;
+  publicar: boolean;
+  descripcion: string | null;
+  costo: string | null;
+  costoMoneda: PriceCurrency | null;
+  bloqueos: BloqueosDeEdicion;
+};
+
+export type CambiosRapidos = {
+  nombre: string;
+  precio: string;
+  moneda: PriceCurrency;
+  publicar: boolean;
+  photoPath: string | null;
+  descripcion: string | null;
+  costo: string | null;
+  costoMoneda: PriceCurrency;
+};
+
+function bloqueosDe(
+  product: ProductRow,
+  currencies: Record<PriceTier, PriceCurrency[]>,
+  overrides: Record<PriceTier, Partial<Record<PriceCurrency, number>>>,
+  extraPhotos: string[],
+  monedasDelLibro: PriceCurrency[],
+): BloqueosDeEdicion {
+  // The quick sheet's own cost options (`quick-product-sheet.tsx`, `monedasDeCosto`).
+  const opcionesDeCosto: string[] = monedasDelLibro.includes("COP") ? ["COP"] : ["USD", "EUR"];
+  return {
+    precio: product.price_retail == null,
+    moneda:
+      product.price_retail == null ||
+      currencies.retail.length > 1 ||
+      Object.keys(overrides.retail).length > 0 ||
+      !monedasDelLibro.includes(product.base_currency_retail),
+    foto: extraPhotos.length > 0,
+    costo: product.cost != null && !opcionesDeCosto.includes(product.cost_currency ?? ""),
+  };
+}
+
+/** What the quick sheet opens with, and what it may change. Read with the owner's session. */
+export async function productoParaEdicionRapida(productId: string): Promise<EdicionRapida | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  const [delProducto, contexto] = await Promise.all([
+    cargarProductoParaEditar(supabase, user.id, productId),
+    contextoParaMonto(),
+  ]);
+  if (!delProducto) return { error: "No encontramos ese producto." };
+  if (!contexto) return { error: "No pudimos abrir el producto. Intenta de nuevo." };
+
+  const { product, overrides, initialCurrencies, extraPhotos } = delProducto;
+  return {
+    productId,
+    nombre: product.name,
+    precio: product.price_retail ?? 0,
+    moneda: product.base_currency_retail,
+    photoPath: product.photo_path,
+    publicar: product.published_retail,
+    descripcion: product.description,
+    costo: product.cost != null ? formatAmountForInput(product.cost, { miles: true }) : null,
+    costoMoneda: (product.cost_currency as PriceCurrency | null) ?? null,
+    bloqueos: bloqueosDe(product, initialCurrencies, overrides, extraPhotos, contexto.monedasDelLibro),
+  };
+}
+
+/** Saves the quick sheet over a catalogue product, keeping everything the sheet does not show. */
+export async function editarProductoDesdeVenta(productId: string, cambios: CambiosRapidos): Promise<ProductResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión expirada, vuelve a entrar." };
+
+  // OWNERSHIP IS CHECKED IN THE QUERY (`.eq("owner_id", …)` inside), and again by
+  // `updateProduct`. CLAUDE.md: never RLS alone for an id that comes from the browser.
+  const [delProducto, contexto] = await Promise.all([
+    cargarProductoParaEditar(supabase, user.id, productId),
+    contextoParaMonto(),
+  ]);
+  if (!delProducto) return { error: "No encontramos ese producto." };
+  if (!contexto) return { error: "No pudimos guardar los cambios. Intenta de nuevo." };
+
+  const { product, overrides, initialCurrencies, extraPhotos } = delProducto;
+  const b = bloqueosDe(product, initialCurrencies, overrides, extraPhotos, contexto.monedasDelLibro);
+  const conMiles = (v: number | null | undefined) => formatAmountForInput(v ?? null, { miles: true });
+
+  // THE EDITOR'S OWN SEEDING (`producto-flujo.tsx`): a tier is «on» when it has a price, and
+  // pinned prices are written with the thousands separator, as its fields hold them.
+  const ventaRetail = product.price_retail != null;
+  const ventaWholesale = product.price_wholesale != null;
+  const fijos: Record<PriceTier, Partial<Record<PriceCurrency, string>>> = {
+    retail: Object.fromEntries(Object.entries(overrides.retail).map(([c, v]) => [c, conMiles(v)])),
+    wholesale: Object.fromEntries(Object.entries(overrides.wholesale).map(([c, v]) => [c, conMiles(v)])),
+  };
+  const monedas: Record<PriceTier, PriceCurrency[]> = {
+    retail: b.moneda ? initialCurrencies.retail : [cambios.moneda],
+    wholesale: initialCurrencies.wholesale,
+  };
+  const precioDetal = b.precio ? conMiles(product.price_retail) : cambios.precio;
+  const precioMayor = conMiles(product.price_wholesale);
+
+  const costoTecleado = cambios.costo?.trim() ? cambios.costo : null;
+  const costo = b.costo ? (product.cost != null ? conMiles(product.cost) : null) : costoTecleado;
+  const monedaDelCosto: CostCurrency | null = b.costo
+    ? ((product.cost_currency as CostCurrency | null) ?? null)
+    : costo != null
+      ? cambios.costoMoneda
+      : null;
+
+  // The editor's `marginOf`, with no currency «typed last»: a reopened product starts from the
+  // base, the accepted edge written on `precioDelMargen`.
+  const costoNumero = costo != null ? parseTypedAmount(costo) : null;
+  const margenDe = (precio: string, tier: PriceTier): string | null => {
+    if (monedaDelCosto == null) return null;
+    const del = precioDelMargen(null, monedas[tier], fijos[tier], parseTypedAmount(precio), monedaDelCosto);
+    if (del == null) return null;
+    return marginFromPrice(costoNumero, monedaDelCosto, del.precio, del.moneda, contexto.rates)?.toString() ?? null;
+  };
+
+  const input: ProductInput = {
+    analitica: { source: "quick_sheet" },
+    name: cambios.nombre,
+    unit: product.unit,
+    activeCurrenciesRetail: monedas.retail,
+    activeCurrenciesWholesale: monedas.wholesale,
+    priceRetail: ventaRetail ? precioDetal || null : null,
+    priceWholesale: ventaWholesale ? precioMayor || null : null,
+    fixedRetail: ventaRetail ? fijos.retail : {},
+    fixedWholesale: ventaWholesale ? fijos.wholesale : {},
+    cost: costo,
+    costCurrency: monedaDelCosto,
+    // KEPT, not nulled as the editor does since 2026-10-10: a cost in «Otra» is locked here,
+    // and its label is the one thing about it this sheet must not lose.
+    costCurrencyOther: product.cost_currency_other,
+    marginRetailPct: ventaRetail ? margenDe(precioDetal, "retail") : null,
+    marginWholesalePct: ventaWholesale ? margenDe(precioMayor, "wholesale") : null,
+    stockOpening: formatAmountForInput(product.stock_opening) || null,
+    supplier: product.supplier,
+    wholesaleMinQuantity: formatAmountForInput(product.wholesale_min_quantity) || null,
+    publishedRetail: ventaRetail && cambios.publicar,
+    publishedWholesale: ventaWholesale && product.published_wholesale,
+    photoPath: b.foto ? product.photo_path : cambios.photoPath,
+    extraPhotoPaths: undefined,
+    description: cambios.descripcion,
+    categoryId: undefined,
+    barcodes: undefined,
+  };
+  return updateProduct(productId, input);
 }
 
 // PUBLICAR DESDE LA TARJETA.

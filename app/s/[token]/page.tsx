@@ -9,6 +9,8 @@ import { ContactWhatsappLink } from "@/components/public/contact-whatsapp-link";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { withLogoVersion } from "@/lib/catalog/link-version";
+import { CATALOG_PREVIEW_SIZE } from "@/lib/catalog/preview-image";
 import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
@@ -60,24 +62,71 @@ import {
 // nada, así que lo que viaje ahí tiene que ser cierto para cualquier enlace y
 // no revelar de quién es la cuenta. El saldo solo se ve al abrirlo.
 //
+// THE BUSINESS'S LOGO GOES IN, AND THAT PART OF THE RULE ABOVE IS DISPLACED (owner's
+// decision of 2026-11-26, «Punto 3 con el logo»). He asked for the catalogue's card here
+// («mismo patrón/componente del preview al compartir el catálogo con el powered by
+// Sevenz»), and was told first that this undoes the 2026-09-11 rule: with the logo, a
+// link forwarded to a group says WHICH BUSINESS keeps that account. Both are written so
+// the reason is here if it is ever reverted. What still holds: no client name and no
+// amount, neither in the image (`./vista-previa/route.tsx`) nor in the text below. The
+// weight was judged small because the message the shopkeeper sends already says «Hola
+// Yorman, tu saldo actual es $36,50»; it is the template links and a link forwarded alone
+// that now show the logo.
+//
+// The image's address carries the logo's tag, like the shared link itself
+// (`lib/catalog/link-version.ts`): WhatsApp keeps a card per address, and a link shared
+// before the logo was uploaded would otherwise keep Sevenz's card. The links in the
+// WhatsApp templates cannot carry it (Meta does not let an approved template change), so
+// those may show the old card for a while.
+//
 // noindex porque esta página es pública y muestra el saldo de una persona real.
 // Bastaría con que un enlace se publicara una vez en un sitio rastreable para
 // que acabara en un buscador. No había ninguna regla de indexación hasta hoy.
-export const metadata: Metadata = {
-  title: "Consulta tu saldo — Sevenz",
-  description:
-    "Revisa lo que debes y lo que has abonado, actualizado al instante.",
-  robots: { index: false, follow: false },
-  openGraph: {
-    title: "Consulta tu saldo",
-    description:
-      "Revisa lo que debes y lo que has abonado, actualizado al instante.",
-    siteName: "Sevenz",
-    locale: "es_VE",
-    type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Sevenz" }],
-  },
-};
+const DESCRIPCION_TARJETA = "Revisa lo que debes y lo que has abonado, actualizado al instante.";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  // A failure here must not take the page down: it falls back to the generic card.
+  let logoPath: string | null = null;
+  if (isSupabaseConfigured()) {
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase.rpc("get_shared_balance", { p_token: token, p_limit: 1 });
+      logoPath = (data as { owner_logo_path?: string | null } | null)?.owner_logo_path ?? null;
+    } catch (error) {
+      console.error("[balanceMetadata]", error instanceof Error ? error.message : error);
+    }
+  }
+  const imagen = logoPath
+    ? { url: withLogoVersion(`/s/${token}/vista-previa`, logoPath), ...CATALOG_PREVIEW_SIZE, alt: "Consulta tu saldo" }
+    : { url: "/og.png", width: 1200, height: 630, alt: "Sevenz" };
+  return {
+    title: "Consulta tu saldo — Sevenz",
+    description: DESCRIPCION_TARJETA,
+    robots: { index: false, follow: false },
+    openGraph: {
+      title: "Consulta tu saldo",
+      description: DESCRIPCION_TARJETA,
+      siteName: "Sevenz",
+      locale: "es_VE",
+      type: "website",
+      images: [imagen],
+    },
+    // Declared too, for the catalogue's reason (`app/c/[token]/page.tsx`): metadata
+    // inherits key by key, the root layout's `twitter` block carries `/og.png`, and
+    // WhatsApp reads both. Only `openGraph` would have kept the Sevenz card with a logo.
+    twitter: {
+      card: "summary_large_image",
+      title: "Consulta tu saldo",
+      description: DESCRIPCION_TARJETA,
+      images: [imagen.url],
+    },
+  };
+}
 
 type SharedMovement = {
   id: string;

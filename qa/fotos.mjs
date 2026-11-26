@@ -305,10 +305,18 @@ try {
       .filter((l) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(l))
       .join("\n");
   const conTransformacion = fuentes.filter((f) => codigo(f).includes("/render/image/"));
+  // THE BRAND CARD OF A SHARED LINK IS THE OTHER ONE, and it is allowed (2026-11-26). Since
+  // v0.13.0 (2026-11-25) the catalogue's WhatsApp card asks Supabase for the business LOGO
+  // shrunk to the card, and this check, written before that, failed from then on. It is not
+  // a product photo and not a grid: one logo per business, at one size, so one transformation
+  // per business per billing cycle. The balance link's card (2026-11-26) asks for the same logo
+  // with the same parameters, from the same file, so it adds none.
   check(
-    "8a. solo la vista previa de WhatsApp pide una transformación a Supabase",
-    JSON.stringify(conTransformacion) === JSON.stringify(["lib/supabase/storage.ts"]) &&
-      codigo("lib/supabase/storage.ts").split("/render/image/").length === 2,
+    "8a. solo las vistas previas de WhatsApp piden una transformación a Supabase",
+    JSON.stringify(conTransformacion) ===
+      JSON.stringify(["lib/catalog/brand-preview-image.tsx", "lib/supabase/storage.ts"]) &&
+      codigo("lib/supabase/storage.ts").split("/render/image/").length === 2 &&
+      codigo("lib/catalog/brand-preview-image.tsx").split("/render/image/").length === 2,
     conTransformacion.join(", ") || "ninguna",
   );
   const dibujanAMano = fuentes.filter(

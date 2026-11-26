@@ -418,6 +418,15 @@ export function PagoCampos({
 
   // NO MONEY TODAY, NO METHOD: a fiado with nothing paid has nothing that arrived.
   const hayCobro = enElLibro > 0;
+  // THE FIELD IS SHOWN FROM WHAT WAS TYPED, the method is SENT from what is booked.
+  // Owner's request of 2026-11-26: with «Fiado o crédito» and any amount above zero, the
+  // method field shows, as with «De contado». It used to follow `hayCobro`, so an amount
+  // in bolívares worth less than a cent (Bs. 1 is $0.0011, booked as $0.00) hid it, which
+  // is what he saw. Asked that day what to do with such an amount, he chose to show the
+  // method anyway. What is saved does not change: with $0.00 booked there is no payment
+  // row, so no method is sent, exactly as before (the 100 % fiado path the server has
+  // always accepted).
+  const pideMetodo = entregado > 0;
   const metodo: PaymentMethod =
     metodoElegido ?? defaultMethod(moneda, monedaEntrega === "VES" ? "VES" : moneda);
 
@@ -713,7 +722,7 @@ export function PagoCampos({
 
       {/* «MÉTODO DE PAGO», under the amount it describes (owner's request of 2026-11-17). Only
           when something is paid today: a fiado with nothing down has no method to ask for. */}
-      {hayCobro ? (
+      {pideMetodo ? (
         <MetodoDePagoField
           id={`pago-metodo-${moneda}`}
           bookCurrency={moneda}

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { StockBadge } from "@/components/stock-badge";
 import { ImageOff } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -42,6 +43,7 @@ export function ProductSheet({
   monedaExtra,
   onAgregar,
   umbralDeStock,
+  onEditar,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -63,6 +65,9 @@ export function ProductSheet({
   /** See `ProductDetail.monedaExtra`. */
   monedaExtra?: PriceCurrency;
   onAgregar: (linea: { quantity: number; currency: PriceCurrency }) => void;
+  // «EDITAR», outline, to the right of the name (owner's request of 2026-11-26, the spot he
+  // circled). Only the direct sale passes it; an order's «Agregar al pedido» does not.
+  onEditar?: () => void;
 }) {
   const foto = producto.photoPath || null;
 
@@ -106,7 +111,8 @@ export function ProductSheet({
         </div>
 
         <div className="flex flex-col gap-4 px-4 py-5">
-          <div className="flex flex-col gap-0.5">
+          <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-0.5">
             {/* `SheetTitle` Y NO UN `h1` SUELTO: Radix exige un título dentro
                 del contenido para que un lector de pantalla anuncie qué se
                 acaba de abrir, y sin él avisa por consola. Que además sea el
@@ -116,6 +122,12 @@ export function ProductSheet({
             {producto.unit ? (
               <p className="text-xs text-muted-foreground">{producto.unit}</p>
             ) : null}
+          </div>
+          {onEditar ? (
+            <Button type="button" variant="outline" className="h-10 shrink-0" onClick={onEditar}>
+              Editar
+            </Button>
+          ) : null}
           </div>
 
           {producto.description ? (

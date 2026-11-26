@@ -37,6 +37,7 @@ import {
 } from "@/lib/products/price";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MARGIN_PRESETS } from "@/lib/products/options";
+import { estaDesvinculada, precioDelMargen } from "@/lib/products/margin-price";
 import { ProductPhotosInput } from "@/components/dashboard/product-photos-input";
 import { photosInOrder } from "@/lib/products/photos";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1346,12 +1347,7 @@ function PublishCheck({
 // --la fila, el recalculo desde el costo y el desplegable del margen-- y tres
 // copias de un predicado acaban discrepando. Aqui la discrepancia seria que la
 // fila se cree desvinculada mientras el margen le pisa el precio.
-function estaDesvinculada(
-  fijos: Partial<Record<PriceCurrency, string>>,
-  currency: PriceCurrency,
-): boolean {
-  return fijos[currency] !== undefined;
-}
+// Moved to `lib/products/margin-price.ts` with `precioDelMargen` on 2026-11-26.
 
 // SI UN NUMERO SE PASA DEL TECHO DE SU COLUMNA.
 //
@@ -1744,53 +1740,9 @@ function TierSection({
   );
 }
 
-// ── WHICH PRICE THE MARGIN IS READ FROM, IN ONE PLACE ──────────────────────
-//
-// Owner's rule of 2026-11-16: «solo el margen de lo tecleado, si una moneda queda sin
-// escribirse el precio de venta, no tiene por qué reportarse margen». So the margin comes
-// from a TYPED price only: the base, or a pinned currency. A currency following the rate
-// never gives one.
-//
-// Order: the COST's currency when its price was typed (owner's rule of 2026-11-16, «si ese
-// dueño compró ese producto en 5 dolares y lo vende en 7 dólares y 6.5 euros, el margen seguirá
-// calculándose en la moneda del costo»), then the currency typed last in this visit, then the
-// base, then any pinned currency with a figure (a product whose base price is empty but whose
-// euro was typed). Whichever price is picked, `marginFromPrice` measures it in the cost's
-// currency. With the cost in bolívares and two typed prices in other currencies, the last
-// typed one decides. Three readers use
-// it, and they must agree or the review contradicts the step it re-reads: the margin of step
-// 2/4, the review of 4/4, and `margin_retail_pct` / `margin_wholesale_pct`, which Reportes
-// shows in «Margen por producto».
-//
-// Accepted edge: reopening a product starts from the base again, so re-saving it for another
-// reason stores the base's margin even if the euro was the last one typed months ago.
-function precioDelMargen(
-  ultima: PriceCurrency | null,
-  currencies: PriceCurrency[],
-  fijos: Partial<Record<PriceCurrency, string>>,
-  precioBase: number | null,
-  monedaDelCosto: CostCurrency,
-): { moneda: PriceCurrency; precio: number } | null {
-  const base = currencies[0];
-  const tecleado = (c: PriceCurrency): number | null => {
-    if (c === base) return precioBase;
-    if (!estaDesvinculada(fijos, c)) return null;
-    const n = parseTypedAmount(fijos[c] ?? "");
-    return n != null && n > 0 ? n : null;
-  };
-  const delCosto = currencies.find((c) => c === monedaDelCosto);
-  const orden = [
-    ...(delCosto != null ? [delCosto] : []),
-    ...(ultima != null && currencies.includes(ultima) ? [ultima] : []),
-    base,
-    ...currencies.filter((c) => c !== base),
-  ];
-  for (const moneda of orden) {
-    const precio = tecleado(moneda);
-    if (precio != null) return { moneda, precio };
-  }
-  return null;
-}
+// `precioDelMargen` (which price the margin is read from) moved to
+// `lib/products/margin-price.ts` on 2026-11-26: the quick sheet of a sale re-saves catalogue
+// products and must store the same margin this editor would.
 
 // ── WHAT A CURRENCY IS WORTH, IN ONE PLACE ─────────────────────────────────
 //
