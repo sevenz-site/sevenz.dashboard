@@ -1,5 +1,6 @@
 "use client";
 
+import { withLogoVersion } from "@/lib/catalog/link-version";
 import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -64,12 +65,15 @@ export function CatalogShareButton({
   publishedCount,
   businessName,
   initialToken,
+  logoPath = null,
   variante = "cabecera",
   etiqueta = "Compartir",
 }: {
   publishedCount: PublishedCount;
   businessName: string;
   initialToken: string | null;
+  // The business's logo file, so a new logo makes a new link (lib/catalog/link-version.ts).
+  logoPath?: string | null;
   // CÓMO SE VE, no qué hace. El comportamiento —crear el enlace, el aviso de
   // «no has publicado nada», el `navigator.share` sin `await` delante que iOS
   // exige— es lo caro y es el mismo en los dos sitios; lo que cambia es que en
@@ -94,7 +98,7 @@ export function CatalogShareButton({
   const sinNada = publishedCount.any === 0;
 
   function urlDe(t: string) {
-    return `${publicLinkBase()}/c/${t}`;
+    return withLogoVersion(`${publicLinkBase()}/c/${t}`, logoPath);
   }
 
   // Devuelve el token, creandolo si el negocio todavia no tiene. `null` si

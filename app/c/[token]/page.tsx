@@ -1,3 +1,4 @@
+import { withLogoVersion } from "@/lib/catalog/link-version";
 import { CatalogOpenedEvent } from "@/components/public/public-event";
 import type { Metadata } from "next";
 import { cache } from "react";
@@ -69,7 +70,13 @@ export async function generateMetadata({
   // A failure here must not take the page down: it falls back to the generic card.
   const shared = isSupabaseConfigured() ? await loadSharedCatalog(token) : null;
   const imagen = shared?.owner_logo_path
-    ? { url: `/c/${token}/vista-previa`, ...CATALOG_PREVIEW_SIZE, alt: shared.business_name || "Catálogo" }
+    ? {
+        // The same tag as the shared link (lib/catalog/link-version.ts), for a chat app
+        // that keeps images by address.
+        url: withLogoVersion(`/c/${token}/vista-previa`, shared.owner_logo_path),
+        ...CATALOG_PREVIEW_SIZE,
+        alt: shared.business_name || "Catálogo",
+      }
     : { url: "/og.png", width: 1200, height: 630, alt: "Sevenz" };
   return {
     title: "Catálogo — Sevenz",

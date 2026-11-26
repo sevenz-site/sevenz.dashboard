@@ -35,10 +35,12 @@ export function OrdersEmpty({
   publishedCount,
   businessName,
   initialToken,
+  logoPath = null,
 }: {
   publishedCount: PublishedCount;
   businessName: string;
   initialToken: string | null;
+  logoPath?: string | null;
 }) {
   return (
     <EmptyState
@@ -50,6 +52,7 @@ export function OrdersEmpty({
           publishedCount={publishedCount}
           businessName={businessName}
           initialToken={initialToken}
+          logoPath={logoPath}
           variante="relleno"
           etiqueta="Compartir catálogo"
         />

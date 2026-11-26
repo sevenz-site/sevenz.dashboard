@@ -55,6 +55,7 @@ export default async function ProductosPage() {
     rateContext,
     ordenesSinAtender,
     { data: categorias },
+    { data: logo },
   ] = await Promise.all([
       // PL-34: every product, not the first 1,000 (lib/supabase/read-all.ts). Kept in the
       // `{ data, error }` shape so the read-failure screen below still sees the error.
@@ -102,6 +103,8 @@ export default async function ProductosPage() {
       countUnregisteredOrders(supabase, user!.id),
       // Migration 184: the owner's categories, for the «Categorías» section.
       supabase.from("product_categories").select("id, name").eq("owner_id", user!.id),
+      // The logo's file, so the shared link changes with it (lib/catalog/link-version.ts).
+      supabase.from("owners").select("logo_path").eq("id", user!.id).maybeSingle(),
     ]);
 
   // Las equivalencias solo existen donde hay tasas. Un negocio colombiano
@@ -224,6 +227,7 @@ export default async function ProductosPage() {
               publishedCount={publishedCount}
               businessName={owner?.business_name || "mi negocio"}
               initialToken={catalogLink?.token ?? null}
+              logoPath={(logo?.logo_path as string | null) ?? null}
             />
           }
           /* EL «⋮» VA ARRIBA, a la altura del botón de volver, y «Compartir»
