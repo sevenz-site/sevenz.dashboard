@@ -38,7 +38,8 @@ import { CuotasSelect } from "@/components/dashboard/cuotas-select";
 import { PlazoPagoSelect } from "@/components/dashboard/plazo-pago-select";
 import { useGroupedAmount } from "@/hooks/use-grouped-amount";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
-import { defaultMethod, type PaymentMethod } from "@/lib/payments/methods";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import { FALTA_METODO, mostrarCampoDeMetodo } from "@/lib/payments/required-method";
 import { formatCalendarDate } from "@/lib/format";
 import { Fecha } from "@/components/fecha";
 import { DEFAULT_PLAZO_PAGO } from "@/lib/types";
@@ -427,8 +428,10 @@ export function PagoCampos({
   // row, so no method is sent, exactly as before (the 100 % fiado path the server has
   // always accepted).
   const pideMetodo = entregado > 0;
-  const metodo: PaymentMethod =
-    metodoElegido ?? defaultMethod(moneda, monedaEntrega === "VES" ? "VES" : moneda);
+  // EMPTY UNTIL CHOSEN (2026-11-26, see `lib/payments/methods.ts`). A draft that already carries
+  // one (the order's payment step reopened) keeps it.
+  const metodo: PaymentMethod | null = metodoElegido;
+  const [faltaMetodo, setFaltaMetodo] = useState(false);
 
   const plazoDias =
     plazo && plazo !== "sin_especificar" && Number.isFinite(Number(plazo))
@@ -727,7 +730,11 @@ export function PagoCampos({
           id={`pago-metodo-${moneda}`}
           bookCurrency={moneda}
           value={metodo}
-          onValueChange={setMetodoElegido}
+          onValueChange={(m) => {
+            setMetodoElegido(m);
+            setFaltaMetodo(false);
+          }}
+          error={faltaMetodo && !metodo ? FALTA_METODO : null}
         />
       ) : null}
 
@@ -810,7 +817,13 @@ export function PagoCampos({
         type="button"
         className="h-10 w-full"
         disabled={!listo}
-        onClick={() =>
+        onClick={() => {
+          // REQUIRED WHEREVER IT SHOWS (2026-11-26): any amount above zero, also one worth $0.00.
+          if (pideMetodo && !metodo) {
+            setFaltaMetodo(true);
+            mostrarCampoDeMetodo(`pago-metodo-${moneda}`);
+            return;
+          }
           onGuardar({
             // LO QUE ENTRA HOY EN EL LIBRO. Lo que falte hasta el total es
             // la deuda, y la calcula el servidor: aquí no se teclea.
@@ -833,8 +846,8 @@ export function PagoCampos({
             photoPath,
             description: descripcion.trim(),
             paymentMethod: hayCobro ? metodo : null,
-          })
-        }
+          });
+        }}
       >
         {etiquetaBoton ?? "Pagar"}
       </Button>

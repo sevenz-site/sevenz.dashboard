@@ -33,18 +33,18 @@ const check = (nombre, pasa, detalle = "") => {
 const M = await import("../lib/payments/methods.ts");
 
 // ── 1. PURE ───────────────────────────────────────────────────────────────
-check("1a. Venezuela: nueve métodos, en el orden del dueño",
-  M.methodsForBook("USD").map((m) => m.label).join("|") === "Pago móvil|Efectivo|Punto|Biopago|Transferencia|Binance / USDT|Zelle|Paypal|Zinli");
-check("1b. Colombia (COP o null): cinco, Efectivo primero",
-  M.methodsForBook("COP").map((m) => m.label).join("|") === "Efectivo|Nequi|QR|Punto de venta|Transferencia"
-  && M.methodsForBook(null).length === 5);
-check("1c. por defecto: bolívares → Pago móvil; dólares o euros → Efectivo; Colombia → Efectivo",
-  M.defaultMethod("USD", "VES") === "mobile_payment" && M.defaultMethod("EUR", "VES") === "mobile_payment"
-  && M.defaultMethod("USD", "USD") === "cash" && M.defaultMethod("EUR", "EUR") === "cash"
-  && M.defaultMethod(null, null) === "cash" && M.defaultMethod("COP", "COP") === "cash");
-check("1c2. el ABONO abre siempre en Pago móvil (decisión del 2026-11-25); Colombia, en Efectivo",
-  M.defaultAbonoMethod("USD") === "mobile_payment" && M.defaultAbonoMethod("EUR") === "mobile_payment"
-  && M.defaultAbonoMethod(null) === "cash" && M.defaultAbonoMethod("COP") === "cash");
+check("1a. Venezuela: diez métodos, en el orden del dueño, con «Otro» al final",
+  M.methodsForBook("USD").map((m) => m.label).join("|") === "Pago móvil|Efectivo|Punto|Biopago|Transferencia|Binance / USDT|Zelle|Paypal|Zinli|Otro");
+check("1b. Colombia (COP o null): seis, Efectivo primero y «Otro» al final",
+  M.methodsForBook("COP").map((m) => m.label).join("|") === "Efectivo|Nequi|QR|Punto de venta|Transferencia|Otro"
+  && M.methodsForBook(null).length === 6);
+// 1c and 1c2 checked the defaults per currency (2026-11-17) and for the abono (2026-11-25). Since
+// 2026-11-26 the field opens empty and is required (owner's request), so no default is left.
+check("1c. ya no hay método por defecto: el campo abre vacío (pedido del 2026-11-26)",
+  !("defaultMethod" in M) && !("defaultAbonoMethod" in M));
+check("1c2. «Otro» vale en los dos países",
+  M.isMethodForBook("other", "USD") && M.isMethodForBook("other", "EUR") && M.isMethodForBook("other", null)
+  && M.isMethodForBook("other", "COP") && M.methodLabel("other", "USD") === "Otro" && M.methodLabel("other", null) === "Otro");
 check("1c3. Biopago vale en Venezuela y no en Colombia",
   M.isMethodForBook("biopago", "USD") && M.isMethodForBook("biopago", "EUR")
   && !M.isMethodForBook("biopago", null) && !M.isMethodForBook("biopago", "COP") && M.methodLabel("biopago", "USD") === "Biopago");
@@ -188,6 +188,20 @@ try {
     p_sale_id: v2.id, p_line_id: l2.id, p_quantity: 1, p_fiados: [], p_a_favor: 0, p_efectivo: 4, p_metodo: "biopago",
   });
   check("5c. y una devolución en dinero por Biopago también", !eDevBio && devBio?.ok === true, eDevBio?.message ?? JSON.stringify(devBio));
+
+  // ── «OTRO» (migration 224): the three doors that store a method ──
+  const { data: repOtro, error: eRepOtro } = await dueno.rpc("registrar_abono_repartido", {
+    p_lineas: [{ fiado_id: f2, amount: 1, entry_currency: "USD", entry_amount: 1, payment_method: "other" }],
+  });
+  check("6b. un abono por «Otro» se guarda (migración 224)", !eRepOtro && repOtro?.ok === true, eRepOtro?.message ?? JSON.stringify(repOtro));
+  const { data: v3 } = await dueno.from("sales").insert({ owner_id: owner, client_id: c2.id }).select("id").single();
+  const { data: l3 } = await dueno.from("sale_lines").insert({ sale_id: v3.id, name: "ZZ QA 3", quantity: 1, unit_price: 2, currency: "USD" }).select("id").single();
+  const otro = await dueno.from("sale_payments").insert({ sale_id: v3.id, currency: "USD", amount: 2, entry_currency: "USD", entry_amount: 2, payment_method: "other" });
+  check("6a. un pago de una venta por «Otro» se guarda", !otro.error, otro.error?.message ?? "");
+  const { data: devOtro, error: eDevOtro } = await dueno.rpc("registrar_devolucion_contado", {
+    p_sale_id: v3.id, p_line_id: l3.id, p_quantity: 1, p_fiados: [], p_a_favor: 0, p_efectivo: 2, p_metodo: "other",
+  });
+  check("6c. y una devolución en dinero por «Otro» también", !eDevOtro && devOtro?.ok === true, eDevOtro?.message ?? JSON.stringify(devOtro));
 } catch (e) {
   check("la prueba corrió entera", false, e instanceof Error ? e.message : String(e));
 } finally {

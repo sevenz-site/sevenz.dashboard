@@ -1,7 +1,8 @@
 "use client";
 
 import { track } from "@/lib/mixpanel";
-import { defaultMethod, isMethodForBook, type PaymentMethod } from "@/lib/payments/methods";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import { FALTA_METODO, mostrarCampoDeMetodo } from "@/lib/payments/required-method";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
 import { newFlowId } from "@/lib/analytics/flow-client";
 import { useEffect, useRef, useState } from "react";
@@ -105,12 +106,11 @@ export function RegistrarDevolucionDialog({
   const [saving, setSaving] = useState<ReturnChoice["kind"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // HOW THE CASH GOES BACK (migration 214, owner's decision of 2026-11-17: «Preguntar al
-  // devolver»). Opens on the method the sale was paid with («El de la venta», 2026-11-17);
-  // without one, on «Efectivo», the default for money in the book's own currency. The Reportes
-  // chart takes the refund off whatever is chosen here.
-  const [metodo, setMetodo] = useState<PaymentMethod>(() =>
-    isMethodForBook(context.saleMethod, currency) ? context.saleMethod : defaultMethod(currency, currency),
-  );
+  // devolver»). The Reportes chart takes the refund off whatever is chosen here.
+  // EMPTY UNTIL CHOSEN, AND REQUIRED for a button that hands cash back (2026-11-26). It displaced
+  // opening on the sale's own method («El de la venta», 2026-11-17); see `lib/payments/methods.ts`.
+  const [metodo, setMetodo] = useState<PaymentMethod | null>(null);
+  const [faltaMetodo, setFaltaMetodo] = useState(false);
 
   const money = (n: number) => formatLedgerAmount(n, currency, ledger);
   const value = returnValue(quantity, line.unitPrice, line.devuelto ?? 0, line.devueltoValor ?? 0, context.ceiling);
@@ -205,6 +205,11 @@ export function RegistrarDevolucionDialog({
 
   async function register(choice: ReturnChoice) {
     if (guardia() || !line.id) return;
+    if (choice.efectivo > 0 && !metodo) {
+      setFaltaMetodo(true);
+      mostrarCampoDeMetodo("devolucion-metodo");
+      return;
+    }
     setSaving(choice.kind);
     setError(null);
     const { fiados, aFavor, efectivo } = choice;
@@ -331,9 +336,13 @@ export function RegistrarDevolucionDialog({
             id="devolucion-metodo"
             bookCurrency={currency}
             value={metodo}
-            onValueChange={setMetodo}
+            onValueChange={(m) => {
+              setMetodo(m);
+              setFaltaMetodo(false);
+            }}
             disabled={saving !== null}
             label="¿Cómo le devolviste el dinero?"
+            error={faltaMetodo && !metodo ? FALTA_METODO : null}
           />
         ) : null}
 

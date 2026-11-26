@@ -28,11 +28,15 @@ export const PAYMENT_METHODS = [
   "zinli",
   "nequi",
   "qr",
+  // «Otro», last in both lists (owner's request of 2026-11-26: «entre las opciones agrega la
+  // opción "Otro"»; both countries and with no «¿cuál?» field, his answers that day). Migration
+  // 224 adds it to the database checks: without it the save is refused.
+  "other",
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-// In the order the owner wrote them. The first one is not the default: see `defaultMethod`.
+// In the order the owner wrote them. None is pre-selected: see the note below the lists.
 const VENEZUELA: { value: PaymentMethod; label: string }[] = [
   { value: "mobile_payment", label: "Pago móvil" },
   { value: "cash", label: "Efectivo" },
@@ -44,6 +48,7 @@ const VENEZUELA: { value: PaymentMethod; label: string }[] = [
   { value: "zelle", label: "Zelle" },
   { value: "paypal", label: "Paypal" },
   { value: "zinli", label: "Zinli" },
+  { value: "other", label: "Otro" },
 ];
 
 const COLOMBIA: { value: PaymentMethod; label: string }[] = [
@@ -52,6 +57,7 @@ const COLOMBIA: { value: PaymentMethod; label: string }[] = [
   { value: "qr", label: "QR" },
   { value: "card", label: "Punto de venta" },
   { value: "bank_transfer", label: "Transferencia" },
+  { value: "other", label: "Otro" },
 ];
 
 /** A Colombian book: `sale_payments` spells it 'COP' and `movements` NULL. */
@@ -64,38 +70,18 @@ export function methodsForBook(bookCurrency: string | null | undefined) {
   return esColombia(bookCurrency) ? COLOMBIA : VENEZUELA;
 }
 
-/**
- * The method the field opens with. Owner's decision of 2026-11-17: «si teclea bolívares = por
- * defecto pago móvil. Si teclea dólares o euros = por defecto efectivo. Pero en euro o dólares
- * puede seleccionar pago móvil». A Colombian business opens on «Efectivo».
- *
- * WHY THE DEFAULT FOLLOWS THE CURRENCY TYPED: «Pago móvil» everywhere would file every dollar
- * paid in cash and never corrected as a Pago móvil, and the Reportes chart would say so with
- * nothing to warn anyone.
- */
-export function defaultMethod(
-  bookCurrency: string | null | undefined,
-  entryCurrency: string | null | undefined,
-): PaymentMethod {
-  if (esColombia(bookCurrency)) return "cash";
-  return entryCurrency === "VES" ? "mobile_payment" : "cash";
-}
-
-/**
- * The method an ABONO opens with: «Pago móvil», whatever currency is typed. Owner's decision of
- * 2026-11-25: «En el registro de abono colocar por defecto el método de pago "Pago móvil"».
- *
- * IT DISPLACES, FOR ABONOS ONLY, HIS RULE OF 2026-11-17 ABOVE, and he chose it with that rule and
- * its cost in front of him: a dollar abono paid in cash and never corrected is filed as a Pago
- * móvil, and the Reportes chart says so with nothing to warn anyone. The sale and the return keep
- * the rule of 2026-11-17.
- *
- * A Colombian business still opens on «Efectivo»: Pago móvil is not in its list, and the server
- * would refuse it.
- */
-export function defaultAbonoMethod(bookCurrency: string | null | undefined): PaymentMethod {
-  return esColombia(bookCurrency) ? "cash" : "mobile_payment";
-}
+// NO METHOD IS PRE-SELECTED ANY MORE (owner's request of 2026-11-26): the field opens empty on
+// «Seleccionar opción», is required, and continuing without one shows the error. In the four
+// screens: the sale and catalogue-order payment, the abono, the split abono and the return.
+//
+// THAT DISPLACES THREE DECISIONS OF HIS, written here so the reason stays if it is ever reverted:
+//   · 2026-11-17, the sale: the default followed the currency typed, «si teclea bolívares = por
+//     defecto pago móvil. Si teclea dólares o euros = por defecto efectivo», so that a dollar
+//     paid in cash and never corrected was not filed as a Pago móvil in the Reportes chart.
+//   · 2026-11-25, the abono: «colocar por defecto el método de pago "Pago móvil"».
+//   · 2026-11-17, the return: it opened on the method the sale was paid with («El de la venta»).
+// An empty required field removes the risk the first one guarded against: nothing is filed
+// under a method nobody chose. `defaultMethod` and `defaultAbonoMethod` were removed with it.
 
 /** Whether `value` is a method this book accepts. The server's check, before the database's. */
 export function isMethodForBook(value: unknown, bookCurrency: string | null | undefined): value is PaymentMethod {

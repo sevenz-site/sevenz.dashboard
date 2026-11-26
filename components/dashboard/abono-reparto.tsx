@@ -31,7 +31,8 @@ import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
 import { AttachmentUploader } from "@/components/dashboard/attachment-uploader";
-import { defaultAbonoMethod, type PaymentMethod } from "@/lib/payments/methods";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import { FALTA_METODO, mostrarCampoDeMetodo } from "@/lib/payments/required-method";
 import { TarjetaDeFiado, type FiadoAbierto } from "@/components/dashboard/tarjeta-de-fiado";
 import { WhatsappConsentField } from "@/components/dashboard/whatsapp-consent-field";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
@@ -327,9 +328,10 @@ export function AbonoReparto({
     numeroDeLibros: libros.length,
     porLinea: modoSeleccion,
   });
-  // «Pago móvil» whatever unit the bill is counted in (owner's decision of 2026-11-25). See
-  // `defaultAbonoMethod`.
-  const metodo: PaymentMethod = metodoElegido ?? defaultAbonoMethod(libro);
+  // EMPTY UNTIL CHOSEN, AND REQUIRED (2026-11-26). It displaces «Pago móvil» by default of
+  // 2026-11-25; both are written in `lib/payments/methods.ts`.
+  const metodo: PaymentMethod | null = metodoElegido;
+  const [faltaMetodo, setFaltaMetodo] = useState(false);
 
   // LAS DOS CONVERSIONES, CON LAS TASAS DE HOY. El servidor volverá a hacerlas
   // con la tasa que él mismo sella, que es la que se guarda; estas son para
@@ -749,6 +751,11 @@ export function AbonoReparto({
 
   const guardar = () => {
     setError(null);
+    if (!metodo) {
+      setFaltaMetodo(true);
+      mostrarCampoDeMetodo("reparto-metodo");
+      return;
+    }
     empezar(async () => {
       // HOW MANY REACH THE BUTTON. The difference with `Payment Recorded` is what was
       // refused. Filed under the owner.
@@ -1495,7 +1502,11 @@ export function AbonoReparto({
           id="reparto-metodo"
           bookCurrency={libro}
           value={metodo}
-          onValueChange={setMetodoElegido}
+          onValueChange={(m) => {
+            setMetodoElegido(m);
+            setFaltaMetodo(false);
+          }}
+          error={faltaMetodo && !metodo ? FALTA_METODO : null}
         />
       ) : null}
 

@@ -48,7 +48,8 @@ import type { LedgerCurrency, MonedaTecleada } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { MetodoDePagoField } from "@/components/dashboard/metodo-de-pago-field";
-import { defaultAbonoMethod, type PaymentMethod } from "@/lib/payments/methods";
+import type { PaymentMethod } from "@/lib/payments/methods";
+import { FALTA_METODO, mostrarCampoDeMetodo } from "@/lib/payments/required-method";
 import { MovementDescriptionField } from "@/components/dashboard/movement-description-field";
 
 // PASO 3/3 DEL ABONO DIRIGIDO — frame `1389:9381`.
@@ -185,10 +186,11 @@ export function AbonoMonto({
   const [photoEditada, setPhotoPath] = useState<string | null | undefined>(undefined);
   const photoPath = photoEditada !== undefined ? photoEditada : fotoDelReparto;
   const [avisar, setAvisar] = useState(false);
-  // THE METHOD, or null while untouched: then it is «Pago móvil», whatever currency is typed
-  // (owner's decision of 2026-11-25). See `defaultAbonoMethod`.
+  // THE METHOD, or null while untouched.
   const [metodoElegido, setMetodoElegido] = useState<PaymentMethod | null>(null);
-  const metodo: PaymentMethod = metodoElegido ?? defaultAbonoMethod(libro);
+  // EMPTY UNTIL CHOSEN, AND REQUIRED (2026-11-26; see `lib/payments/methods.ts`).
+  const metodo: PaymentMethod | null = metodoElegido;
+  const [faltaMetodo, setFaltaMetodo] = useState(false);
 
   // `parseAmount` Y NO `Number(...)`, que es lo que había aquí.
   //
@@ -346,6 +348,11 @@ export function AbonoMonto({
 
   function guardar() {
     setError(null);
+    if (!metodo) {
+      setFaltaMetodo(true);
+      mostrarCampoDeMetodo("abono-metodo");
+      return;
+    }
     track("Payment Submitted", {
       flow_id: flujo,
       entry_point: "transaction_detail",
@@ -632,7 +639,11 @@ export function AbonoMonto({
           id="abono-metodo"
           bookCurrency={libro}
           value={metodo}
-          onValueChange={setMetodoElegido}
+          onValueChange={(m) => {
+            setMetodoElegido(m);
+            setFaltaMetodo(false);
+          }}
+          error={faltaMetodo && !metodo ? FALTA_METODO : null}
         />
       ) : null}
 
