@@ -1,3 +1,4 @@
+import { siteUrl } from "@/lib/site-url";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -36,10 +37,8 @@ const DESCRIPCION = "¡Lleva las cuentas claras de tu negocio sin tanta vaina!";
 
 export const metadata: Metadata = {
   // Sin esto, Next emite rutas relativas en og:image y WhatsApp no las
-  // resuelve. La URL va escrita porque el enlace compartido se arma en el
-  // navegador con window.location.origin y no existe una constante que
-  // reutilizar.
-  metadataBase: new URL("https://app.sevenz.site"),
+  // resuelve. The address depends on the deployment since 2026-11-25: see `siteUrl`.
+  metadataBase: new URL(siteUrl()),
   title: TITULO,
   description: DESCRIPCION,
   // public/manifest.json cannot hold comments, so its two choices are explained here.
