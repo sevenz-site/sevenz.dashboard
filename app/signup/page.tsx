@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { TEXTO_AVISOS_WHATSAPP_REGISTRO_V2 } from "@/lib/whatsapp-opt-in";
 import Image from "next/image";
 import Link from "next/link";
@@ -111,9 +111,26 @@ export default function SignupPage() {
         <CardContent>
           <form
             ref={setFormRef}
+            // `action` stays only for the no-JS fallback (a tap before hydration posts
+            // the form for real, and `state.values` restores it). Once hydrated, the
+            // submit is sent from `onSubmit` instead, and that is the fix of
+            // 2026-11-26: React 19 RESETS a form after every `<form action>`
+            // submission, and the Radix Checkbox and Select listen to that reset and
+            // set their React state back to the default. So after a refused password
+            // the terms box came back unticked, «¿Cómo conociste Sevenz?» came back
+            // empty and «País» went back to Venezuela, while the old error stayed on
+            // screen: the button stayed disabled with a new, strong password, and
+            // the owner read it as the password still being refused (reported by the
+            // owner, reproduced in dev that day). Worse and silent: a Colombian owner
+            // who did not look again would create the account as Venezuelan, and the
+            // country cannot be changed later. Calling the action from a transition
+            // is not a form submission, so React does not reset anything.
             action={formAction}
             onSubmit={(e) => {
-              if (!validate(e.currentTarget)) e.preventDefault();
+              e.preventDefault();
+              if (!validate(e.currentTarget)) return;
+              const formData = new FormData(e.currentTarget);
+              startTransition(() => formAction(formData));
             }}
             className="flex flex-col gap-4"
           >
