@@ -2,7 +2,7 @@
 
 import { trackServer } from "@/lib/mixpanel-server";
 import { flowContext, type FlowInput } from "@/lib/analytics/amounts";
-import type { ProductRejectionReason, ProductSource } from "@/lib/analytics/events";
+import type { ProductRejectionReason, ProductSource, ProductUpdateSource } from "@/lib/analytics/events";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { puedeEscribir } from "@/lib/cuenta-pausada-server";
@@ -167,7 +167,9 @@ export type FixedPrices = Partial<Record<PriceCurrency, string>>;
 export type ProductInput = {
   // Which attempt this is and who called. Only for the funnels: this action has two
   // doors, the wizard and the quick sheet inside a sale.
-  analitica?: FlowInput & { source?: ProductSource };
+  // `sale_edit` only means something to `updateProduct`; `createProduct` reads anything
+  // that is not `quick_sheet` as the wizard.
+  analitica?: FlowInput & { source?: ProductUpdateSource };
   name: string;
   unit: string | null;
   // Las monedas que maneja CADA ESCALÓN, y la PRIMERA de cada lista es su
@@ -946,6 +948,21 @@ export async function updateProduct(
 
   // WHAT GETS EDITED MOST. If it is the price, a shortcut would save the whole
   // wizard. Column names only, never their values. Filed under the owner.
+  //
+  // `source`, SINCE v0.14.0: THAT SHORTCUT NOW EXISTS, and this says whether it is used.
+  // v0.14.0 lets the shopkeeper edit a catalogue product from inside a sale. Business
+  // question: of the edits a business makes, how many are made from the sale, and of which
+  // fields? If the price edits move to `sale_edit`, the shortcut earned its place and the
+  // same sheet is worth offering from the product list; if they stay in `wizard`, nobody
+  // finds it there and that is the thing to fix before building a second one.
+  //   wizard      the product editor.
+  //   quick_sheet the sale's quick sheet, reopening a product it has just created.
+  //   sale_edit   a catalogue product edited from the sale (`editarProductoDesdeVenta`).
+  // Owner's decision of 2026-11-27, «un valor propio "sale_edit"»: until then the event had
+  // no `source` at all, so the two sale paths could not be told from the wizard. Any other
+  // value from the browser reads as `wizard`.
+  const desde = input.analitica?.source;
+  const source: ProductUpdateSource = desde === "sale_edit" || desde === "quick_sheet" ? desde : "wizard";
   const igual = (x: unknown, y: unknown) =>
     x === y || (x == null && y == null) || (x != null && y != null && Number(x) === Number(y)) || String(x ?? "") === String(y ?? "");
   trackServer(
@@ -953,6 +970,7 @@ export async function updateProduct(
     user.id,
     {
       ...flowContext(input.analitica),
+      source,
       product_id: productId,
       fields_changed: Object.entries(fila)
         .filter(([columna, valor]) => !igual((antes as Record<string, unknown> | null)?.[columna], valor))
@@ -1125,7 +1143,7 @@ export async function editarProductoDesdeVenta(productId: string, cambios: Cambi
   };
 
   const input: ProductInput = {
-    analitica: { source: "quick_sheet" },
+    analitica: { source: "sale_edit" },
     name: cambios.nombre,
     unit: product.unit,
     activeCurrenciesRetail: monedas.retail,

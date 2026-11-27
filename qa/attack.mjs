@@ -366,6 +366,37 @@ try {
         (r.status === 302 && /\/og\.png$/.test(r.headers.get("location") ?? "")) || (r.status === 200 && /^image\//.test(tipo)) ? "BLOQUEADO" : /Cliente de B|12345678/.test(t) ? "VULN" : "SIN PROBAR",
         `${r.status} ${tipo || r.headers.get("location") || ""}`);
     }
+    // Migration 226 (owner's decision of 2026-11-27): DRAWING THE CARD IS NOT OPENING THE
+    // LINK. The card read the logo through `get_shared_balance`, which records a visit, so
+    // every card drawn told the shopkeeper «tu cliente abrió su enlace». Read as owner B,
+    // which is what feeds his notification: the image is fetched, the logo is asked for by
+    // hand, and B's `link_opens` must be exactly as it was. Then the page itself is opened,
+    // to see the same reading move: a check that cannot fail proves nothing.
+    {
+      const visitas = async () => {
+        const { data, error } = await B.db.from("link_opens").select("opened_at, read_at").eq("client_id", cB.id);
+        return error ? `error ${error.code}` : JSON.stringify(data);
+      };
+      const antes = await visitas();
+      await fetch(`${BASE}/s/${tokB}/vista-previa`, { redirect: "manual" });
+      const logo = await anon.rpc("share_link_logo", { p_token: tokB });
+      const despues = await visitas();
+      rec("http · enlace", "dibujar la tarjeta del saldo no cuenta como una visita del cliente",
+        logo.error || antes.startsWith("error") ? "SIN PROBAR" : antes === despues ? "BLOQUEADO" : "VULN",
+        logo.error ? `share_link_logo: ${logo.error.code} ${logo.error.message}` : antes === despues ? "" : `antes ${antes} · después ${despues}`);
+      await fetch(`${BASE}/s/${tokB}`);
+      const trasAbrir = await visitas();
+      rec("http · enlace", "abrir la página del saldo sí cuenta (el control de la fila anterior)",
+        antes.startsWith("error") ? "SIN PROBAR" : trasAbrir !== despues ? "BLOQUEADO" : "SIN PROBAR",
+        trasAbrir !== despues ? "" : "la visita no se registró: la fila anterior no prueba nada");
+      rec("http · enlace", "share_link_logo devuelve una ruta o nada, nunca datos de la cuenta",
+        logo.error ? "SIN PROBAR" : logo.data === null || (typeof logo.data === "string" && !/Cliente de B|12345678/.test(logo.data)) ? "BLOQUEADO" : "VULN",
+        logo.error ? logo.error.code : typeof logo.data);
+      for (const [n, tok] of [["token inventado", "zz-no-existe"], ["inyección SQL en el token", "x' or '1'='1"]]) {
+        const r = await anon.rpc("share_link_logo", { p_token: tok });
+        rec("http · enlace", `share_link_logo con ${n} no devuelve nada`, r.error ? "SIN PROBAR" : r.data === null ? "BLOQUEADO" : "VULN", r.error ? r.error.code : String(r.data));
+      }
+    }
     rec("http · cabeceras", "contra clickjacking y sniffing", faltan.length ? "VULN" : "BLOQUEADO", faltan.length ? `faltan ${faltan.join(", ")}` : "");
   }
 

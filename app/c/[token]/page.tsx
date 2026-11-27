@@ -378,6 +378,7 @@ export default async function CatalogoPublicoPage({
   // the customer sees (the same reason «Compartir» is drawn there).
   const contacto = (
     <CatalogContactButtons
+      catalogToken={token}
       whatsappHref={shared.catalog_show_whatsapp ? catalogWhatsappHref(shared.owner_whatsapp) : null}
       linkKind={shared.catalog_link_kind}
       linkUrl={shared.catalog_link_url}

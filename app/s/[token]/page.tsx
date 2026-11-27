@@ -95,8 +95,10 @@ export async function generateMetadata({
   if (isSupabaseConfigured()) {
     try {
       const supabase = await createClient();
-      const { data } = await supabase.rpc("get_shared_balance", { p_token: token, p_limit: 1 });
-      logoPath = (data as { owner_logo_path?: string | null } | null)?.owner_logo_path ?? null;
+      // `share_link_logo` (migration 226) only reads. `get_shared_balance` records a visit
+      // on every call, and the page below already makes that call once per real open.
+      const { data } = await supabase.rpc("share_link_logo", { p_token: token });
+      logoPath = typeof data === "string" && data ? data : null;
     } catch (error) {
       console.error("[balanceMetadata]", error instanceof Error ? error.message : error);
     }
