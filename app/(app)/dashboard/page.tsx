@@ -25,6 +25,8 @@ import { ventasDelPeriodo } from "@/lib/reports/ventas-del-periodo";
 import { rangoDe } from "@/lib/reports/rango";
 import { CuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { TrialEndingNotice } from "@/components/dashboard/trial-ending-notice";
+import { DeletionPendingCard } from "@/components/dashboard/delete-account-card";
+import { deletionDateText } from "@/lib/account-deletion-read";
 import { TRIAL_NOTICE_DAYS, trialDaysLeft } from "@/lib/subscription/trial";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { HomeHeader } from "@/components/dashboard/home-header";
@@ -70,6 +72,7 @@ export default async function DashboardPage({
     ownerRate,
     ordenesSinAtender,
     { data: trialEndsAt },
+    deletionAt,
   ] = await Promise.all([
     // PL-34: every row, not the first 1,000 (lib/supabase/read-all.ts).
     // A failed read still draws an empty list, as when the error was dropped.
@@ -119,8 +122,12 @@ export default async function DashboardPage({
     // An error -- this code running before 175 -- reads as «no trial» and the
     // notice simply does not appear; nothing else on the screen depends on it.
     supabase.rpc("mi_fin_de_prueba"),
+    // PL-48 step 1.3: an open request to delete the account (migration 227). An error reads
+    // as «none», like the trial date above.
+    supabase.rpc("my_account_deletion"),
   ]);
   const trialDays = trialDaysLeft(trialEndsAt as string | null, owner?.country);
+  const deletionUntil = deletionDateText(deletionAt, owner?.country);
 
   // No saber el país no es saber que es CO. Esta pantalla monta el alta de
   // cliente con su primer movimiento, así que un país inventado aquí dibuja el
@@ -309,6 +316,11 @@ export default async function DashboardPage({
             Se dibuja siempre y decide el solo: lee del contexto del layout, que
             es quien pregunta a la base. La pantalla ya no repite esa consulta. */}
         <CuentaPausada />
+
+        {/* PL-48 step 1.3 (frame «Eliminar · 4», whose note puts it here too): an owner who
+            asked to delete the account by mistake finds the way back on the screen he opens,
+            without having to look for it in Mi negocio. */}
+        {deletionUntil ? <DeletionPendingCard until={deletionUntil} /> : null}
 
         {/* The last days of the trial, in the spot where the blocked notice
             appears on the end date. See `trial-ending-notice.tsx`. */}

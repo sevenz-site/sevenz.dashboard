@@ -16,7 +16,9 @@ export const LOGIN_TICKET_COOKIE = "sz_login";
 export const LOGIN_TICKET_MINUTES = CODE_TTL_MINUTES;
 
 export type CodeChannel = "whatsapp" | "email";
-export type CodePurpose = "login" | "enable" | "password" | "number" | "admin_email";
+// `delete_account` since 2026-11-27 (PL-48, step 1.3, migration 227): confirms a request to
+// delete the account, sent to the account email.
+export type CodePurpose = "login" | "enable" | "password" | "number" | "admin_email" | "delete_account";
 
 /** A code the shopkeeper types: six digits, spaces and dashes tolerated. */
 export function normalizeCode(raw: string): string | null {
@@ -98,6 +100,8 @@ export function purposeText(purpose: CodePurpose): string {
       return "confirmar tu nuevo número de WhatsApp";
     case "admin_email":
       return "confirmar tu identidad con el equipo de Sevenz";
+    case "delete_account":
+      return "confirmar que quieres eliminar tu cuenta de Sevenz";
   }
 }
 

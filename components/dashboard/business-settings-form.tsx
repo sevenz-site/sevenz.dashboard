@@ -22,6 +22,7 @@ import { PaymentMethodsCard } from "@/components/dashboard/payment-methods-card"
 import { ChangePasswordDialog } from "@/components/dashboard/change-password-dialog";
 import { ChangeWhatsappDialog } from "@/components/dashboard/change-whatsapp-dialog";
 import { SecondFactorCard } from "@/components/dashboard/security-card";
+import { DeleteAccountCard } from "@/components/dashboard/delete-account-card";
 import { maskPhone } from "@/lib/security/code-text";
 import { StickyActions } from "@/components/dashboard/sticky-actions";
 import { ExchangeRateLegalDisclaimer } from "@/components/exchange-rate-legal-disclaimer";
@@ -53,12 +54,15 @@ export function BusinessSettingsForm({
   logoUrl,
   paymentMethods,
   secondFactor,
+  deletion,
 }: {
   owner: Owner;
   logoUrl: string | null;
   paymentMethods: PaymentMethod[];
   // C1 of PL-22: whether the account asks for a code. Decides the password dialog's first step.
   secondFactor: boolean;
+  // PL-48 step 1.3: where the confirmation code goes, and the date of an open request.
+  deletion: { maskedEmail: string | null; pendingUntil: string | null };
 }) {
   const router = useRouter();
   const [formRef, setFormRef] = useFormRef();
@@ -393,6 +397,9 @@ export function BusinessSettingsForm({
         </section>
 
         <SecondFactorCard enabled={secondFactor} maskedWhatsapp={owner.whatsapp ? maskPhone(owner.whatsapp) : null} />
+
+        {/* PL-48 step 1.3, frame «Eliminar · 1»: the last card of «Seguridad de la cuenta». */}
+        <DeleteAccountCard maskedEmail={deletion.maskedEmail} pendingUntil={deletion.pendingUntil} />
       </section>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

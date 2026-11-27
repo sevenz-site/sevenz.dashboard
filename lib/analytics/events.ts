@@ -20,7 +20,9 @@ type CurrencyKey = "usd" | "eur" | "cop" | "usdt" | "ves";
 
 // One number per currency and never a total across them: dollars and euros do
 // not add up. `lib/analytics/amounts.ts` builds these.
-type CodePurpose = "login" | "enable" | "password" | "number" | "admin_email";
+// The same list as `CodePurpose` in lib/security/code-text.ts. `delete_account` since
+// 2026-11-27 (PL-48 step 1.3): the Second Factor Code events carry it as their `purpose`.
+type CodePurpose = "login" | "enable" | "password" | "number" | "admin_email" | "delete_account";
 type CodeChannel = "whatsapp" | "email";
 
 export type Money<P extends string> = Partial<Record<`${P}_${CurrencyKey}`, number>>;
@@ -369,6 +371,10 @@ export type EventProps = {
   };
   "Second Factor Enabled": Record<string, never>;
   "Second Factor Disabled": Record<string, never>;
+  // PL-48 step 1.3 (2026-11-27). The business question is next to the calls, in
+  // app/(app)/profile/delete-account-actions.ts.
+  "Account Deletion Requested": { source: "app" | "web" };
+  "Account Deletion Cancelled": Record<string, never>;
   "WhatsApp Number Changed": { had_number: boolean };
   "Account Change Alert Sent": { what: "number" | "email" };
   "Owner Email Changed By Admin": { verified_by: "whatsapp_code" | "other" };

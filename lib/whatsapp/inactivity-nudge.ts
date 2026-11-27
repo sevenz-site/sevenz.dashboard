@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import { ownersPendingDeletion } from "@/lib/account-deletion";
 import { claveSemanal, enviarAvisoAlDueno } from "@/lib/whatsapp/send";
 import { templateSafe } from "@/lib/security/device-text";
 import { APP_URL } from "@/lib/whatsapp/destinos";
@@ -140,7 +141,12 @@ export async function sendInactivityNudges(
     }
     return result;
   }
-  const targets = ((data ?? []) as Target[]).filter((t) => !onlyOwners || onlyOwners.has(t.owner_id));
+  // Nobody who asked to delete the account is nudged to use it more (PL-48 step 1.3, the
+  // owner's «se paran» of 2026-11-27 extended to this one: it is also a message to the owner).
+  const leaving = await ownersPendingDeletion();
+  const targets = ((data ?? []) as Target[]).filter(
+    (t) => (!onlyOwners || onlyOwners.has(t.owner_id)) && !leaving.has(t.owner_id),
+  );
   result.candidatos = targets.length;
   const cycle = cycleDate(now);
 

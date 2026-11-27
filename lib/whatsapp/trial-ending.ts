@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import { ownersPendingDeletion } from "@/lib/account-deletion";
 import { enviarAvisoAlDueno, type ResultadoEnvio } from "@/lib/whatsapp/send";
 import { templateSafe } from "@/lib/security/device-text";
 import { trialEndText } from "@/lib/whatsapp/account-ready";
@@ -60,7 +61,10 @@ export async function sendTrialEndingNotices(): Promise<{ candidatos: number; en
     console.error("[prueba_por_vencer] trial_ending_targets:", error.message);
     return resumen;
   }
-  const targets = (data ?? []) as Target[];
+  // No «activate your plan» to somebody leaving (PL-48 step 1.3, same reason as the
+  // Monday/Thursday messages, owner's decision of 2026-11-27).
+  const leaving = await ownersPendingDeletion();
+  const targets = ((data ?? []) as Target[]).filter((t) => !leaving.has(t.owner_id));
   resumen.candidatos = targets.length;
   for (const t of targets) {
     try {

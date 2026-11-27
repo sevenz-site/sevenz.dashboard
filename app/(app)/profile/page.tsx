@@ -6,12 +6,14 @@ import { CarteraBackButton } from "@/components/dashboard/cartera-back-button";
 import type { Owner } from "@/lib/types";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 import { mySecondFactor } from "@/lib/security/second-factor";
+import { maskEmail } from "@/lib/security/code-text";
+import { deletionDateText } from "@/lib/account-deletion-read";
 
 export default async function ProfilePage() {
   const supabase = await getRequestClient();
   const user = await getCurrentUser();
 
-  const [{ data: owner }, { data: paymentMethods }, secondFactor] = await Promise.all([
+  const [{ data: owner }, { data: paymentMethods }, secondFactor, deletionAt] = await Promise.all([
     supabase.from("owners").select("*").eq("id", user!.id).single(),
     // Migration 179. Oldest first, so a new method lands at the bottom of the
     // list where the owner just tapped "Agregar".
@@ -22,9 +24,17 @@ export default async function ProfilePage() {
       .order("created_at", { ascending: true }),
     // C1 of PL-22: the session may ask one thing about its own factor, through my_second_factor.
     mySecondFactor(supabase),
+    // PL-48 step 1.3: the raw date of an open deletion request, formatted below once the
+    // owner's country is known.
+    supabase.rpc("my_account_deletion"),
   ]);
 
   if (!owner) return null;
+
+  const deletion = {
+    maskedEmail: user?.email ? maskEmail(user.email) : null,
+    pendingUntil: deletionDateText(deletionAt, owner.country),
+  };
 
   const logoUrl = owner.logo_path ? getPublicLogoUrl(owner.logo_path) : null;
 
@@ -41,7 +51,7 @@ export default async function ProfilePage() {
       </ScreenBackRow>
       <ScreenTitle>Mi negocio</ScreenTitle>
 
-      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} paymentMethods={paymentMethods ?? []} secondFactor={secondFactor} />
+      <BusinessSettingsForm owner={owner as Owner} logoUrl={logoUrl} paymentMethods={paymentMethods ?? []} secondFactor={secondFactor} deletion={deletion} />
     </div>
   );
 }

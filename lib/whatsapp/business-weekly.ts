@@ -1,5 +1,6 @@
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
+import { ownersPendingDeletion } from "@/lib/account-deletion";
 import { claveSemanal, enviarAvisoAlDueno, type ResultadoEnvio } from "@/lib/whatsapp/send";
 import {
   mondayPlan,
@@ -60,7 +61,11 @@ async function loadTargets(period: string, prevPeriod: string): Promise<WeeklyTa
     console.error("whatsapp_business_weekly_targets:", error);
     throw new Error("No se pudo leer la lista de destinatarios.");
   }
-  return (data ?? []) as WeeklyTarget[];
+  // An owner who asked to delete the account gets no Monday or Thursday message during the
+  // 30 days (owner's decision of 2026-11-27, PL-48 step 1.3). If the list of those owners
+  // cannot be read, nobody is skipped: see lib/account-deletion.ts.
+  const leaving = await ownersPendingDeletion();
+  return ((data ?? []) as WeeklyTarget[]).filter((t) => !leaving.has(t.owner_id));
 }
 
 // THE OWNERS WHOSE MONDAY SLOT AN INACTIVITY NUDGE ALREADY TOOK (migration 217). The nudge goes
