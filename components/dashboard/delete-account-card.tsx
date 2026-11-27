@@ -159,11 +159,16 @@ function DeleteDialog({ maskedEmail }: { maskedEmail: string | null }) {
 // mistake finds the way back without looking for it in Mi negocio. `until` comes formatted
 // from the server, in the business's own zone.
 export function DeletionPendingCard({ until }: { until: string }) {
-  const [state, action, pending] = useActionState(() => cancelAccountDeletion(), idle);
-  useEffect(() => {
-    if (state.step === "done" && state.notice) toast.success(state.notice);
-    if (state.error) toast.error(state.error);
-  }, [state]);
+  // The toast fires as the answer arrives, not from an effect: a successful cancel
+  // revalidates the page, which removes this very card, and an effect waiting for the next
+  // render of an unmounted card never runs. Found on the first walk, 2026-11-27: the request
+  // was cancelled and the owner was told nothing.
+  const [, action, pending] = useActionState(async () => {
+    const result = await cancelAccountDeletion();
+    if (result.error) toast.error(result.error);
+    else if (result.notice) toast.success(result.notice);
+    return result;
+  }, idle);
 
   return (
     <section className="flex flex-col gap-3 rounded-[10px] border border-destructive/30 bg-destructive/5 p-4">

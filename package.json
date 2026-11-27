@@ -51,6 +51,7 @@
     "qa:catalogo-regresion": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/catalogo-regresion.mjs",
     "qa:carrito": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/carrito.mjs",
     "qa:pedidos": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/pedidos.mjs",
+    "qa:eliminar-cuenta": "node qa/eliminar-cuenta.mjs",
     "qa:avisos-inventario": "node --experimental-strip-types --import ./analytics/register-hooks.mjs qa/avisos-inventario.mjs",
     "qa:categorias": "node qa/categorias.mjs",
     "qa:devoluciones": "node qa/devoluciones.mjs",
