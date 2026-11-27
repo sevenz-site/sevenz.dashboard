@@ -1,7 +1,10 @@
+"use client";
+
 import { Clock } from "lucide-react";
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { Button } from "@/components/ui/button";
 import { SUPPORT_WHATSAPP } from "@/lib/config";
+import { useInPlayStoreApp } from "@/hooks/use-in-play-store-app";
 
 // THE TRIAL IS ABOUT TO END -- the owner's request of 2026-11-02: «propónlo tú
 // siguiendo el sistema de diseño con un mensaje muy breve y preciso». Shown on
@@ -40,6 +43,10 @@ export function TrialEndingNotice({
   const mensaje = email
     ? `Hola, mi cuenta ${email} de Sevenz está por terminar su prueba gratis y quiero activar mi plan.`
     : "Hola, mi cuenta de Sevenz está por terminar su prueba gratis y quiero activar mi plan.";
+  // Inside the Play Store app the button becomes a sentence with no link (PL-48, decision
+  // D2; reason in cuenta-pausada.tsx). `true` on the server, so the store app never
+  // renders the button; in the browser it stays as it was.
+  const inPlayStoreApp = useInPlayStoreApp(true);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">
@@ -48,20 +55,24 @@ export function TrialEndingNotice({
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium">{titulo}</p>
           <p className="text-sm text-muted-foreground">
-            Después, tu cuenta queda en solo lectura hasta que actives tu plan.
+            {inPlayStoreApp
+              ? "Después, tu cuenta queda en solo lectura hasta que actives tu plan. Para activarlo, escríbenos desde Soporte en sevenz.site."
+              : "Después, tu cuenta queda en solo lectura hasta que actives tu plan."}
           </p>
         </div>
       </div>
-      <Button asChild variant="outline" className="w-fit">
-        <a
-          href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(mensaje)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <WhatsappIcon className="size-4" />
-          Activar mi plan
-        </a>
-      </Button>
+      {inPlayStoreApp ? null : (
+        <Button asChild variant="outline" className="w-fit">
+          <a
+            href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(mensaje)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <WhatsappIcon className="size-4" />
+            Activar mi plan
+          </a>
+        </Button>
+      )}
     </div>
   );
 }

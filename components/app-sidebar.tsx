@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,8 +22,7 @@ import { useImportJobs } from "@/components/import/import-context";
 import { useTour } from "@/components/dashboard/tour-context";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { InstallAppDialog } from "@/components/install-app";
-import { suscribirseANada } from "@/lib/install-prompt";
-import { installSource } from "@/lib/install-source";
+import { useInPlayStoreApp } from "@/hooks/use-in-play-store-app";
 import { UnreadReportDot } from "@/components/dashboard/unread-report-context";
 
 const NAV_ITEMS = [
@@ -71,14 +70,9 @@ export function AppSidebar({ businessName }: { businessName: string }) {
   const router = useRouter();
   const tour = useTour();
   const [instalar, setInstalar] = useState(false);
-  // Read once, like esIphone in install-app.tsx: where the tab was opened from does not
-  // change mid-session. The server snapshot is false, so the entry renders as it always
-  // has and only the Play Store app drops it after hydration.
-  const inPlayStoreApp = useSyncExternalStore(
-    suscribirseANada,
-    () => installSource() === "play",
-    () => false,
-  );
+  // `false` on the server: the entry renders as it always has and only the Play Store app
+  // drops it after hydration. The reason for each side is in hooks/use-in-play-store-app.ts.
+  const inPlayStoreApp = useInPlayStoreApp(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const { setOpenMobile } = useSidebar();
   const { isProcessing, jobs } = useImportJobs();

@@ -14,8 +14,12 @@
 // Si algún día vuelven a cambiar los iconos: nombre nuevo en los tres sitios
 // (este, public/manifest.json y app/layout.tsx) y CACHE_NAME al siguiente
 // número, que es lo que borra del caché los bytes anteriores.
-const CACHE_NAME = "sevenz-shell-v3";
-const SHELL_ASSETS = ["/manifest.json", "/icon-192-v2.png", "/icon-512-v2.png"];
+const CACHE_NAME = "sevenz-shell-v4";
+// v4 (2026-11-27, PL-48 step 1.2): adds /offline.html, the «Sin conexión» screen. It
+// must also stay out of the proxy matcher in proxy.ts: through the session, a
+// signed-out install would cache the /login redirect instead of the page.
+const OFFLINE_PAGE = "/offline.html";
+const SHELL_ASSETS = ["/manifest.json", "/icon-192-v2.png", "/icon-512-v2.png", OFFLINE_PAGE];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
@@ -40,6 +44,23 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  // A PAGE NAVIGATION still goes to the network, untouched: the response, a redirect
+  // to /login included, is passed through as it comes. Only when the network itself
+  // fails (no signal, airplane mode) does the cached «Sin conexión» screen answer
+  // instead of Chrome's error page. A slow page is not a failed one and still loads.
+  // This is the one exception to "only shell assets" above, and it never serves a
+  // cached page: there is none to serve.
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        const offline = await caches.match(OFFLINE_PAGE);
+        return offline ?? Response.error();
+      }),
+    );
+    return;
+  }
+
   if (!SHELL_ASSETS.includes(url.pathname)) return;
 
   event.respondWith(

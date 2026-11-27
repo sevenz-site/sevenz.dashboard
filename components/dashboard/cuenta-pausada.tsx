@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { SUPPORT_WHATSAPP } from "@/lib/config";
+import { useInPlayStoreApp } from "@/hooks/use-in-play-store-app";
 import {
   avisarCuentaPausada,
   esCuentaPausada,
@@ -72,24 +73,35 @@ export type MotivoDeBloqueo = "bloqueada" | "prueba_vencida" | "pago_vencido";
 const CUERPO =
   "Por ahora no puedes registrar ventas, fiados, abonos, clientes ni pedidos, ni crear o publicar productos. Lo que te deben y el historial siguen aquí, el enlace que les mandaste a tus clientes sigue funcionando y tu catálogo sigue recibiendo pedidos.";
 
-const TEXTOS: Record<MotivoDeBloqueo, { titulo: string; cuerpo: string; boton: string; ayuda: string }> = {
+// `tienda` replaces `boton` inside the Play Store app (PL-48, decision D2 of 2026-11-18,
+// frames approved on 2026-11-20): Google's payments policy forbids, inside its app, any
+// button or link that leads to paying outside Google Play, and the WhatsApp button here
+// is exactly that. A sentence with no link is allowed for an app that sells nothing
+// inside it. In the browser, and in the app installed from the browser, `boton` stays.
+const TEXTOS: Record<
+  MotivoDeBloqueo,
+  { titulo: string; cuerpo: string; boton: string; ayuda: string; tienda: string }
+> = {
   bloqueada: {
     titulo: "Tu cuenta está pausada",
     cuerpo: CUERPO,
     boton: "Escríbenos para reactivarla",
     ayuda: "aparece pausada y necesito reactivarla",
+    tienda: "Para reactivarla, escríbenos desde Soporte en sevenz.site.",
   },
   prueba_vencida: {
     titulo: "Terminó tu prueba gratis",
     cuerpo: `Tus 3 meses de prueba terminaron. ${CUERPO}`,
     boton: "Escríbenos para activar tu plan",
     ayuda: "terminó su prueba gratis y quiero activar mi plan",
+    tienda: "Para activar tu plan, escríbenos desde Soporte en sevenz.site.",
   },
   pago_vencido: {
     titulo: "Tu plan está vencido",
     cuerpo: `No tenemos registrado el pago de tu plan. ${CUERPO}`,
     boton: "Escríbenos para reactivarla",
     ayuda: "tiene el plan vencido y necesito reactivarla",
+    tienda: "Para reactivarla, escríbenos desde Soporte en sevenz.site.",
   },
 };
 // El correo va DENTRO del mensaje, no como algo que pedirle después.
@@ -134,6 +146,8 @@ export function CuentaPausadaProvider({
 }) {
   const motivoFinal: MotivoDeBloqueo = motivo ?? "bloqueada";
   const textos = TEXTOS[motivoFinal];
+  // `true` on the server: the store app must never render the WhatsApp button.
+  const inPlayStoreApp = useInPlayStoreApp(true);
   // Abierto DE ENTRADA si la cuenta está pausada, como valor inicial y no
   // desde un efecto. Además de ahorrarse un render de más, el servidor y el
   // navegador pintan lo mismo.
@@ -177,15 +191,18 @@ export function CuentaPausadaProvider({
               {textos.titulo}
             </AlertDialogTitle>
             <AlertDialogDescription>{textos.cuerpo}</AlertDialogDescription>
+            {inPlayStoreApp ? <p className="text-sm font-medium text-foreground">{textos.tienda}</p> : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
             {/* WhatsApp primero: es la única de las dos que arregla algo. */}
-            <Button variant="outline" asChild>
-              <a href={enlaceDeWhatsapp(correo, motivoFinal)} target="_blank" rel="noopener noreferrer">
-                <WhatsappIcon className="size-4" />
-                {textos.boton}
-              </a>
-            </Button>
+            {inPlayStoreApp ? null : (
+              <Button variant="outline" asChild>
+                <a href={enlaceDeWhatsapp(correo, motivoFinal)} target="_blank" rel="noopener noreferrer">
+                  <WhatsappIcon className="size-4" />
+                  {textos.boton}
+                </a>
+              </Button>
+            )}
             <AlertDialogAction onClick={cerrar}>Entendido</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -259,6 +276,9 @@ export function useGuardiaAlAbrir(quiereAbrir: boolean): boolean {
 // mismo en la misma carga es una de más.
 export function CuentaPausada() {
   const { pausada, correo, motivo } = useCuentaPausada();
+  // `true` on the server, same reason as in the provider. Called before the early return
+  // so the hook order never changes.
+  const inPlayStoreApp = useInPlayStoreApp(true);
   if (!pausada) return null;
   const textos = TEXTOS[motivo];
 
@@ -269,14 +289,17 @@ export function CuentaPausada() {
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium text-destructive">{textos.titulo}</p>
           <p className="text-sm text-muted-foreground">{textos.cuerpo}</p>
+          {inPlayStoreApp ? <p className="text-sm font-medium text-foreground">{textos.tienda}</p> : null}
         </div>
       </div>
-      <Button asChild variant="outline" className="w-fit">
-        <a href={enlaceDeWhatsapp(correo, motivo)} target="_blank" rel="noopener noreferrer">
-          <WhatsappIcon className="size-4" />
-          {textos.boton}
-        </a>
-      </Button>
+      {inPlayStoreApp ? null : (
+        <Button asChild variant="outline" className="w-fit">
+          <a href={enlaceDeWhatsapp(correo, motivo)} target="_blank" rel="noopener noreferrer">
+            <WhatsappIcon className="size-4" />
+            {textos.boton}
+          </a>
+        </Button>
+      )}
     </div>
   );
 }

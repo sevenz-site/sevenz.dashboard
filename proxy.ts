@@ -26,8 +26,12 @@ export async function proxy(request: NextRequest) {
 // scanner cost a session check, and an owner whose session had just expired got the
 // /login page instead of the reader -- the camera opened and never read anything, with
 // no error he could read. Found on dev.sevenz.site on 2026-11-23 (307 to /login).
+//
+// `offline.html` is excluded for the «Sin conexión» screen (PL-48, step 1.2): public/sw.js
+// caches it on install, and through updateSession a signed-out phone, which is every
+// phone on the login screen, would cache the /login redirect instead of the page.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|offline\\.html|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|wasm)$).*)",
   ],
 };
