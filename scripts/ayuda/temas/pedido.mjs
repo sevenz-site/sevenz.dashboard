@@ -3,7 +3,7 @@
 // a sale (and a new client) in dev: afterwards the order goes back to «Sin registrar» and the
 // sale and the client are removed BY ID. It was Gustavo Rondón's order until v0.10.0, which
 // has been registered since 2026-11-03.
-import { go, click, shot, js, sleep, waitFor } from "../lib.mjs";
+import { go, click, shot, js, sleep, waitFor, openMenu, pick } from "../lib.mjs";
 const S = "atender-un-pedido";
 const ORDER = "3e2b135d-60d0-43d1-8ab0-345d53f6ff48";
 await go(`/dashboard`, 4000);
@@ -25,6 +25,9 @@ await waitFor("location.pathname.includes('/pago')"); await sleep(3000);
 await shot(S, 7, "De contado");
 // v0.10.0 (migration 214): «Método de pago», as in a sale.
 await shot(S, 8, "js:document.getElementById('pago-metodo-USD').parentElement", { pad: 6 });
+// v0.14.0: the method opens empty and is required, so one is chosen before «Pagar».
+await openMenu("js:document.getElementById('pago-metodo-USD')");
+await pick("Pago móvil");
 await shot(S, 9, "Pagar $", { crop: 0 });
 await click("Pagar $", { wait: 500 });
 await waitFor("location.pathname.includes('/cliente')"); await sleep(3000);

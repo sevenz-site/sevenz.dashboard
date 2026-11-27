@@ -51,7 +51,7 @@ if (!env.NEXT_PUBLIC_SUPABASE_URL.includes(REF)) {
   console.error("Esta suite ataca la app: solo corre contra la rama dev (vzqppwrwnmlbrxizskdh).");
   process.exit(1);
 }
-const BASE = "http://localhost:3000";
+const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
 const MANIFIESTO = new URL("../.next/dev/server/server-reference-manifest.json", import.meta.url);
 const svc = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const login = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -463,9 +463,14 @@ try {
     // «Consejos de Sevenz» (migration 217). The control runs with A's cookie, so a missing
     // column or grant shows up as a failed control.
     // «Códigos de barras» (migration 219): the switch of the caller's own business.
-    { clave: P("profile/actions.ts#guardarCodigosDeBarras"), fase: 2, ataques: [["un anónimo la llama", null, () => [true]]], control: [A.cookie, () => [true]],
-      exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("barcodes_enabled").eq("id", A.id).single()).data?.barcodes_enabled === true
-        && (await svc.from("owners").select("barcodes_enabled").eq("id", B.id).single()).data?.barcodes_enabled === false },
+    // TURNS IT OFF, since the v0.14.0 checklist. Until v0.13.1 the switch was born off, so the
+    // control turned A's on and expected B's still off. Migration 221 made it born ON for
+    // everybody: B's was never «false» again and this row came out SIN PROBAR on every run,
+    // with the action working. Now the change that can be seen is turning it off: A ends off,
+    // B stays on.
+    { clave: P("profile/actions.ts#guardarCodigosDeBarras"), fase: 2, ataques: [["un anónimo la llama", null, () => [false]]], control: [A.cookie, () => [false]],
+      exitoAsync: async (r) => funciono(r) && (await svc.from("owners").select("barcodes_enabled").eq("id", A.id).single()).data?.barcodes_enabled === false
+        && (await svc.from("owners").select("barcodes_enabled").eq("id", B.id).single()).data?.barcodes_enabled === true },
     { clave: P("profile/actions.ts#guardarConsejosSevenz"), fase: 2, ataques: [["un anónimo la llama", null, () => [false]]], control: [A.cookie, () => [true]] },
     // Payment methods (migration 179, 2026-11-02). The controls run with A's
     // own cookie, so a missing grant on the new table shows up here as a

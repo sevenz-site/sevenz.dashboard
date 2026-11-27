@@ -37,7 +37,7 @@ if (!URL_.includes("vzqppwrwnmlbrxizskdh")) {
   console.error("Esta suite ataca la base: solo corre contra la rama dev (vzqppwrwnmlbrxizskdh).");
   process.exit(1);
 }
-const BASE = "http://localhost:3000";
+const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
 const REF = "vzqppwrwnmlbrxizskdh";
 const svc = createClient(URL_, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const login = createClient(URL_, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -330,6 +330,23 @@ try {
       const r = await fetch(`${BASE}/c/${tok}/vista-previa`, { redirect: "manual" });
       const t = r.status === 302 ? "" : await r.text();
       rec("http · catálogo", `imagen de la tarjeta con ${n}`, (r.status === 302 && /\/og\.png$/.test(r.headers.get("location") ?? "")) || (r.status === 404 && !/syntax|42601|PGRST|supabase\.co|at \w/i.test(t)) ? "BLOQUEADO" : "VULN", `${r.status} ${r.headers.get("location") ?? ""}`);
+    }
+    // v0.14.0: the balance link draws the same card, on its own public route
+    // (`/s/<token>/vista-previa`). The same three attacks, and one of its own: the card of a
+    // real client's link is an image or the generic one, never a body with the account in it
+    // (owner's decision of 2026-11-26: the logo goes in, the name and the amount do not).
+    for (const [n, tok] of [["token inventado", "zz-no-existe"], ["inyección SQL en el token", encodeURIComponent("x' or '1'='1")], ["ruta de archivo en el token", encodeURIComponent("../../logos/x")]]) {
+      const r = await fetch(`${BASE}/s/${tok}/vista-previa`, { redirect: "manual" });
+      const t = r.status === 302 ? "" : await r.text();
+      rec("http · enlace", `imagen de la tarjeta del saldo con ${n}`, (r.status === 302 && /\/og\.png$/.test(r.headers.get("location") ?? "")) || (r.status === 404 && !/syntax|42601|PGRST|supabase\.co|at \w/i.test(t)) ? "BLOQUEADO" : "VULN", `${r.status} ${r.headers.get("location") ?? ""}`);
+    }
+    {
+      const r = await fetch(`${BASE}/s/${tokB}/vista-previa`, { redirect: "manual" });
+      const tipo = r.headers.get("content-type") ?? "";
+      const t = r.status === 302 || /^image\//.test(tipo) ? "" : await r.text();
+      rec("http · enlace", "la tarjeta del saldo de B es una imagen o la genérica, sin datos de la cuenta",
+        (r.status === 302 && /\/og\.png$/.test(r.headers.get("location") ?? "")) || (r.status === 200 && /^image\//.test(tipo)) ? "BLOQUEADO" : /Cliente de B|12345678/.test(t) ? "VULN" : "SIN PROBAR",
+        `${r.status} ${tipo || r.headers.get("location") || ""}`);
     }
     rec("http · cabeceras", "contra clickjacking y sniffing", faltan.length ? "VULN" : "BLOQUEADO", faltan.length ? `faltan ${faltan.join(", ")}` : "");
   }

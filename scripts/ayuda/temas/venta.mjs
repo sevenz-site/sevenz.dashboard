@@ -23,7 +23,8 @@ await shot(S, 7, "Pagar");
 await click("Pagar", { wait: 1800 });
 await shot(S, 8, "De contado", { scope: DIALOG });
 // v0.10.0 (migration 214): «Método de pago» under the amount, whenever something is paid now.
-// It opens on «Pago móvil» because the amount comes typed in bolívares.
+// Since v0.14.0 it opens empty on «Seleccionar opción» and is required; the fiado this script
+// registers hands nothing over, so no method is asked for when it pays.
 await shot(S, 9, "js:document.getElementById('pago-metodo-USD').parentElement", { scope: DIALOG, pad: 6 });
 await click("Fiado o crédito", { scope: DIALOG, wait: 1200 });
 await shot(S, 10, "Fiado o crédito", { scope: DIALOG });
