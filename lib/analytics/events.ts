@@ -151,6 +151,10 @@ export type NewClientRejectionReason =
   | "db_error";
 
 export type ProductSource = "wizard" | "quick_sheet";
+// Where an EDIT came from. `sale_edit` is its own value (owner's decision of 2026-11-27,
+// «un valor propio "sale_edit"»): a catalogue product edited from inside a sale. It is not
+// `quick_sheet`, which is the sale's quick sheet reopening the product it has just created.
+export type ProductUpdateSource = ProductSource | "sale_edit";
 export type ProductRejectionReason =
   | "paused_account"
   | "validation"
@@ -311,7 +315,13 @@ export type EventProps = {
     satellites_failed: boolean;
     photo_count: number;
   };
-  "Product Updated": FlowContext & { product_id: string; fields_changed: string[]; photo_count: number };
+  // `source` since v0.14.0. Events before it carry none: the series by source starts there.
+  "Product Updated": FlowContext & {
+    source: ProductUpdateSource;
+    product_id: string;
+    fields_changed: string[];
+    photo_count: number;
+  };
   "Product Publication Changed": { product_id: string; published_retail: boolean; published_wholesale: boolean };
   "Product Deleted": { product_id: string };
   "Product Restored": { product_id: string };
@@ -482,7 +492,14 @@ export type EventProps = {
   "AI Report Rated": Loose;
   // Owner's request of 2026-11-17: a link per recommendation. See reportes-asistente.tsx.
   "Assistant Link Clicked": { enlace: string; posicion: number };
-  "Business Contacted On WhatsApp": Loose;
+  // Two buttons, one event. `shared_balance`: the balance link, sent by
+  // `app/api/share-contact/route.ts`, where its business question is written.
+  // `catalog`: the catalogue's header since v0.14.0, sent through `/api/public-event`;
+  // its question is next to `catalog_whatsapp_tapped` in `./public-events.ts`.
+  "Business Contacted On WhatsApp": PublicContext & {
+    surface: "shared_balance" | "catalog";
+    from_balance?: boolean;
+  };
   "Catalog Opened From Share Link": Loose;
   "Catalog Order Received": Loose;
   "Catalog Order Registered": Loose;

@@ -3,6 +3,7 @@
 import { WhatsappIcon } from "@/components/icons/whatsapp";
 import { cn } from "@/lib/utils";
 import { PUBLIC_CONTACT_BUTTON, PUBLIC_CONTACT_TONE } from "@/components/public/contact-button-styles";
+import { cameFromBalance, sendPublicEvent } from "@/components/public/public-event";
 
 // El botón "Contactar vía WhatsApp" de la pantalla del cliente, con su aviso
 // a Mixpanel. Lo que mide y por qué está en `app/api/share-contact/route.ts`,
@@ -22,9 +23,12 @@ import { PUBLIC_CONTACT_BUTTON, PUBLIC_CONTACT_TONE } from "@/components/public/
 // ALSO THE CATALOGUE'S BUTTON since 2026-11-26 (migration 225, frames `2291:25034`), so
 // the customer sees one button on his balance and on the catalogue, not two lookalikes.
 // Two things the catalogue needs that the balance page did not:
-//   - `token` is OPTIONAL. Without it nothing is sent: `/api/share-contact` resolves a
-//     BALANCE token to its owner, and a catalogue has none. Measuring catalogue contacts
-//     is a separate event, with its own business question, not built yet.
+//   - `token` is OPTIONAL and is a BALANCE token: `/api/share-contact` resolves it to its
+//     owner, and a catalogue has none. The catalogue passes `catalogToken` instead, and
+//     the tap goes through `/api/public-event` as `catalog_whatsapp_tapped` (owner's
+//     decision of 2026-11-27, «medirlo en esta versión»; the question it answers is in
+//     `lib/analytics/public-events.ts`). With neither, nothing is sent: that is the
+//     owner's «Ver cómo queda» preview, where the person tapping is the shopkeeper.
 //   - `tone="light"` for the catalogue's white header (CatalogBrandHeader). The dark
 //     tone's green, `--brand-whatsapp` #7EC070, is 2.2:1 on white: unreadable. The light
 //     tone takes `emerald-700`, the green of the order screen's «Contactar vía WhatsApp»,
@@ -32,11 +36,13 @@ import { PUBLIC_CONTACT_BUTTON, PUBLIC_CONTACT_TONE } from "@/components/public/
 
 export function ContactWhatsappLink({
   token,
+  catalogToken,
   href,
   tone = "dark",
   className,
 }: {
   token?: string;
+  catalogToken?: string;
   href: string;
   tone?: "dark" | "light";
   className?: string;
@@ -47,7 +53,13 @@ export function ContactWhatsappLink({
       target="_blank"
       rel="noopener noreferrer"
       onClick={() => {
-        if (!token) return;
+        if (!token) {
+          // `sendPublicEvent` never throws and uses `keepalive`, like the fetch below.
+          if (catalogToken) {
+            sendPublicEvent(catalogToken, "catalog_whatsapp_tapped", { from_balance: cameFromBalance() });
+          }
+          return;
+        }
         try {
           void fetch("/api/share-contact", {
             method: "POST",

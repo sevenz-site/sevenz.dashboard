@@ -26,14 +26,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ toke
   let logoPath: string | null = null;
   try {
     const supabase = await createClient();
-    // `p_limit: 1`: only the business's logo is read here, so the history is cut to one
-    // movement instead of the page's fifty.
-    const { data, error } = await supabase.rpc("get_shared_balance", { p_token: token, p_limit: 1 });
+    // `share_link_logo` (migration 226), NEVER `get_shared_balance`: that one records a
+    // visit on every call, and this route is fetched by whoever draws the card, with nobody
+    // looking at the balance. Until 2026-11-27 it called `get_shared_balance`, and each card
+    // WhatsApp drew told the shopkeeper «tu cliente abrió su enlace» (owner's decision of
+    // that day: «corrígelo antes de lanzar»).
+    const { data, error } = await supabase.rpc("share_link_logo", { p_token: token });
     if (error) {
       console.error("[balancePreviewImage] rpc:", error.message);
       return generic;
     }
-    logoPath = (data as { owner_logo_path?: string | null } | null)?.owner_logo_path ?? null;
+    logoPath = typeof data === "string" && data ? data : null;
   } catch (error) {
     console.error("[balancePreviewImage] threw:", error instanceof Error ? error.message : error);
     return generic;

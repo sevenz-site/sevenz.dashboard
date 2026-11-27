@@ -77,7 +77,7 @@ export const PublicEventLink = forwardRef<
 
 // `from_balance` says whether the visit came from the client's own balance link,
 // which only the tab knows: `catalog-strip.tsx` leaves this mark when tapped.
-function cameFromBalance(): boolean {
+export function cameFromBalance(): boolean {
   try {
     return typeof window !== "undefined" && Boolean(sessionStorage.getItem(CLAVE_VOLVER_AL_SALDO));
   } catch {
