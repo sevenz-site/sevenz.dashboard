@@ -9,6 +9,11 @@
 //   node daemon.mjs            → listens on http://127.0.0.1:9555
 //   POST { op: "go", url } | { op: "eval", expr } | { op: "shot", file, target, crop }
 //
+// A SECOND ONE NEXT TO IT: `AYUDA_PORT=9556 AYUDA_CDP_PORT=9445 node daemon.mjs`, and the
+// scripts reach it with the same `AYUDA_PORT`. Added on 2026-11-26, when one session's daemon
+// was running at the web width (AYUDA_W=1280) and another needed the phone's: with the ports
+// fixed, the only way was to kill a daemon that was not its own.
+//
 // No new dependency: system Chrome + Node 22's built-in WebSocket.
 import { createRequire } from "node:module";
 import { readFileSync, mkdirSync } from "node:fs";
@@ -53,7 +58,7 @@ async function sessionCookies(email = M.email) {
 }
 
 const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const PORT = 9444;
+const PORT = Number(process.env.AYUDA_CDP_PORT ?? 9444);
 spawn(CHROME, [
   "--headless=new", `--remote-debugging-port=${PORT}`, `--user-data-dir=${join(tmpdir(), `sevenz-ayuda-${Date.now()}`)}`,
   "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--hide-scrollbars",
@@ -192,4 +197,4 @@ createServer(async (req, res) => {
   } catch (e) {
     res.end(JSON.stringify({ ok: false, error: String(e.message || e) }));
   }
-}).listen(9555, "127.0.0.1", () => console.log("ready on 9555"));
+}).listen(Number(process.env.AYUDA_PORT ?? 9555), "127.0.0.1", () => console.log(`ready on ${process.env.AYUDA_PORT ?? 9555}`));

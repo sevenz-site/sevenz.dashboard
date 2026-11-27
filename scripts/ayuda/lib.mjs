@@ -1,10 +1,10 @@
-// Helpers shared by the capture scripts. Talk to daemon.mjs on 127.0.0.1:9555.
+// Helpers shared by the capture scripts. Talk to daemon.mjs on 127.0.0.1:9555 (or AYUDA_PORT).
 import { fileURLToPath } from "node:url";
 // Raw PNG captures, git-ignored: only the WebP versions in Web/public ship.
 export const RAW = fileURLToPath(new URL("./raw", import.meta.url)).split(String.fromCharCode(92)).join("/");
 
 export const call = async (q) => {
-  const r = await (await fetch("http://127.0.0.1:9555", { method: "POST", body: JSON.stringify(q) })).json();
+  const r = await (await fetch(`http://127.0.0.1:${process.env.AYUDA_PORT ?? 9555}`, { method: "POST", body: JSON.stringify(q) })).json();
   if (!r.ok) throw new Error(`${q.op}: ${r.error}`);
   return r.out;
 };
