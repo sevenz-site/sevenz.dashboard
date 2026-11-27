@@ -328,7 +328,7 @@ export function QuickProductSheet({
         // stock or wholesale price, so writing them back as null changes nothing the owner
         // set; what changes is only what he can see and edit here.
         r = editando
-          ? await updateProduct(editando.productId, datos)
+          ? await updateProduct(editando.productId, { analitica: { source: "quick_sheet" }, ...datos })
           : await createProduct({ analitica: { source: "quick_sheet" }, ...datos });
       } catch (e) {
         console.error("[QuickProductSheet] save:", e);

@@ -272,6 +272,30 @@ try {
   const pr2 = await llamarAccion(BASE, "/productos/nuevo", aCrear, cookie, [{ ...baseProducto, name: "" }], '{"error":');
   check("23c. sin nombre: Product Creation Rejected", pr2.error && (await esperar("Product Creation Rejected", (p) => p.reason === "validation" && p.source === "wizard")), JSON.stringify(pr2));
 
+  // `source` on Product Updated, since v0.14.0 (owner's decision of 2026-11-27, «un valor
+  // propio "sale_edit"»). Three doors, three values, and a made-up one reads as the wizard.
+  // Each edit changes the price so the events can be told apart by what they carry.
+  if (pr1.id) {
+    const aEditar = await id("/ventas/nueva", "updateProduct");
+    const aDesdeVenta = await id("/ventas/nueva", "editarProductoDesdeVenta");
+    const editar = (analitica, precio) =>
+      llamarAccion(BASE, "/ventas/nueva", aEditar, cookie, [pr1.id, { ...baseProducto, priceRetail: precio, ...(analitica ? { analitica } : {}) }], '{"error":');
+    const u1 = await editar({ source: "quick_sheet" }, "11");
+    const eu1 = await esperar("Product Updated", (p) => p.product_id === pr1.id && p.source === "quick_sheet");
+    check("23c2. editar desde la hoja rápida: Product Updated con source quick_sheet", u1.error === null && eu1?.fields_changed?.includes("price_retail"), `${JSON.stringify(u1).slice(0, 120)} ${JSON.stringify(eu1)}`);
+    await editar(undefined, "12");
+    await editar({ source: "inventado" }, "13");
+    await new Promise((r) => setTimeout(r, 900));
+    const delAsistente = eventos().filter((e) => e.event === "Product Updated" && e.properties.product_id === pr1.id && e.properties.source === "wizard");
+    check("23c3. sin puerta o con una inventada: source wizard, nunca el texto que mandó el navegador", delAsistente.length === 2 && !JSON.stringify(eventos()).includes("inventado"), `${delAsistente.length} eventos`);
+    const u4 = await llamarAccion(BASE, "/ventas/nueva", aDesdeVenta, cookie, [pr1.id, {
+      nombre: `${MARCA} Nuevo`, precio: "14", moneda: "USD", publicar: true, photoPath: null, descripcion: null, costo: null, costoMoneda: "USD",
+    }], '{"error":');
+    const eu4 = await esperar("Product Updated", (p) => p.product_id === pr1.id && p.source === "sale_edit");
+    check("23c4. editar un producto del catálogo desde la venta: source sale_edit, desde el servidor", u4.error === null && eu4?.sent_from === "server" && eu4?.fields_changed?.includes("price_retail"), `${JSON.stringify(u4).slice(0, 120)} ${JSON.stringify(eu4)}`);
+    check("23c5. Product Updated no lleva el nombre del producto", !JSON.stringify(eu4 ?? {}).includes(MARCA), JSON.stringify(eu4));
+  }
+
   // ── La ficha del cliente: marca, papelera, avisos ────────────────────
   const cFicha = await nuevoCliente(ve.id, "ficha");
   const pPerfil = `/clients/${cFicha}`;
@@ -341,6 +365,27 @@ try {
   await new Promise((r) => setTimeout(r, 1200));
   check("24d. evento inventado, token falso, sin origen, otro origen y cuerpo gigante: 204 y nada escrito", [q1, q2, q3, q4, q5].every((r) => r.status === 204) && eventos().length === antes, `${eventos().length - antes} eventos de más`);
 
+  // ── The catalogue's «Contactar vía WhatsApp» (v0.14.0, owner's decision of 2026-11-27) ──
+  // The same event as the balance link's button, told apart by `surface`, which the server
+  // sets: what the browser sends for it is ignored. A catalogue visitor is nobody the app
+  // knows, so there is no `client_id`.
+  let { data: cat } = await admin.from("catalog_share_links").select("token").eq("owner_id", ve.id).limit(1).maybeSingle();
+  if (!cat) {
+    const nuevo = await admin.from("catalog_share_links").insert({ owner_id: ve.id, tier: "retail", token: `qa-eventos-cat-${Date.now()}` }).select("id, token").single();
+    if (nuevo.error) throw new Error(`catalog_share_links: ${nuevo.error.message}`);
+    cat = nuevo.data;
+    creados.enlaceDeCatalogo = nuevo.data.id;
+  }
+  const w1 = await publico({ token: cat.token, code: "catalog_whatsapp_tapped", props: { from_balance: true, surface: "shared_balance", nombre: "Pedro" } });
+  const ew1 = await esperar("Business Contacted On WhatsApp", (p) => p.distinct_id === ve.id && p.surface === "catalog");
+  check("24e. botón de WhatsApp del catálogo: 204 y Business Contacted On WhatsApp con surface catalog, bajo el dueño", w1.status === 204 && ew1?.viewer_signed_in === false && ew1?.from_balance === true, `HTTP ${w1.status} ${JSON.stringify(ew1)}`);
+  check("24f. sin client_id y sin lo que el navegador quiso añadir", ew1 && !("client_id" in ew1) && !("nombre" in ew1), JSON.stringify(ew1));
+  const antesCruce = eventos().length;
+  const w2 = await publico({ token, code: "catalog_whatsapp_tapped" });
+  const w3 = await publico({ token: cat.token, code: "balance_opened" });
+  await new Promise((r) => setTimeout(r, 1200));
+  check("24g. un código de catálogo con un enlace de saldo, y al revés: 204 y nada escrito", w2.status === 204 && w3.status === 204 && eventos().length === antesCruce, `${eventos().length - antesCruce} eventos de más`);
+
   // ── H2: el catálogo desde el saldo ───────────────────────────────────
   const anon = await fetch(`${BASE}/api/share-catalog`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", redirect: "manual" });
   check("23. /api/share-catalog sin sesión responde 204, no 307", anon.status === 204, `HTTP ${anon.status}`);
@@ -356,6 +401,8 @@ try {
   }
   if (creados.clientes.length) await admin.from("clients").delete().in("id", creados.clientes);
   if (creados.productos.length) await admin.from("products").delete().in("id", creados.productos);
+  // By id, and only the link this run created: never the owner's own catalogue link.
+  if (creados.enlaceDeCatalogo) await admin.from("catalog_share_links").delete().eq("id", creados.enlaceDeCatalogo);
   const { count } = await admin.from("clients").select("id", { count: "exact", head: true }).ilike("name", `${MARCA}%`);
   check("25. limpieza: no queda nada de la prueba en dev", count === 0, `quedan ${count}`);
   const ok = filas.filter(Boolean).length;

@@ -18,6 +18,9 @@ type PublicEventSpec = {
   event: EventName;
   surface: PublicSurface;
   props: Record<string, PropRule>;
+  // Properties the SERVER adds, whatever the browser sends. For an event that two
+  // surfaces share, so the one telling them apart is never the caller's to forget or fake.
+  fixed?: Record<string, string>;
 };
 
 export const PUBLIC_EVENTS = {
@@ -58,6 +61,35 @@ export const PUBLIC_EVENTS = {
     surface: "catalog",
     props: { filter: ["search", "category"], results_count: "count" },
   },
+  // THE CATALOGUE'S «Contactar vía WhatsApp» (migration 225). Owner's decision of
+  // 2026-11-27, with v0.14.0 about to launch and the button sending nothing: «medirlo en
+  // esta versión».
+  //
+  // BUSINESS QUESTION: of the people who open a catalogue, how many write to the shop
+  // instead of ordering? Read next to `Catalog Order Form Opened` and the orders received
+  // for the same business. Many contacts and few orders: the catalogue is not answering
+  // what a customer needs before ordering (delivery, stock, how to pay) and what they ask
+  // is the thing to go and read. Few contacts and orders coming in: the button is a
+  // safety net. Few of both: the visit is not turning into anything, and the button is
+  // not the reason.
+  //
+  // THE SAME EVENT AS THE BALANCE LINK'S BUTTON, `Business Contacted On WhatsApp`
+  // (`app/api/share-contact/route.ts`), told apart by `surface`: one series answers the
+  // owner's question of 2026-10-16, «¿con cuál frecuencia los clientes contactan al dueño
+  // del negocio a través del botón de WhatsApp?», for both screens. `surface` is fixed by
+  // the server. `from_balance` separates a client who came from his own balance from a
+  // visitor who got the catalogue's link.
+  //
+  // Filed under the OWNER's profile, resolved from the catalogue token, and with no
+  // `client_id`: a catalogue visitor is nobody the app knows. A floor, not a count: it
+  // is sent from the customer's browser on the same tap that leaves for WhatsApp. The
+  // owner's «Ver cómo queda» preview draws the button and sends nothing.
+  catalog_whatsapp_tapped: {
+    event: "Business Contacted On WhatsApp",
+    surface: "catalog",
+    props: { from_balance: "boolean" },
+    fixed: { surface: "catalog" },
+  },
 } as const satisfies Record<string, PublicEventSpec>;
 
 export type PublicEventCode = keyof typeof PUBLIC_EVENTS;
@@ -85,4 +117,10 @@ export function cleanPublicProps(code: PublicEventCode, raw: unknown): Record<st
     if (accepts(rule, source[key])) clean[key] = source[key];
   }
   return clean;
+}
+
+// What the server adds to an event, after the caller's properties so it always wins.
+export function fixedPublicProps(code: PublicEventCode): Record<string, string> {
+  const spec: PublicEventSpec = PUBLIC_EVENTS[code];
+  return spec.fixed ?? {};
 }

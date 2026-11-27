@@ -14,7 +14,7 @@ import { QuickProductSheet } from "@/components/dashboard/quick-product-sheet";
 import { productoPorCodigo, restoreProduct, type CodeLookup } from "@/app/(app)/productos/actions";
 import { monedasDelNegocio, productoParaVentaPorId } from "@/app/(app)/ventas/actions";
 import { gunOpensSheetsOn } from "@/lib/barcodes/routes";
-import { getPublicProductPhotoUrl } from "@/lib/supabase/storage";
+import { ProductThumbnail } from "@/components/product-thumbnail";
 import { StockBadge } from "@/components/stock-badge";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { formatPriceAmount, priceIn, type PriceCurrency } from "@/lib/products/price";
@@ -280,8 +280,12 @@ function ProductCard({ card, threshold, dimmed = false }: { card: Card; threshol
   return (
     <div className={`flex items-center gap-3 rounded-[10px] border p-2.5 ${dimmed ? "opacity-60" : ""}`}>
       {card.photoPath ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={getPublicProductPhotoUrl(card.photoPath)} alt="" className="size-14 shrink-0 rounded-md object-cover" />
+        // `ProductThumbnail`, like every other product photo: the whole product, never a
+        // crop (owner's decision of 2026-11-15). Until 2026-11-27 this was an `<img>` drawn
+        // by hand with `object-cover`, the one screen that still cropped, and it loaded the
+        // full photo for a 56px square. The owner asked for it on that day: «Ajusta la foto
+        // recortada en la tarjeta del escáner».
+        <ProductThumbnail path={card.photoPath} alt="" width={56} height={56} className="size-14 shrink-0 rounded-md" />
       ) : (
         <div className="size-14 shrink-0 rounded-md bg-muted" />
       )}

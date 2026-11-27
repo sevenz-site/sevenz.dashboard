@@ -27,7 +27,11 @@ export function CatalogContactButtons({
   linkKind,
   linkUrl,
   tone,
+  catalogToken,
 }: {
+  // The public catalogue passes its token so a tap on «Contactar vía WhatsApp» is
+  // measured (`catalog_whatsapp_tapped`). The owner's preview passes none: nothing is sent.
+  catalogToken?: string;
   // Already decided by the caller: null when the box is off or there is no number.
   whatsappHref: string | null;
   linkKind: string | null | undefined;
@@ -40,7 +44,9 @@ export function CatalogContactButtons({
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-2 md:flex-row md:gap-3">
-      {whatsappHref ? <ContactWhatsappLink href={whatsappHref} tone={tone} className="md:flex-1" /> : null}
+      {whatsappHref ? (
+        <ContactWhatsappLink href={whatsappHref} catalogToken={catalogToken} tone={tone} className="md:flex-1" />
+      ) : null}
       {link ? (
         <a
           href={link.url}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { trackServer } from "@/lib/mixpanel-server";
 import { linkOwner } from "@/lib/analytics/link-owner";
-import { cleanPublicProps, isPublicEventCode, PUBLIC_EVENTS } from "@/lib/analytics/public-events";
+import { cleanPublicProps, fixedPublicProps, isPublicEventCode, PUBLIC_EVENTS } from "@/lib/analytics/public-events";
 import type { EventName, EventProps } from "@/lib/analytics/events";
 
 export const runtime = "nodejs";
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       owner.owner_id,
       {
         ...cleanPublicProps(code, body.props),
+        ...fixedPublicProps(code),
         ...(owner.client_id ? { client_id: owner.client_id } : {}),
         viewer_signed_in: viewerSignedIn,
       } as EventProps[EventName],

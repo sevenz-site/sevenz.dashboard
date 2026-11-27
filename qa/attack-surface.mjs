@@ -425,6 +425,9 @@ export const MANIFEST = {
     get_shared_open_charges: "public",
     // public catalogue, by token
     get_shared_product: "public",
+    // 226: the logo for the balance link's preview card, by token. Read-only: it returns
+    // what get_shared_balance already gives the same caller, without recording a visit
+    share_link_logo: "public",
     // public catalogue, by token
     get_shared_products: "public",
     // 204: extra photos of a product the public page would show, by token
