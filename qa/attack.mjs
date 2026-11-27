@@ -321,6 +321,24 @@ try {
     rec("http · catálogo", "XSS guardado en la bienvenida y la dirección del catálogo",
       /<script>alert\(\d\)|<img src=[xy] onerror/.test(xssCat) ? "VULN" : xssCat.includes("alert(4)") && xssCat.includes("alert(5)") ? "BLOQUEADO" : "SIN PROBAR",
       xssCat.includes("alert(4)") ? "" : "la bienvenida no llegó a la página");
+    // v0.14.0 (migration 225): the catalogue draws, as a button, a link the owner wrote. The
+    // three rows are written straight into B's row, past the action's rule, because the page
+    // is the last line: it re-checks the link before drawing (`CatalogContactButtons`).
+    //   · a link whose label lies («Instagram» to another host) must draw NO button;
+    //   · the database refuses a scheme that is not https (`javascript:`);
+    //   · a link that passes the rule comes out escaped, and if its host is nowhere in the
+    //     page the button was never drawn, which is SIN PROBAR, not a pass.
+    const mentira = await svc.from("owners").update({ catalog_link_kind: "instagram", catalog_link_url: `https://evil.example/"><script>alert(6)</script>` }).eq("id", B.id);
+    const catMentira = await (await fetch(`${BASE}/c/${linkB.token}`)).text();
+    rec("http · catálogo", "un enlace «Instagram» escrito a mano hacia otro sitio no se dibuja",
+      mentira.error ? "SIN PROBAR" : /evil\.example/.test(catMentira) ? "VULN" : "BLOQUEADO", mentira.error?.message ?? "");
+    const esquema = await svc.from("owners").update({ catalog_link_kind: "website", catalog_link_url: "javascript:alert(7)" }).eq("id", B.id);
+    rec("http · catálogo", "la base rechaza un enlace que no es https", esquema.error ? "BLOQUEADO" : "VULN", esquema.error?.code ?? "");
+    const comillas = await svc.from("owners").update({ catalog_link_kind: "website", catalog_link_url: `https://tienda.example/?q="><script>alert(8)</script>` }).eq("id", B.id);
+    const catComillas = await (await fetch(`${BASE}/c/${linkB.token}`)).text();
+    rec("http · catálogo", "un enlace válido con comillas y etiquetas sale escapado",
+      /<script>alert\(8\)/.test(catComillas) ? "VULN" : !comillas.error && catComillas.includes("tienda.example") ? "BLOQUEADO" : "SIN PROBAR",
+      comillas.error?.message ?? (catComillas.includes("tienda.example") ? "" : "el botón no llegó a la página"));
     const h = (await fetch(`${BASE}/login`)).headers;
     const faltan = [["content-security-policy", /frame-ancestors 'none'/], ["x-frame-options", /DENY/i], ["x-content-type-options", /nosniff/], ["referrer-policy", /./]].filter(([k, re]) => !re.test(h.get(k) ?? "")).map(([k]) => k);
     // v0.13.0: the catalogue's link-preview image, a public route (`/c/<token>/vista-previa`).
