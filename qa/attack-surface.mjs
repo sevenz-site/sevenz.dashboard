@@ -310,6 +310,12 @@ export const MANIFEST = {
     my_account_deletion: "owner",
     cancel_my_account_deletion: "owner",
     owners_pending_deletion: "service",
+    // 229: running a deletion from /admin. All service-only; qa:eliminar-cuenta-borrado drives
+    // them end to end (refused before due, refused twice, nothing left outside the keep list).
+    admin_account_deletions: "service",
+    admin_account_deletion_check: "service",
+    admin_purge_account: "service",
+    admin_account_leftovers: "service",
     second_factor_gate: "service",
     owner_security_facts: "service",
     log_security_audit: "service",
@@ -485,6 +491,9 @@ export const MANIFEST = {
     "app/(app)/profile/delete-account-actions.ts#confirmAccountDeletion": "cubierta: qa:eliminar-cuenta, el dueño y anon no pueden llamar request_account_deletion sin el código (42501)",
     "app/(app)/profile/delete-account-actions.ts#cancelAccountDeletion": "cubierta: qa:eliminar-cuenta, cancela solo el pedido propio; anon sin permiso (42501)",
     "app/eliminar-cuenta/actions.ts#requestWebDeletionCode": "cubierta: qa:eliminar-cuenta y el navegador el 2026-11-28, misma respuesta con y sin cuenta",
+    // «Borrar ahora»: requireSuperadmin() first, like every /admin action, then the typed name
+    // checked again on the server, then functions granted to service_role only.
+    "app/admin/eliminaciones/actions.ts#accionBorrarCuenta": "cubierta: qa:eliminar-cuenta-borrado de punta a punta; requireSuperadmin() y el nombre escrito comprobado en el servidor",
     "app/eliminar-cuenta/actions.ts#confirmWebDeletion": "cubierta: qa:eliminar-cuenta, código con ticket ajeno → bad_ticket; cookie firmada como la de qa:attack-actions",
     "app/(app)/profile/security-actions.ts#startSecondFactorEnable": "cubierta: qa:segundo-factor, el código de prueba y su tope por hora",
     "app/(app)/profile/security-actions.ts#confirmSecondFactorEnable": "cubierta: qa:segundo-factor, verify_login_code y set_second_factor",
