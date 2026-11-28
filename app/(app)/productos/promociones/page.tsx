@@ -54,9 +54,6 @@ export default async function PromocionesPage() {
                     {p.groups.map((g) => `${g.percent}%`).join(" y ")}
                     {p.groups.some((g) => g.allProducts) ? " · incluye todos los productos" : ` · ${countOf(p.groups.reduce((n, g) => n + g.productIds.length, 0), "producto", "productos")}`}
                   </span>
-                  <span className="text-[13px] leading-[19px] text-muted-foreground">
-                    {p.code ? `Código ${p.code} · ${p.codePercent}% extra` : "Sin código"}
-                  </span>
                 </Link>
               </li>
             ))}

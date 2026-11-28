@@ -21,9 +21,6 @@ export type PromotionRow = {
   endsOn: string;
   extendedUntil: string | null;
   endedOn: string | null;
-  code: string | null;
-  codePercent: number | null;
-  codeMaxUses: number | null;
   groups: PromotionGroupRow[];
   status: PromotionStatus;
   lastDay: string;
@@ -52,7 +49,7 @@ export async function loadPromotions(supabase: SupabaseClient, ownerId: string):
     supabase.from("owners").select("country").eq("id", ownerId).single(),
     supabase
       .from("promotions")
-      .select("id, name, banner_path, starts_on, ends_on, extended_until, ended_at, code, code_percent, code_max_uses, promotion_groups(percent, wholesale_percent, all_products, position, promotion_group_items(product_id, kind))")
+      .select("id, name, banner_path, starts_on, ends_on, extended_until, ended_at, promotion_groups(percent, wholesale_percent, all_products, position, promotion_group_items(product_id, kind))")
       .eq("owner_id", ownerId)
       .order("starts_on", { ascending: false }),
   ]);
@@ -90,9 +87,6 @@ export async function loadPromotions(supabase: SupabaseClient, ownerId: string):
       name: p.name as string,
       bannerPath: (p.banner_path as string | null) ?? null,
       ...base,
-      code: (p.code as string | null) ?? null,
-      codePercent: p.code_percent == null ? null : Number(p.code_percent),
-      codeMaxUses: (p.code_max_uses as number | null) ?? null,
       groups,
       status: promotionStatus(base, today),
       lastDay: lastDay(base),

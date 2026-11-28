@@ -10,7 +10,6 @@ import {
   crosses,
   dayLabel,
   lastDay,
-  normalizeCode,
   type PromotionInput,
 } from "@/lib/promotions/rules";
 
@@ -55,9 +54,6 @@ export async function savePromotion(raw: PromotionInput): Promise<SavePromotionR
   const input: PromotionInput = {
     ...raw,
     name: (raw.name ?? "").trim(),
-    code: raw.code ? normalizeCode(raw.code) : null,
-    codePercent: raw.code ? raw.codePercent : null,
-    codeMaxUses: raw.code ? raw.codeMaxUses : null,
     groups: (raw.groups ?? []).map((g) => ({
       percent: Number(g.percent),
       wholesalePercent: g.wholesalePercent == null ? null : Number(g.wholesalePercent),
@@ -135,9 +131,11 @@ export async function savePromotion(raw: PromotionInput): Promise<SavePromotionR
     // Ignored since migration 230 (the wholesale price is always discounted); still sent because
     // it is in the function's signature.
     p_includes_wholesale: true,
-    p_code: input.code,
-    p_code_percent: input.codePercent,
-    p_code_max_uses: input.codeMaxUses,
+    // The discount code left this release on 2026-11-28 (owner's decision; see the note in
+    // lib/promotions/rules.ts). The parameters stay in the function's signature, so they go null.
+    p_code: null,
+    p_code_percent: null,
+    p_code_max_uses: null,
     p_groups: input.groups.map((g) => ({
       percent: g.percent,
       wholesale_percent: g.wholesalePercent,

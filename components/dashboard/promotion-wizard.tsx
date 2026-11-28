@@ -19,16 +19,16 @@ import { getPublicLogoUrl } from "@/lib/supabase/storage";
 import { fileToResizedBlob } from "@/lib/image";
 import { formatPriceAmount } from "@/lib/products/price";
 import { applyPromotion } from "@/lib/promotions/pricing";
-import { checkPromotion, countOf, dayLabel, groupLine, normalizeCode, type PromotionInput } from "@/lib/promotions/rules";
+import { checkPromotion, countOf, dayLabel, groupLine, type PromotionInput } from "@/lib/promotions/rules";
 import type { PromoProduct, PromotionRow } from "@/lib/promotions/load";
 import { savePromotion } from "@/app/(app)/productos/promociones/actions";
 
 // «CREAR PROMOCIÓN» IN FOUR STEPS (CT-184), frames 3 to 8, 3b and 17 of section
 // `2300:21627`, approved by the owner on 2026-11-27. Read with the frames' own copy.
 //
-//   1/4 Datos: name, banner (optional), start and close (the business's days), and the
+//   1/3 Datos: name, banner (optional), start and close (the business's days), and the
 //       optional extension («Extender la promoción»).
-//   2/4 Descuentos: one % per group of products; a product is in one group only. Adjusted by
+//   2/3 Descuentos: one % per group of products; a product is in one group only. Adjusted by
 //       the owner on 2026-11-28 (frames 4 and 17 re-approved that day):
 //       - the % discounts the retail AND the wholesale price; the checkbox «Aplicar descuento
 //         diferente a precios al mayor» opens a second % for the wholesale price, empty meaning
@@ -37,9 +37,10 @@ import { savePromotion } from "@/app/(app)/productos/promociones/actions";
 //       - «Todos los productos» is a checkbox (it was a two-way selector); unticked, the group
 //         shows «+ Agregar productos» and, once it has products, «Cambiar productos» as well --
 //         both, as the owner drew them («Los dos, como dibujé»).
-//   3/4 Código (optional): the code, its extra %, and «Limitar los usos» (a total number of
-//       orders, the owner's decision of 2026-11-27).
-//   4/4 Resumen, with the warning of products below their cost: a warning, never a block
+//   (3/4 Código was here until 2026-11-28: the owner took the discount code out of this
+//   release -- «omitamos el código de descuento, eliminalo de este lanzamiento, más adelante
+//   lo retomamos». Its decisions, to resume from, are in lib/promotions/rules.ts.)
+//   3/3 Resumen, with the warning of products below their cost: a warning, never a block
 //       (owner's decision: «el dueño decide»). And, since 2026-11-28, a second warning when a
 //       product's discounted wholesale price ends up dearer than its discounted retail: also
 //       only a warning («Solo avisa»), the customer then pays the wholesale price.
@@ -64,7 +65,10 @@ type GroupState = {
   productIds: string[];
 };
 
-const STEP_LABEL = ["Datos", "Descuentos", "Código", "Resumen"];
+// Three steps since 2026-11-28: the discount code (step «Código») left this release by the
+// owner's decision -- see the note on the code in lib/promotions/rules.ts.
+const STEP_LABEL = ["Datos", "Descuentos", "Resumen"];
+const STEPS = STEP_LABEL.length;
 
 type Props = {
   ownerId: string;
@@ -109,12 +113,6 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
   const [picker, setPicker] = useState<{ key: string } | null>(null);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  // 3/4
-  const [useCode, setUseCode] = useState(Boolean(initial?.code));
-  const [code, setCode] = useState(initial?.code ?? "");
-  const [codePercent, setCodePercent] = useState(initial?.codePercent != null ? String(initial.codePercent) : "");
-  const [limit, setLimit] = useState(initial?.codeMaxUses != null);
-  const [maxUses, setMaxUses] = useState(initial?.codeMaxUses != null ? String(initial.codeMaxUses) : "");
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const num = (s: string) => {
@@ -136,9 +134,6 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
     endsOn,
     extendedUntil: extend ? extendedUntil || "" : null,
     groups: groups.map((g) => ({ percent: num(g.percent), wholesalePercent: wholesaleOf(g), allProducts: g.allProducts, productIds: g.productIds })),
-    code: useCode ? normalizeCode(code) : null,
-    codePercent: useCode ? num(codePercent) : null,
-    codeMaxUses: useCode && limit ? num(maxUses) : null,
   };
 
   // Which products each group really covers: a chosen group its list; «all» every published
@@ -209,10 +204,10 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
     return parts.join("; ") + (more > 0 ? ` y ${more} más` : "");
   };
 
-  const stepOf: Record<string, number> = { name: 1, dates: 1, extended: 1, banner: 1, groups: 2, code: 3 };
+  const stepOf: Record<string, number> = { name: 1, dates: 1, extended: 1, banner: 1, groups: 2 };
   function validate(upTo: number): boolean {
     const c = checkPromotion(input);
-    if (!c.ok && (stepOf[c.field] ?? 4) <= upTo) {
+    if (!c.ok && (stepOf[c.field] ?? STEPS) <= upTo) {
       setError({ field: c.field, text: c.error });
       return false;
     }
@@ -241,7 +236,7 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
   }
 
   function save() {
-    if (!validate(4)) return;
+    if (!validate(STEPS)) return;
     startTransition(async () => {
       const r = await savePromotion(input);
       if (!r.ok) {
@@ -255,7 +250,7 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
   }
 
   const next = () => {
-    if (validate(step)) setStep((s) => Math.min(4, s + 1));
+    if (validate(step)) setStep((s) => Math.min(STEPS, s + 1));
   };
   const back = () => (step > 1 ? setStep(step - 1) : router.push(initial ? `/productos/promociones/${initial.id}` : "/productos/promociones"));
 
@@ -282,7 +277,7 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
       <ScreenBackRow onClick={back} label={step > 1 ? "Paso anterior" : "Volver a Promociones"} soloEnTelefono={false} />
       <div className="flex flex-col pt-4 md:max-w-[560px]">
         <ScreenTitle>{initial ? "Editar promoción" : "Crear promoción"}</ScreenTitle>
-        <StepProgress step={step} total={4} label={STEP_LABEL[step - 1]} />
+        <StepProgress step={step} total={STEPS} label={STEP_LABEL[step - 1]} />
       </div>
 
       <div className="flex flex-col gap-6 pb-4 md:max-w-[560px]">
@@ -445,51 +440,6 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
 
         {step === 3 ? (
           <>
-            <div className="flex flex-col gap-2 rounded-[10px] border p-3.5">
-              <label className="flex items-center justify-between gap-3 text-sm leading-5 font-medium">
-                Usar código de descuento
-                <Switch checked={useCode} onCheckedChange={setUseCode} />
-              </label>
-              <p className="text-xs leading-[17px] text-muted-foreground">Opcional. Tus clientes lo escriben al enviar su pedido y les da un descuento extra.</p>
-            </div>
-            {useCode ? (
-              <>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="promo-code" className="text-sm leading-5 font-medium">Código</label>
-                  <input id="promo-code" value={code} onChange={(e) => setCode(normalizeCode(e.target.value))} maxLength={20} autoCapitalize="characters" autoCorrect="off" spellCheck={false} placeholder="Ej. BLACK25" aria-invalid={error?.field === "code"} className={fieldClass} />
-                  <p className="text-xs leading-[17px] text-muted-foreground">Letras y números, sin espacios. No importa si lo escriben en mayúsculas o minúsculas.</p>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="promo-code-pct" className="text-sm leading-5 font-medium">Descuento extra</label>
-                  <div className="flex h-10 items-center rounded-[10px] border px-3">
-                    <input id="promo-code-pct" value={codePercent} inputMode="decimal" onChange={(e) => setCodePercent(e.target.value)} placeholder="0" className="w-full min-w-0 bg-transparent text-base outline-none md:text-[15px]" />
-                    <span className="text-muted-foreground">%</span>
-                  </div>
-                  <p className="text-xs leading-[17px] text-muted-foreground">Se resta del total del pedido, después de la rebaja de cada producto.</p>
-                </div>
-                <div className="flex flex-col gap-3 rounded-[10px] border p-3.5">
-                  <label className="flex items-center justify-between gap-3 text-sm leading-5 font-medium">
-                    Limitar los usos
-                    <Switch checked={limit} onCheckedChange={setLimit} />
-                  </label>
-                  {limit ? (
-                    <label className="flex flex-col gap-2 text-sm leading-5 font-medium">
-                      Máximo de pedidos
-                      <input value={maxUses} inputMode="numeric" onChange={(e) => setMaxUses(e.target.value.replace(/\D/g, ""))} placeholder="Ej. 50" className={fieldClass} />
-                      <span className="text-xs leading-[17px] font-normal text-muted-foreground">
-                        Cuando {maxUses || "ese número de"} pedidos lo hayan usado, el código deja de valer. La rebaja de los productos sigue.
-                      </span>
-                    </label>
-                  ) : null}
-                </div>
-                {errorFor(["code"])}
-              </>
-            ) : null}
-          </>
-        ) : null}
-
-        {step === 4 ? (
-          <>
             {bannerPreview ? (
               <div className="relative aspect-[3/1] w-full overflow-hidden rounded-[10px] bg-muted">
                 <Image src={bannerPreview} alt="" fill unoptimized sizes="560px" className="object-cover" />
@@ -500,7 +450,6 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
                 ["Nombre", name.trim()],
                 ["Fechas", `${dayLabel(startsOn)} – ${dayLabel(endsOn, true)}.${extend && extendedUntil ? ` Se extiende hasta el ${dayLabel(extendedUntil)}.` : ""}`],
                 ["Descuentos", groups.map((g) => groupLine({ percent: num(g.percent), wholesalePercent: wholesaleOf(g), allProducts: g.allProducts, productIds: g.productIds }, covered(g).length)).join("\n")],
-                ["Código", useCode ? `${normalizeCode(code)} · ${num(codePercent)}% extra${limit && maxUses ? ` · hasta ${maxUses} pedidos` : ""}` : "Sin código"],
               ].map(([k, v]) => (
                 <div key={k} className="flex flex-col gap-0.5">
                   <dt className="text-xs leading-[17px] text-muted-foreground">{k}</dt>
@@ -541,7 +490,7 @@ export function PromotionWizard({ ownerId, today, initial, products, categories 
 
       <StickyActions>
         <div className="flex flex-col gap-2 md:flex-row-reverse md:justify-end">
-          {step < 4 ? (
+          {step < STEPS ? (
             <Button type="button" className="h-10 w-full md:w-[160px]" disabled={uploading} onClick={next}>Siguiente</Button>
           ) : (
             <Button type="button" className="h-10 w-full md:w-[200px]" disabled={pending || uploading} onClick={save}>

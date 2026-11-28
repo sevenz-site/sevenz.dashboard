@@ -39,7 +39,6 @@ export default async function PromocionPage({ params }: { params: Promise<{ id: 
     // Frame 9 as approved on 2026-11-28: one line per group with both prices' %, and the
     // products it covers today (the «Precio al mayor» row is gone, migration 230).
     ["Descuentos", p.groups.map((g, i) => groupLine(g, coveredIds(p.groups, i, productIds).length)).join("\n")],
-    ["Código", p.code ? `${p.code} · ${p.codePercent}% extra${p.codeMaxUses ? ` · hasta ${p.codeMaxUses} pedidos` : ""}` : "Sin código"],
     ["Pedidos con esta promoción", String(p.orders)],
   ];
 

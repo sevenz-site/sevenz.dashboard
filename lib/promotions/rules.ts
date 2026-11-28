@@ -8,7 +8,54 @@
 
 export const PROMO_NAME_MAX = 60;
 export const PROMO_PERCENT_MAX = 90;
-export const PROMO_CODE_RE = /^[A-Z0-9]{3,20}$/;
+
+// ===========================================================================
+// THE DISCOUNT CODE: OUT OF THIS RELEASE, AND WHAT WAS DECIDED BEFORE IT LEFT
+//
+// Owner's decision of 2026-11-28: «omitamos el código de descuento, eliminalo de este
+// lanzamiento, más adelante lo retomamos, eliminalo de los frames y todo el app. Deja las
+// decisiones documentadas hasta el momento para retomar la implementación desde esos
+// comentarios». So the wizard has no «Código» step, nothing reads or writes a code, and the
+// Figma frames for it (7, and 13 to 15 on the customer's side) were deleted. Resume from here.
+//
+// WHAT IS STILL IN THE DATABASE, unused: `promotions.code`, `code_percent`, `code_max_uses`
+// (migration 228, with the check `promotions_code_shape`), the matching parameters of
+// `save_promotion` (always sent null), and `has_code: false` in `get_shared_promotion`.
+// Nothing was dropped, so resuming needs no migration to bring the columns back.
+//
+// DECIDED BY THE OWNER (2026-11-27 and 2026-11-28):
+//   - Optional, one per promotion. Letters and digits, 3 to 20, no spaces, stored upper-case
+//     and matched case-insensitively (the old check: /^[A-Z0-9]{3,20}$/).
+//   - It gives an EXTRA % (1 to 90) taken off the order's total, after each product's own
+//     discount («Descuento extra (activar este código es opcional)»).
+//   - The customer types it in the order's last form, «¿Quién hace el pedido?», under the
+//     address: «Código de descuento (opcional)» with «Aplicar», then «Quitar» once applied and
+//     «BLACK25 aplicado: 10% menos en tu pedido.»; a bad one says «Ese código no existe o ya no
+//     está vigente.». Below, «Productos con <promo>», «Código BLACK25 (10%) −$4,00», «Total».
+//   - Optional limit of uses: a total number of orders. A use counts when the order is
+//     RECEIVED; deleting or rejecting that order gives the use back.
+//   - In the sale it is a separate line: «Código BLACK25 (10%) −$4,00» («Una línea aparte»),
+//     and the sale of an order keeps the code («Sí, también el código»).
+//   - A return refunds the line minus the code's %: of a $40 order at 10% ($36), returning a
+//     $10 product gives back $9 («$9, con el 10%»).
+//   - The owner's DIRECT sale (Nueva venta, fiado or contado) also shows the code field when a
+//     code is active, and using it there counts as a use. This reverses «Solo catálogo» for the
+//     code only; whether the products' promotion % also applies in a direct sale was NOT
+//     decided.
+//
+// OPEN WHEN IT WAS DROPPED (asked, not answered):
+//   - Does the code's % reduce products WITHOUT a promotion in the same order (the frame said
+//     «Se resta del total del pedido»), or only the discounted ones?
+//   - When the owner adds products or units while registering an order, do they get the code?
+//     The owner's general rule (below) suggests not: «si un producto tiene descuento se
+//     registra con descuento, sino tiene descuento se registra al precio que tiene».
+//   - A frame for the code field in Nueva venta.
+//   - Orders in two currencies: presumably one «Código» line per currency, never confirmed.
+//   - The ~20 places that re-sum `sale_lines` (receipt, reports, cierre, WhatsApp weekly and
+//     monthly rows, admin metrics, `get_shared_balance`) would all have to subtract it; and
+//     `sales` is immutable after insert (`sales_guard_update`, migration 180), so the code must
+//     be written with the sale or in a child table carrying the same guards.
+// ===========================================================================
 
 export type PromotionGroupInput = {
   percent: number;
@@ -28,18 +75,11 @@ export type PromotionInput = {
   endsOn: string;
   extendedUntil: string | null;
   groups: PromotionGroupInput[];
-  code: string | null;
-  codePercent: number | null;
-  codeMaxUses: number | null;
 };
 
 export type PromotionCheck = { ok: true } | { ok: false; field: string; error: string };
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-export function normalizeCode(raw: string | null | undefined): string {
-  return (raw ?? "").replace(/\s+/g, "").toUpperCase();
-}
 
 export function checkPromotion(p: PromotionInput): PromotionCheck {
   const name = (p.name ?? "").trim();
@@ -86,17 +126,6 @@ export function checkPromotion(p: PromotionInput): PromotionCheck {
         }
         seen.add(id);
       }
-    }
-  }
-  if (p.code != null) {
-    if (!PROMO_CODE_RE.test(p.code)) {
-      return { ok: false, field: "code", error: "El código lleva de 3 a 20 letras o números, sin espacios." };
-    }
-    if (p.codePercent == null || !(p.codePercent > 0) || p.codePercent > PROMO_PERCENT_MAX) {
-      return { ok: false, field: "code", error: `El descuento extra va de 1 a ${PROMO_PERCENT_MAX}%.` };
-    }
-    if (p.codeMaxUses != null && !(Number.isInteger(p.codeMaxUses) && p.codeMaxUses >= 1)) {
-      return { ok: false, field: "code", error: "El máximo de pedidos tiene que ser un número entero, 1 o más." };
     }
   }
   return { ok: true };

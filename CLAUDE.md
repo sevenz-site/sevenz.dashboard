@@ -1777,6 +1777,38 @@ ninguna máquina.
 mira nadie. Una calificación baja afecta al número entero, así que el que bloquea por
 fastidio no se pierde a sí mismo: daña el canal de los que sí lo aprecian.
 
+## UN DESCUENTO VA CON SU PRODUCTO: LO QUE NO LO TENÍA VA A SU PRECIO
+
+**Regla del dueño, 2026-11-28**, al decidir cómo queda una promoción cuando un pedido se
+registra como venta: *«Si un producto tiene descuento se registra con descuento, sino tiene
+descuento se registra al precio que tiene. Es una nueva regla importante a agregar para
+descuentos»*.
+
+**La regla**: cuando lo que el cliente pidió con un descuento llega a la venta, cada producto
+conserva el descuento que tenía, y lo que no lo tenía va a su precio. Lo que el tendero
+**agrega** al registrar (un producto nuevo o unidades de más) no tenía descuento, así que va
+a su precio de hoy. Nunca se reparte un descuento sobre lo que no lo llevaba, ni se le quita
+a lo que sí.
+
+**Ya funciona así en las promociones** (`CT-184`), y son los dos precedentes:
+
+- Un pedido que se registra cuando la promoción ya terminó guarda los precios del pedido
+  (*«Los del pedido»*, 2026-11-27).
+- Si el tendero sube de 2 a 3 un producto rebajado, son **2 rebajados y 1 normal**
+  (decisión del 2026-11-27): las 2 que pidió el cliente con descuento lo llevan, la de más
+  va a su precio. La regla vive en `importeDeLaLinea` (`lib/orders/bloques-de-moneda.ts`) y en
+  `registrarVenta`, y la pantalla y la venta la aplican con la misma función.
+
+**Vale para todo descuento que venga después**, empezando por el código de descuento, que
+salió de este lanzamiento y se retoma más adelante (sus decisiones están en
+`lib/promotions/rules.ts`). Antes de decidir cómo un descuento nuevo trata lo agregado al
+registrar, se aplica esta regla; si no alcanza, se le pregunta al dueño.
+
+**Por qué merece regla propia.** Un descuento mal repartido no da error: la venta suma, el
+saldo cuadra y el cliente paga una cifra creíble. Solo que no es la que se le prometió, o el
+tendero regala lo que no quería regalar, y eso solo se ve comparando el pedido con la venta
+línea por línea.
+
 ## UNA CIFRA DEL PASADO NO SE CALCULA CON DATOS DE HOY
 
 **Pedido por el dueño el 2026-11-06**, después de ver el caso del costo: *«guardemos el

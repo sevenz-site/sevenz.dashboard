@@ -59,7 +59,7 @@ try {
   check("1a. $3,80 al 40% = $2,28 y €7,50 al 20% = €6,00 (los frames)", applyPromotion(3.8, 40, "USD") === 2.28 && applyPromotion(7.5, 20, "EUR") === 6);
   check("1b. bolívares con 4 decimales: Bs. 1.234,5678 al 15% = 1.049,3826", applyPromotion(1234.5678, 15, "VES") === 1049.3826, String(applyPromotion(1234.5678, 15, "VES")));
   check("1c. sin % el precio no cambia", applyPromotion(3.8, null, "USD") === 3.8);
-  const base = { name: "X", bannerPath: null, startsOn: "2026-12-01", endsOn: "2026-12-03", extendedUntil: null, groups: [{ percent: 20, wholesalePercent: null, allProducts: true, productIds: [] }], code: null, codePercent: null, codeMaxUses: null };
+  const base = { name: "X", bannerPath: null, startsOn: "2026-12-01", endsOn: "2026-12-03", extendedUntil: null, groups: [{ percent: 20, wholesalePercent: null, allProducts: true, productIds: [] }] };
   check("1d. una promoción bien formada pasa", checkPromotion(base).ok);
   check("1e. cierre antes del inicio, % de 95 y dos «Todos» se rechazan",
     !checkPromotion({ ...base, endsOn: "2026-11-30" }).ok &&
@@ -163,7 +163,7 @@ try {
   check("4d. al mayor: W lleva su 30% propio y C el 20% del detal",
     compartida?.wholesale_percents?.[W.id] === 30 && compartida?.percents?.[W.id] === 40 && compartida?.wholesale_percents?.[C.id] === 20 && compartida?.wholesale_percents?.[B.id] === undefined,
     JSON.stringify({ W: compartida?.wholesale_percents?.[W.id], C: compartida?.wholesale_percents?.[C.id] }));
-  check("4c. no viaja nada del código", compartida && !("code" in compartida) && compartida.has_code === false);
+  check("4c. no viaja nada del código (fuera de este lanzamiento)", compartida && !("code" in compartida) && compartida.has_code === false);
 
   const items = [A, B, C].map((p) => ({ product_id: p.id, quantity: 1, currency: p.base_currency_retail, comment: null }));
   // W at its wholesale minimum: the line goes at the wholesale tier.
