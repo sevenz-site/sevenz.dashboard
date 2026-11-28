@@ -105,6 +105,9 @@ export async function sendCode(opciones: {
   target: string | null;
   ownerCountry?: string | null;
   prevTicket?: string | null;
+  // A ticket for a purpose other than sign-in that also runs WITHOUT a session: today only
+  // «Eliminar tu cuenta» from the web (app/eliminar-cuenta, PL-48 step 1.3). See below.
+  withTicket?: boolean;
 }): Promise<SendCodeResult> {
   const { ownerId, purpose, channel } = opciones;
   const target = (opciones.target ?? "").trim();
@@ -116,7 +119,9 @@ export async function sendCode(opciones: {
   // admin's guard), which already says whose code it is. A ticket stored for those would
   // make `verify_login_code` refuse the code with `bad_ticket` — found on the first browser
   // walk, 2026-11-05.
-  const ticket = purpose === "login" ? newTicket() : null;
+  // `withTicket` (2026-11-28): the web deletion page has no session either, so it needs the
+  // same secret for the same reason, and its verify passes the ticket back.
+  const ticket = purpose === "login" || opciones.withTicket ? newTicket() : null;
   const supabase = createServiceClient();
   const { data, error } = await supabase.rpc("create_login_code", {
     p_owner_id: ownerId,

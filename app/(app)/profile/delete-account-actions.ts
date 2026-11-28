@@ -2,13 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { trackServer } from "@/lib/mixpanel-server";
-import { sendEmail } from "@/lib/email/resend";
-import { formatDateLong, zonaDelNegocio } from "@/lib/format";
-import { DELETION_GRACE_DAYS } from "@/lib/account-deletion";
+import { recordDeletionRequest } from "@/lib/account-deletion";
 import { logSecurityAudit, sendCode, verifyCode } from "@/lib/security/second-factor";
-import { maskEmail, normalizeCode, rejectionText, sentToText } from "@/lib/security/code-text";
+import { normalizeCode, rejectionText, sentToText } from "@/lib/security/code-text";
 
 // «ELIMINAR MI CUENTA» (PL-48, step 1.3; migration 227). Frames «Eliminar · 1-5» approved by
 // the owner on 2026-11-20. Three steps, each re-reading the session (these are POST
@@ -59,7 +56,7 @@ export async function startAccountDeletion(): Promise<DeletionState> {
 }
 
 export async function confirmAccountDeletion(_prev: DeletionState, formData: FormData): Promise<DeletionState> {
-  const { supabase, user } = await sessionUser();
+  const { user } = await sessionUser();
   if (!user) return { ...idle, error: "Sesión expirada, vuelve a entrar." };
   const code = normalizeCode(String(formData.get("code") ?? ""));
   if (!code) return { error: "Escribe los 6 dígitos del código.", notice: null, step: "sent" };
@@ -72,47 +69,14 @@ export async function confirmAccountDeletion(_prev: DeletionState, formData: For
     return { error: rejectionText(result.code === "expired" ? "none" : result.code, result.attemptsLeft), notice: null, step };
   }
 
-  const { data, error } = await createServiceClient().rpc("request_account_deletion", {
-    p_owner_id: user.id,
-    p_source: "app",
-    p_days: DELETION_GRACE_DAYS,
-  });
-  const r = data as { ok?: boolean; already?: boolean; scheduled_for?: string } | null;
-  if (error || !r?.ok || !r.scheduled_for) {
-    console.error("[eliminar cuenta] request_account_deletion:", error?.message ?? JSON.stringify(r));
+  const recorded = await recordDeletionRequest({ ownerId: user.id, email: user.email ?? null, source: "app" });
+  if (!recorded.ok) {
     return { error: "No pudimos registrar tu pedido. Inténtalo de nuevo.", notice: null, step: "sent" };
-  }
-
-  const { data: owner } = await supabase.from("owners").select("country").eq("id", user.id).maybeSingle();
-  const fecha = formatDateLong(r.scheduled_for, zonaDelNegocio(owner?.country));
-
-  if (!r.already) {
-    await logSecurityAudit(user.id, "account_deletion_requested", "owner", { scheduled_for: r.scheduled_for, source: "app" });
-    trackServer("Account Deletion Requested", user.id, { source: "app" }, user.email);
-    // A written record for the owner, and the alarm if it was not him: anyone who took his
-    // session would still have needed this inbox for the code, but the email says how to
-    // undo it either way. Plain text, no links, like every account email.
-    if (user.email) {
-      const mail = await sendEmail({
-        to: user.email,
-        subject: "Pediste eliminar tu cuenta de Sevenz",
-        text: [
-          `Recibimos tu pedido para eliminar tu cuenta de Sevenz (${maskEmail(user.email)}).`,
-          "",
-          `Se eliminará el ${fecha}. Hasta ese día puedes seguir usándola con normalidad.`,
-          "",
-          "Si cambias de opinión, o si no fuiste tú, entra a Sevenz, abre Mi negocio y toca «Cancelar eliminación».",
-        ].join("\n"),
-        idempotencyKey: `account_deletion:${user.id}:${r.scheduled_for}`,
-        tag: "eliminar_cuenta",
-      });
-      if (!mail.ok) console.error("[eliminar cuenta] correo de confirmación:", mail.error);
-    }
   }
 
   revalidatePath("/profile");
   revalidatePath("/dashboard");
-  return { error: null, notice: `Listo. Tu cuenta se eliminará el ${fecha}.`, step: "done" };
+  return { error: null, notice: `Listo. Tu cuenta se eliminará el ${recorded.date}.`, step: "done" };
 }
 
 export async function cancelAccountDeletion(): Promise<DeletionState> {

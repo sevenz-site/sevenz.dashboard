@@ -75,7 +75,12 @@ export async function updateSession(request: NextRequest) {
     // the RFC 8058 one-click POST from the mail client. Both read with no session, and both
     // guard themselves: a signed token in, nothing but «off» out, and nothing changes on a GET.
     request.nextUrl.pathname.startsWith("/consejos/baja/") ||
-    request.nextUrl.pathname === "/api/consejos/baja";
+    request.nextUrl.pathname === "/api/consejos/baja" ||
+    // «Eliminar tu cuenta» without the app (PL-48 step 1.3, 2026-11-28): Google requires a
+    // web page for it, and whoever uses it has no session by definition. The page guards
+    // itself: an email in, a code to that inbox, the same answer whether the account exists
+    // or not, and nothing is recorded until the code is typed.
+    request.nextUrl.pathname === "/eliminar-cuenta";
 
   // A public route's decision doesn't depend on who is asking, so skip the
   // session lookup entirely rather than paying for an answer nothing reads.
