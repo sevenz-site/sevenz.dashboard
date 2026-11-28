@@ -22,6 +22,7 @@ import {
 } from "@/lib/types";
 import { estadoDeCliente } from "@/lib/estado-del-plazo";
 import { foldForSearch } from "@/lib/search/fold";
+import { matchesClientDocument } from "@/lib/search/document";
 
 // El estado de filtros y los chips que lo tocan, compartidos por las cuatro
 // listas de clientes — Cartera, Clientes, Malas pagas y Papelera — para que no
@@ -183,7 +184,8 @@ export function useClientFilters<T extends ClientSummary>(
     return rows.filter((row) => {
       if (query) {
         const matchesName = foldForSearch(row.name).includes(query);
-        const matchesDocument = row.document_id ? foldForSearch(row.document_id).includes(query) : false;
+        // Digits only, with or without the prefix, dots or dashes: see `lib/search/document.ts`.
+        const matchesDocument = matchesClientDocument(nameQuery, row.document_id, row.document_type);
         if (!matchesName && !matchesDocument) return false;
       }
       const balance = judgementBalance(row);

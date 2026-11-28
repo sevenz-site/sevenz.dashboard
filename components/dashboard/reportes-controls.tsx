@@ -8,6 +8,7 @@ import { X } from "lucide-react";
 import { ClientResultList, CLIENT_RESULT_LIMIT } from "@/components/dashboard/client-result-list";
 import { SearchField } from "@/components/dashboard/client-search-sheet";
 import { foldForSearch } from "@/lib/search/fold";
+import { matchesClientDocument } from "@/lib/search/document";
 
 // THE TWO CONTROLS OF /reportes, and both of them live in the URL.
 //
@@ -70,7 +71,8 @@ export function ReportesClientSearch({
     q === ""
       ? []
       : clients
-          .filter((c) => foldForSearch(c.name).includes(q) || foldForSearch(c.document_id).includes(q))
+          // The document is matched on its digits, with or without the prefix (`lib/search/document.ts`).
+          .filter((c) => foldForSearch(c.name).includes(q) || matchesClientDocument(query, c.document_id, c.document_type))
           .slice(0, CLIENT_RESULT_LIMIT)
           .map((c) => ({
             id: c.id,
