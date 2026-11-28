@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EstadoChip } from "@/components/admin/estado-chip";
+import { EstadoChip, type EliminacionDeCuenta } from "@/components/admin/estado-chip";
 import { CuentaAcciones } from "@/components/admin/cuenta-acciones";
 import type { Cuenta } from "@/lib/admin/subscriptions";
 import { foldForSearch } from "@/lib/search/fold";
@@ -56,7 +56,15 @@ function fecha(iso: string | null): string {
 // pantalla ya las tiene todas: pedirle a Postgres que ordene obligaría a un
 // viaje de ida y vuelta por cada clic en una cabecera. Cuando sean miles, el
 // cambio es mover el ordenamiento a la función y paginar — no reescribir esto.
-export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
+// `eliminaciones` (PL-48 step 1.3): owner id → «eliminada» or «por_eliminar», from the
+// deletion requests. Absent means a live account with no request.
+export function CuentasTabla({
+  cuentas,
+  eliminaciones = {},
+}: {
+  cuentas: Cuenta[];
+  eliminaciones?: Record<string, Exclude<EliminacionDeCuenta, null>>;
+}) {
   const router = useRouter();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -97,8 +105,8 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
       {
         id: "estado",
         header: "Estado",
-        accessorFn: (c) => c.estado,
-        cell: ({ row }) => <EstadoChip cuenta={row.original} />,
+        accessorFn: (c) => (eliminaciones[c.owner_id] === "eliminada" ? "eliminada" : c.estado),
+        cell: ({ row }) => <EstadoChip cuenta={row.original} eliminacion={eliminaciones[row.original.owner_id] ?? null} />,
       },
       {
         accessorKey: "country",
@@ -213,7 +221,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         cell: () => <ChevronRight className="size-4 text-muted-foreground" />,
       },
     ],
-    [],
+    [eliminaciones],
   );
 
   const filtradas = useMemo(() => {
@@ -223,8 +231,16 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
       // By name or email of the KAM, the owner's request of 2026-11-07.
       if (k && !foldForSearch(c.kam_name).includes(k) && !foldForSearch(c.kam_email).includes(k)) return false;
       if (estado !== "todos") {
-        const vencida = c.estado === "demo" && (c.dias_restantes ?? 0) < 0;
-        if (estado === "vencida" ? !vencida : c.estado !== estado || vencida) return false;
+        // A deleted account answers only to «Eliminadas»: under «Activa» it would be a business
+        // that no longer exists, read as a live one.
+        const eliminada = eliminaciones[c.owner_id] === "eliminada";
+        if (estado === "eliminada") {
+          if (!eliminada) return false;
+        } else {
+          if (eliminada) return false;
+          const vencida = c.estado === "demo" && (c.dias_restantes ?? 0) < 0;
+          if (estado === "vencida" ? !vencida : c.estado !== estado || vencida) return false;
+        }
       }
       if (plan !== "todos" && c.plan_code !== plan) return false;
       if (!q) return true;
@@ -232,7 +248,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
         foldForSearch(c.business_name).includes(q) || foldForSearch(c.email).includes(q)
       );
     });
-  }, [cuentas, busqueda, estado, plan, kam]);
+  }, [cuentas, busqueda, estado, plan, kam, eliminaciones]);
 
   // El aviso de react-hooks/incompatible-library es correcto y no tiene
   // arreglo: useReactTable devuelve funciones nuevas en cada render por
@@ -278,6 +294,7 @@ export function CuentasTabla({ cuentas }: { cuentas: Cuenta[] }) {
             <SelectItem value="activa">Activa</SelectItem>
             <SelectItem value="bloqueada">Bloqueada</SelectItem>
             <SelectItem value="cancelada">Cancelada</SelectItem>
+            <SelectItem value="eliminada">Eliminadas</SelectItem>
           </SelectContent>
         </Select>
         <Select value={plan} onValueChange={setPlan}>

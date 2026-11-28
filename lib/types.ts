@@ -504,6 +504,9 @@ export const CUENTA_BADGE_CLASS = {
   bloqueada:
     "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
   cancelada: "bg-muted text-foreground border-transparent",
+  // PL-48 step 1.3 (2026-11-28): an account deleted on request. It stays in /admin for its
+  // history, and greyer than «Cancelada»: there is nothing left behind it to act on.
+  eliminada: "bg-muted text-muted-foreground border-transparent line-through decoration-1",
 } as const;
 
 // Keyed by the tier label computeCreditScore() returns (lib/credit-score.ts)

@@ -3,6 +3,8 @@ import { getCuentas, getIngresosPorMes, repartirPorUrgencia } from "@/lib/admin/
 import { CuentasTabla } from "@/components/admin/cuentas-tabla";
 import { CuentasGraficas } from "@/components/admin/cuentas-graficas";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
+import { listAccountDeletions } from "@/lib/admin/account-deletions";
+import type { EliminacionDeCuenta } from "@/components/admin/estado-chip";
 
 // El layout ya llama a requireSuperadmin, pero esta página lo llama otra vez y
 // ANTES de leer nada. Sin eso, la consulta que trae los datos de los 24
@@ -16,8 +18,18 @@ export const revalidate = 0;
 export default async function CuentasPage() {
   await requireSuperadmin();
 
-  const [cuentas, ingresos] = await Promise.all([getCuentas(), getIngresosPorMes(6)]);
-  const { bloqueadas, porBloquearse } = repartirPorUrgencia(cuentas);
+  const [cuentas, ingresos, eliminacionesLeidas] = await Promise.all([getCuentas(), getIngresosPorMes(6), listAccountDeletions()]);
+  // PL-48 step 1.3: which accounts were deleted on request, or asked to be. A deleted account
+  // stays in this list for its history (owner's decision of 2026-11-28), so it is marked, and it
+  // is left out of the two «what to look at today» cards: «se bloquea sola en 14 días» about a
+  // business that no longer exists would send somebody chasing a payment nobody owes.
+  const eliminaciones: Record<string, Exclude<EliminacionDeCuenta, null>> = {};
+  for (const r of eliminacionesLeidas.rows) {
+    if (r.deleted_at) eliminaciones[r.owner_id] = "eliminada";
+    else if (!r.cancelled_at && eliminaciones[r.owner_id] !== "eliminada") eliminaciones[r.owner_id] = "por_eliminar";
+  }
+  const eliminadas = cuentas.filter((c) => eliminaciones[c.owner_id] === "eliminada").length;
+  const { bloqueadas, porBloquearse } = repartirPorUrgencia(cuentas.filter((c) => eliminaciones[c.owner_id] !== "eliminada"));
   const finDePrueba = bloqueadas.filter((c) => c.motivo_de_bloqueo === "prueba_vencida").length;
   const pagoVencido = bloqueadas.filter((c) => c.motivo_de_bloqueo === "pago_vencido").length;
 
@@ -26,7 +38,8 @@ export default async function CuentasPage() {
       <div>
         <ScreenTitle>Cuentas</ScreenTitle>
         <p className="text-sm text-muted-foreground">
-          {cuentas.length} {cuentas.length === 1 ? "negocio" : "negocios"}. Los cambios quedan en el
+          {cuentas.length} {cuentas.length === 1 ? "negocio" : "negocios"}
+          {eliminadas ? ` (${eliminadas} ${eliminadas === 1 ? "eliminado" : "eliminados"})` : ""}. Los cambios quedan en el
           historial con tu correo.
         </p>
       </div>
@@ -63,12 +76,14 @@ export default async function CuentasPage() {
         </div>
       ) : null}
 
-      <CuentasGraficas cuentas={cuentas} ingresos={ingresos} />
+      {/* Live accounts only in the state and plan charts: a deleted one would count as
+          «Activa». The income chart keeps every payment, deleted accounts' included. */}
+      <CuentasGraficas cuentas={cuentas.filter((c) => eliminaciones[c.owner_id] !== "eliminada")} ingresos={ingresos} />
 
       {/* «El bloqueo todavía no existe» stood here until 2026-10-31. It was
           false since migration 061 and, with the automatic block of 171,
           dangerously so: it told you a blocked account could still write. */}
-      <CuentasTabla cuentas={cuentas} />
+      <CuentasTabla cuentas={cuentas} eliminaciones={eliminaciones} />
     </div>
   );
 }

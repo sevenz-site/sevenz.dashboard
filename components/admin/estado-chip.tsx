@@ -45,10 +45,30 @@ function nombreDe(cuenta: Cuenta): string {
   return `${estado} · ${cuenta.plan_code === "pro" ? "Pro" : "Free"}${cuenta.es_prueba ? " · Prueba" : ""}`;
 }
 
-export function EstadoChip({ cuenta }: { cuenta: Cuenta }) {
+// `eliminacion` (PL-48 step 1.3, 2026-11-28) comes from the deletion requests, not from the
+// subscription: a deleted account keeps its plan row for its history, so without this its chip
+// would still read «Activa». Deleted replaces the plan state; a pending request goes beside it,
+// because the account still works during its 30 days.
+export type EliminacionDeCuenta = "eliminada" | "por_eliminar" | null;
+
+export function EstadoChip({ cuenta, eliminacion = null }: { cuenta: Cuenta; eliminacion?: EliminacionDeCuenta }) {
+  if (eliminacion === "eliminada") {
+    return (
+      <Badge variant="outline" className={CUENTA_BADGE_CLASS.eliminada}>
+        Eliminada
+      </Badge>
+    );
+  }
   return (
-    <Badge variant="outline" className={claseDe(cuenta)}>
-      {nombreDe(cuenta)}
-    </Badge>
+    <span className="inline-flex flex-wrap gap-1">
+      <Badge variant="outline" className={claseDe(cuenta)}>
+        {nombreDe(cuenta)}
+      </Badge>
+      {eliminacion === "por_eliminar" ? (
+        <Badge variant="outline" className={CUENTA_BADGE_CLASS.vencida}>
+          Por eliminar
+        </Badge>
+      ) : null}
+    </span>
   );
 }

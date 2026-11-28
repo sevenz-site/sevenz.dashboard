@@ -115,7 +115,10 @@ export default async function CuentaDetallePage({
           <ScreenTitle>
             {cuenta.business_name || "(sin nombre)"}
           </ScreenTitle>
-          <EstadoChip cuenta={cuenta} />
+          <EstadoChip
+            cuenta={cuenta}
+            eliminacion={eliminacion ? (eliminacion.deleted_at ? "eliminada" : "por_eliminar") : null}
+          />
         </div>
         <p className="text-sm text-muted-foreground">
           {cuenta.email ?? "sin correo"}
