@@ -3,7 +3,7 @@
 import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
-import { totalDelBloque } from "@/lib/orders/bloques-de-moneda";
+import { totalDelBloque, type LineaSelladaDelBloque } from "@/lib/orders/bloques-de-moneda";
 import {
   formatPriceAmount,
   priceIn,
@@ -60,7 +60,7 @@ export function OrderTotalCard({
   // Las líneas del bloque, tal y como el cliente las pidió. `productId` a
   // `null` es una línea descatalogada: no entra en la venta, así que tampoco
   // en el total.
-  lineas: { id: string; productId: string | null; cantidad: number; precioUnitario: number }[];
+  lineas: LineaSelladaDelBloque[];
   moneda: PriceCurrency;
   rates: BolivarRates | null;
 }) {

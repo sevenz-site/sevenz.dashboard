@@ -27,7 +27,7 @@ import {
   type PagoDeMoneda,
 } from "@/lib/orders/borrador-de-registro";
 import { registrarTodoElPedido } from "@/lib/orders/registrar-todo";
-import { totalDelBloque } from "@/lib/orders/bloques-de-moneda";
+import { totalDelBloque, type LineaSelladaDelBloque } from "@/lib/orders/bloques-de-moneda";
 import { useZonaDelNegocio } from "@/components/fecha";
 import {
   formatPriceAmount,
@@ -103,7 +103,7 @@ export function OrderCurrencyPaymentForm({
   // El servidor manda las líneas selladas; el borrador —que solo el
   // navegador ve— las corrige donde «Editar pedido» tocó algo. Es la misma
   // cuenta que `OrderTotalCard`, y por eso las dos leen lo mismo.
-  lineas: { id: string; productId: string | null; cantidad: number; precioUnitario: number }[];
+  lineas: LineaSelladaDelBloque[];
   rates: BolivarRates | null;
   prevista: { fecha: string } | null;
   // La pantalla del cliente, con su ficha emparejada si la había.

@@ -40,3 +40,12 @@ export const CATALOG_BRANDING_ROUTE = "/productos/personalizar";
 export function isCatalogBrandingRoute(pathname: string): boolean {
   return pathname === CATALOG_BRANDING_ROUTE;
 }
+
+// THE PROMOTIONS SCREENS (CT-184, frames `2300:21627`): the list, the four-step wizard and a
+// promotion's detail. Full screens with their own back row and buttons pinned at the bottom,
+// so they join the same lists as «Personalizar catálogo», for the same reasons.
+export const PROMOTIONS_ROUTE = "/productos/promociones";
+
+export function isPromotionsRoute(pathname: string): boolean {
+  return pathname === PROMOTIONS_ROUTE || pathname.startsWith(`${PROMOTIONS_ROUTE}/`);
+}

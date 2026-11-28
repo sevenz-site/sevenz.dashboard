@@ -8,6 +8,7 @@ import {
   suscribirseAlBorrador,
   type BorradorDeRegistro,
 } from "@/lib/orders/borrador-de-registro";
+import { importeDeLaLinea } from "@/lib/orders/bloques-de-moneda";
 import {
   currencyName,
   formatPriceAmount,
@@ -40,6 +41,8 @@ export type LineaDelPedido = {
   cantidad: number;
   precioUnitario: number;
   moneda: PriceCurrency;
+  // CT-184: the line carried a promotion; priced like `registrarVenta` when its quantity changes.
+  promo?: boolean;
 };
 
 // ── SE SUSCRIBE DE VERDAD DESDE EL 2026-10-26 ─────────────────────────
@@ -103,8 +106,19 @@ export function resumirPorMoneda(
     // EL PRECIO DE LA EDICIÓN MANDA, igual que en las otras tres cifras del
     // flujo: una línea que subió al mínimo de mayoreo cuesta menos por
     // unidad, y esta tarjeta dice en qué va a quedar la deuda del cliente.
+    // CT-184: a promotion line keeps the sealed price for what was ordered (owner's decision
+    // of 2026-11-27); the extra units go at the edited price. `importeDeLaLinea` is the one
+    // rule; a line moved to another currency has no sealed price there, so no split.
     const total =
-      Math.round(cantidad * (edicion?.unitPrice ?? linea.precioUnitario) * 100) / 100;
+      Math.round(
+        importeDeLaLinea({
+          cantidad,
+          cantidadPedida: linea.cantidad,
+          precioSellado: linea.precioUnitario,
+          precioEditado: edicion?.unitPrice,
+          promo: linea.promo && moneda === linea.moneda,
+        }) * 100,
+      ) / 100;
 
     const acc = porMoneda.get(moneda) ?? { total: 0, abonado: 0 };
     acc.total = Math.round((acc.total + total) * 100) / 100;

@@ -1173,6 +1173,8 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
       // LA CANTIDAD QUE PIDIÓ EL CLIENTE. Es lo que dice si el sello sigue
       // siendo suyo: ver `usaSellado` más abajo.
       quantity: number;
+      // CT-184: the order line carried a promotion (migration 228).
+      promo: boolean;
     }
   >();
   if (entrada.pedidoId) {
@@ -1217,7 +1219,7 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     }
     const { data: lineasDelPedido } = await supabase
       .from("catalog_order_items")
-      .select("id, unit_price, currency, tier, quantity")
+      .select("id, unit_price, currency, tier, quantity, promo_percent")
       // SOLO LAS VIVAS -- migración `161`. Son los precios sellados, y una
       // línea quitada no tiene precio que sellar.
       .is("deleted_at", null)
@@ -1228,6 +1230,8 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
         currency: l.currency as PriceCurrency,
         tier: l.tier === "wholesale" ? "wholesale" : "retail",
         quantity: Number(l.quantity),
+        // CT-184 (migration 228): the line carried a promotion. Absent before 228 runs.
+        promo: (l as { promo_percent?: number | null }).promo_percent != null,
       });
     }
   }
@@ -1313,6 +1317,47 @@ export async function registrarVenta(entrada: VentaEntrada): Promise<ResultadoVe
     // lo decide la base comparando lo que el cliente pidió con lo que se va
     // a cobrar, y no se puede olvidar.
     const sellada = linea.orderItemId ? selladas.get(linea.orderItemId) : undefined;
+
+    // ── A LINE THAT CARRIED A PROMOTION KEEPS IT FOR WHAT THE CUSTOMER ORDERED (CT-184) ──
+    //
+    // Owner's decision of 2026-11-27, asked with the case in front of him (2 oils ordered at
+    // $2,28 in Black Friday, the owner raising them to 3 on Monday with the promotion over):
+    // «2 rebajados y 1 normal». What the customer ordered keeps the price the order sealed;
+    // the units added go at today's price, as a second line of the same product. Fewer units
+    // than ordered: all at the sealed price.
+    //
+    // ONLY FOR PROMOTION LINES, and that is the limit of the decision: it NUANCES the one of
+    // 2026-10-26 («B) Manda la edición», below), which keeps applying to every line without a
+    // promotion. There, recalculating the whole line at today's price costs nobody a discount.
+    if (sellada?.promo && sellada.currency === linea.currency && linea.quantity !== sellada.quantity) {
+      const selladas_ = Math.min(linea.quantity, sellada.quantity);
+      lineasResueltas.push({
+        productId: producto.id,
+        name: producto.name,
+        quantity: selladas_,
+        unitPrice: sellada.unit_price,
+        currency: linea.currency,
+        tier: sellada.tier,
+      });
+      const extra = linea.quantity - selladas_;
+      if (extra > 0) {
+        const bloqueHoy = tier === "retail" ? producto.producto.retail : producto.producto.wholesale;
+        const precioHoy = precioEnMoneda(bloqueHoy, linea.currency, rates);
+        if (precioHoy == null) {
+          return rechazar("price_missing", `No tenemos precio de ${producto.name} en esa moneda.`);
+        }
+        lineasResueltas.push({
+          productId: producto.id,
+          name: producto.name,
+          quantity: extra,
+          unitPrice: precioHoy,
+          currency: linea.currency,
+          tier,
+        });
+      }
+      continue;
+    }
+
     const usaSellado =
       sellada != null &&
       sellada.currency === linea.currency &&

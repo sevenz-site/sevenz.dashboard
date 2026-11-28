@@ -8,6 +8,7 @@ import Link from "next/link";
 import { ContactWhatsappLink } from "@/components/public/contact-whatsapp-link";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { readSharedPromotion, withPromoPercent } from "@/lib/promotions/shared";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { withLogoVersion } from "@/lib/catalog/link-version";
 import { CATALOG_PREVIEW_SIZE } from "@/lib/catalog/preview-image";
@@ -568,10 +569,14 @@ export default async function SharedBalancePage({
         );
         return null;
       }
-      return preview as {
+      const p = preview as {
         catalog_token: string | null;
         products: CatalogStripProduct[];
       } | null;
+      if (!p?.catalog_token) return p;
+      // CT-184: the strip shows the promotion's price, the same one the catalogue charges.
+      const promo = await readSharedPromotion(createServiceClient(), p.catalog_token, "sharedBalance");
+      return { ...p, products: withPromoPercent(p.products ?? [], promo) };
     } catch (previewError) {
       console.error(
         "[sharedBalance] catalog preview threw:",

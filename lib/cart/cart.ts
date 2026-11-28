@@ -1,4 +1,5 @@
 import type { BolivarRates, PriceCurrency } from "@/lib/products/price";
+import { applyPromotion } from "@/lib/promotions/pricing";
 import {
   escalonParaCantidad,
   precioEnMoneda,
@@ -61,6 +62,10 @@ export type ProductoDelCarrito = ProductoPublico & {
   // before any tier applies.
   base_currency: PriceCurrency;
   stock: number | null;
+  // CT-184: the active promotion's % per tier, set ONLY by the customer's catalogue
+  // (`productosDelCarrito`). The owner's screens never set it, so the promotion never
+  // reaches the sale he registers by hand (owner's decision of 2026-11-27).
+  promoPercent?: { retail: number | null; wholesale: number | null };
 };
 
 /**
@@ -136,7 +141,14 @@ export function precioUnitario(
   producto: ProductoDelCarrito,
   linea: LineaCarrito,
   rates: BolivarRates | null,
-): { amount: number; currency: PriceCurrency; tier: "retail" | "wholesale" } | null {
+): {
+  amount: number;
+  currency: PriceCurrency;
+  tier: "retail" | "wholesale";
+  // CT-184: set when a promotion discounted this line.
+  listAmount?: number;
+  percent?: number;
+} | null {
   const tier = escalonParaCantidad(producto, linea.quantity);
   if (tier == null) return null;
 
@@ -176,9 +188,21 @@ export function precioUnitario(
     return null;
   }
 
-  const amount = precioEnMoneda(bloque, linea.currency, rates);
-  if (amount == null) return null;
-  return { amount, currency: linea.currency, tier };
+  const lista = precioEnMoneda(bloque, linea.currency, rates);
+  if (lista == null) return null;
+  // CT-184: THE SAME RULE AS `create_catalog_order_core`, applied to the price already
+  // resolved (pinned bolívares included), so the cart total is the stored one.
+  const percent = producto.promoPercent?.[tier] ?? null;
+  if (percent) {
+    return {
+      amount: applyPromotion(lista, percent, linea.currency),
+      currency: linea.currency,
+      tier,
+      listAmount: lista,
+      percent,
+    };
+  }
+  return { amount: lista, currency: linea.currency, tier };
 }
 
 /**

@@ -156,6 +156,9 @@ export default async function ConfirmarBloquePage({
           productId: l.productId,
           cantidad: l.cantidadPedida,
           precioUnitario: l.precioUnitario,
+          cantidadPedida: l.cantidadPedida,
+          monedaSellada: l.monedaSellada,
+          promo: l.promo,
         }))}
         moneda={bloque.moneda}
         rates={rates}
@@ -259,6 +262,7 @@ export default async function ConfirmarBloquePage({
                 moneda={bloque.moneda}
                 rates={rates}
                 hayProducto={producto != null}
+                promo={linea.promo}
               />
             }
           >

@@ -180,6 +180,7 @@ export default async function ClienteDelPedidoPage({
           id: i.id,
           cantidad: Number(i.quantity),
           precioUnitario: Number(i.unit_price),
+            promo: i.promo_percent != null,
           moneda: i.currency as PriceCurrency,
         }))}
     />

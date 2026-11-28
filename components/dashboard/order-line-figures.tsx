@@ -4,6 +4,7 @@ import { useBorrador } from "@/components/dashboard/order-registration-summary";
 import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { formatBsHoy } from "@/lib/exchange-rate/format";
 import { edicionDeLinea } from "@/lib/orders/borrador-de-registro";
+import { importeDeLaLinea } from "@/lib/orders/bloques-de-moneda";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -75,6 +76,7 @@ export function ImporteDeLinea({
   moneda,
   rates,
   hayProducto,
+  promo,
 }: {
   pedidoId: string;
   lineaId: string;
@@ -83,6 +85,9 @@ export function ImporteDeLinea({
   moneda: PriceCurrency;
   rates: BolivarRates | null;
   hayProducto: boolean;
+  // CT-184: the line carried a promotion, so a changed quantity is priced «2 rebajados y 1
+  // normal» -- the same `importeDeLaLinea` as the total above it.
+  promo?: boolean;
 }) {
   const borrador = useBorrador(pedidoId);
   const edicion = edicionDeLinea(borrador, lineaId);
@@ -100,8 +105,16 @@ export function ImporteDeLinea({
   // 2026-10-26: cambiar la cantidad recalcula el escalón, así que una línea
   // que sube al mínimo de mayoreo cuesta el precio al mayor. El porqué entero
   // --y la decisión que desplaza-- está en `LineaEditada.unitPrice`.
-  const precio = edicion?.unitPrice ?? precioUnitario;
-  const porPagar = Math.round(precio * cantidad * 100) / 100;
+  const porPagar =
+    Math.round(
+      importeDeLaLinea({
+        cantidad,
+        cantidadPedida,
+        precioSellado: precioUnitario,
+        precioEditado: edicion?.unitPrice,
+        promo,
+      }) * 100,
+    ) / 100;
   const enBs =
     rates != null && !movidaA
       ? (priceIn("VES", { amount: porPagar, currency: moneda }, rates)?.amount ?? null)

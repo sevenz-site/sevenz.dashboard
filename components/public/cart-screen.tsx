@@ -38,6 +38,7 @@ import {
 } from "@/components/public/catalog-strip";
 import { useTokenDelSaldo } from "@/components/public/back-to-balance";
 import { ProductThumbnail } from "@/components/product-thumbnail";
+import { PromoChip, PromoPrice } from "@/components/public/promo-price";
 import { formatCantidad } from "@/lib/products/cantidad";
 import {
   formatPriceAmount,
@@ -347,7 +348,15 @@ export function CartScreen({
                       ) : (
                         <>
                           <span className="text-sm tabular-nums">
-                            {formatPriceAmount(precio.amount, precio.currency)}
+                            {/* CT-184: the promotion's price, the list one struck after it. */}
+                            {precio.percent ? (
+                              <PromoPrice before={formatPriceAmount(precio.listAmount ?? precio.amount, precio.currency)} className="mr-1">
+                                <PromoChip percent={precio.percent} />
+                                <span>{formatPriceAmount(precio.amount, precio.currency)}</span>
+                              </PromoPrice>
+                            ) : (
+                              formatPriceAmount(precio.amount, precio.currency)
+                            )}
                             <span className="text-xs text-muted-foreground">
                               {" "}
                               c/u ·{" "}

@@ -4,7 +4,7 @@ import { withLogoVersion } from "@/lib/catalog/link-version";
 import { track } from "@/lib/mixpanel";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, Loader2, MoreVertical, Palette, Share2 } from "lucide-react";
+import { BadgePercent, Eye, Loader2, MoreVertical, Palette, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -348,6 +348,12 @@ export function CatalogMenu({ initialToken }: { initialToken: string | null }) {
           <DropdownMenuItem onSelect={() => router.push("/productos/personalizar")}>
             <Palette />
             Personalizar catálogo
+          </DropdownMenuItem>
+          {/* CT-184: «Promociones», next to «Personalizar catálogo», where the frames put the
+              owner's entry to the promotions list (section `2300:21627`). */}
+          <DropdownMenuItem onSelect={() => router.push("/productos/promociones")}>
+            <BadgePercent />
+            Promociones
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

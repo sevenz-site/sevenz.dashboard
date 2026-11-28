@@ -64,13 +64,15 @@ export type CatalogOrderItemRow = {
   currency: string;
   tier: "retail" | "wholesale";
   comment: string | null;
+  // CT-184 (migration 228): the % the promotion took off, when one applied.
+  promo_percent?: number | null;
 };
 
 export const ORDER_COLUMNS =
   "id, owner_id, catalog_link_id, customer_name, customer_document, customer_document_type, customer_whatsapp, customer_whatsapp_raw, wants_whatsapp_notices, status, seen_at, created_at, customer_address, sale_id, registered_at";
 
 export const ORDER_ITEM_COLUMNS =
-  "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment";
+  "id, order_id, product_id, product_name, quantity, unit_price, currency, tier, comment, promo_percent";
 
 // UN PEDIDO ESTÁ PENDIENTE MIENTRAS NO ESTÉ REGISTRADO.
 //

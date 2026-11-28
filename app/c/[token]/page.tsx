@@ -23,6 +23,9 @@ import { previewPriceLine } from "@/lib/products/preview-price";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CatalogContactButtons } from "@/components/public/catalog-contact-buttons";
 import { catalogWhatsappHref, checkExtraLink } from "@/lib/catalog/extra-link";
+import { PromotionBanner } from "@/components/public/promotion-banner";
+import { PromoChip, PromoPrice } from "@/components/public/promo-price";
+import { applyPromotion, promotionPercentFor, type SharedPromotion } from "@/lib/promotions/pricing";
 import {
   formatPriceAmount,
   priceIn,
@@ -105,6 +108,24 @@ export async function generateMetadata({
 // `cache()`: without it the whole catalogue (every product) would be fetched twice to
 // render one page. Errors are masked, as for every unauthenticated read (CLAUDE.md):
 // the detail goes to `console.error`, the caller only sees `null`.
+// CT-184: the active promotion, its own read (migration 228's `get_shared_promotion`) so the
+// catalogue's own function did not have to change. Null when none is on, when 228 has not run
+// yet, or on any error: the catalogue then shows its prices as before, never a broken page.
+const loadSharedPromotion = cache(async (token: string): Promise<SharedPromotion | null> => {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("get_shared_promotion", { p_token: token });
+    if (error) {
+      console.error("[catalogoPublico] promotion rpc:", error.message);
+      return null;
+    }
+    return (data as SharedPromotion | null) ?? null;
+  } catch (error) {
+    console.error("[catalogoPublico] promotion threw:", error instanceof Error ? error.message : error);
+    return null;
+  }
+});
+
 const loadSharedCatalog = cache(async (token: string): Promise<SharedCatalog | null> => {
   try {
     const supabase = await createClient();
@@ -305,6 +326,7 @@ export default async function CatalogoPublicoPage({
   // corresponde. Asi que aqui solo se decide, y el JSX se devuelve despues.
   // Since 2026-11-25 the try lives in `loadSharedCatalog`, shared with the metadata.
   const shared = await loadSharedCatalog(token);
+  const promo = shared ? await loadSharedPromotion(token) : null;
 
   // UN FALLO Y UN TOKEN INEXISTENTE DAN LA MISMA PANTALLA, a proposito: quien
   // pruebe tokens al azar no aprende nada de la diferencia. El detalle real ya
@@ -489,6 +511,7 @@ export default async function CatalogoPublicoPage({
       )}
 
       <div className="flex flex-col gap-6 px-4 py-6 md:px-12">
+        {promo && shared.products.length > 0 ? <PromotionBanner promo={promo} /> : null}
         {shared.products.length === 0 ? (
           <EmptyState
             title="Todavía no hay productos publicados"
@@ -503,6 +526,9 @@ export default async function CatalogoPublicoPage({
             analyticsToken={esVistaPrevia ? null : token}
             categorias={shared.categories ?? []}
             items={shared.products.map((p) => {
+              // CT-184: the tier this card shows, at the promotion's % if it has one.
+              const pct = promotionPercentFor(promo, p.id, p.tier);
+              const precioPromo = applyPromotion(p.price, pct, p.base_currency);
               return {
                 id: p.id,
                 name: p.name,
@@ -576,6 +602,7 @@ export default async function CatalogoPublicoPage({
                       className="flex w-full flex-col overflow-hidden rounded-xl border bg-background transition-colors hover:bg-accent/40"
                     >
                       <div className="relative aspect-square w-full bg-muted">
+                        {pct ? <PromoChip percent={pct} className="absolute top-2 left-2 z-10" /> : null}
                         {p.photo_path ? (
                           <ProductThumbnail
                             path={p.photo_path}
@@ -647,10 +674,17 @@ export default async function CatalogoPublicoPage({
                             fondo de la tarjeta, este es el primer texto que
                             cae por debajo del piso — y no se verá, porque un
                             gris sobre gris no parece un error. */}
-                        <span className="flex items-center gap-1 text-sm font-semibold text-muted-foreground tabular-nums">
-                          <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
-                          {formatPriceAmount(p.price, p.base_currency)}
-                        </span>
+                        {/* CT-184: in a promotion the price is the discounted one, in the
+                            primary text so it reads as the price, with the old one struck
+                            after it (frame 10 of `2300:21627`). */}
+                        <PromoPrice before={pct ? formatPriceAmount(p.price, p.base_currency) : null}>
+                          <span
+                            className={`flex items-center gap-1 text-sm font-semibold tabular-nums ${pct ? "text-foreground" : "text-muted-foreground"}`}
+                          >
+                            <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
+                            {formatPriceAmount(precioPromo, p.base_currency)}
+                          </span>
+                        </PromoPrice>
 
                         {/* LA ETIQUETA ES AHORA `StockBadge`, compartida con
                             la ficha de este mismo producto y con las ocho

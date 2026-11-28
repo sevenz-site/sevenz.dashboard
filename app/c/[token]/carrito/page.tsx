@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { CartScreen } from "@/components/public/cart-screen";
 import type { CatalogStripProduct } from "@/components/public/catalog-strip";
+import { readSharedPromotion, withPromoPercent } from "@/lib/promotions/shared";
 
 // «TU CARRITO», del frame `1190:5793`.
 //
@@ -73,13 +74,15 @@ export default async function CarritoPage({
         owner_country: string | null;
         products: CatalogStripProduct[] | null;
       } | null;
+      // CT-184: the strip shows the promotion's price, like the catalogue the customer came from.
+      const promo = await readSharedPromotion(supabase, token, "carrito");
       return {
         nombre: shared?.business_name ?? "",
         whatsapp: shared?.owner_whatsapp ?? null,
         pais: shared?.owner_country ?? null,
         // OCHO, el mismo tope que la franja del saldo. Un carrusel es una
         // invitación, no un catálogo; «Ver todo» es para el resto.
-        productos: (shared?.products ?? []).slice(0, 8),
+        productos: withPromoPercent((shared?.products ?? []).slice(0, 8), promo),
       };
     } catch (error) {
       console.error(

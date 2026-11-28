@@ -9,6 +9,7 @@ import { getBolivarRates } from "@/lib/products/catalog";
 import type { ProductoDelCarrito } from "@/lib/cart/cart";
 import { bloqueDesdeRpc, type BloqueCrudo } from "@/lib/products/public-pricing";
 import type { BolivarRates } from "@/lib/products/price";
+import { promotionPercentFor, type SharedPromotion } from "@/lib/promotions/pricing";
 
 // LAS DOS ACCIONES DEL CARRITO, Y LAS LLAMA UN VISITANTE SIN SESION.
 //
@@ -89,10 +90,26 @@ export async function productosDelCarrito(
     //
     // `bloqueDesdeRpc` holds the fallbacks in one place -- see it for why they
     // degrade to the pre-114 behaviour instead of to nothing.
+    // CT-184: the active promotion (migration 228), read in its own call and attached per
+    // product so `precioUnitario` applies it. A failure leaves the cart at list prices --
+    // the order is priced by the server anyway, so the worst case is a total that drops
+    // when the order is stored, never one that rises.
+    let promo: SharedPromotion | null = null;
+    try {
+      const { data: promoData, error: promoError } = await supabase.rpc("get_shared_promotion", { p_token: token });
+      if (promoError) console.error("[carrito] get_shared_promotion:", promoError.message);
+      else promo = (promoData as SharedPromotion | null) ?? null;
+    } catch (e) {
+      console.error("[carrito] promotion threw:", e instanceof Error ? e.message : e);
+    }
+
     const productos = (shared.products ?? []).map((p) => ({
       ...p,
       retail: bloqueDesdeRpc(p.retail, p.base_currency),
       wholesale: bloqueDesdeRpc(p.wholesale, p.base_currency),
+      promoPercent: promo
+        ? { retail: promotionPercentFor(promo, p.id, "retail"), wholesale: promotionPercentFor(promo, p.id, "wholesale") }
+        : undefined,
     }));
 
     return { productos, rates };

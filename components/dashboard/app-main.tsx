@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { isCatalogBrandingRoute, isProductDetailRoute } from "@/lib/products/routes";
+import { isCatalogBrandingRoute, isProductDetailRoute, isPromotionsRoute } from "@/lib/products/routes";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 
 // Wraps <main> purely so the bottom padding can follow whether MobileNav
@@ -71,7 +71,9 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // altura reservada. Su propia fila de botones termina la pantalla.
     isProductDetailRoute(pathname) ||
     // «Personalizar catálogo» (CT-170), since 2026-11-15.
-    isCatalogBrandingRoute(pathname);
+    isCatalogBrandingRoute(pathname) ||
+    // Promociones (CT-184), since 2026-11-27: full screens with their buttons pinned at the bottom.
+    isPromotionsRoute(pathname);
   // "/profile" since 2026-11-02: must match MobileNavBar, which stops drawing
   // the bar there (see `enMiNegocio` in mobile-nav.tsx).
   //
@@ -150,6 +152,8 @@ export function AppMain({ children }: { children: React.ReactNode }) {
     // «Personalizar catálogo» (CT-170), since 2026-11-15: its buttons are pinned at the
     // bottom like the product form's.
     isCatalogBrandingRoute(pathname) ||
+    // Promociones (CT-184), since 2026-11-27: full screens with their buttons pinned at the bottom.
+    isPromotionsRoute(pathname) ||
     // EL DETALLE DE UNA TRANSACCIÓN, desde el 2026-10-21: sus botones
     // «Compartir» y «Pagar» pasaron a `StickyActions` por instrucción del
     // dueño —*«siempre visibles en la parte inferior»*— y esa barra trae sus

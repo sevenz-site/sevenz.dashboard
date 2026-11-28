@@ -50,6 +50,8 @@ export type LineaDelBloque = {
   precioUnitario: number;
   // The currency the customer ordered in, kept so a moved line can say so.
   monedaSellada: string;
+  // CT-184: the line carried a promotion (migration 228).
+  promo?: boolean;
 };
 
 export type BloqueDeMoneda = {
@@ -78,6 +80,7 @@ export function bloquesDeMoneda(
       cantidad: Number(edicion?.quantity ?? l.quantity),
       precioUnitario: Number(l.unit_price),
       monedaSellada: String(l.currency ?? ""),
+      promo: l.promo_percent != null,
     });
     porMoneda.set(moneda, lista);
   }
@@ -123,7 +126,44 @@ export type LineaSelladaDelBloque = {
   productId: string | null;
   cantidad: number;
   precioUnitario: number;
+  // CT-184: for a line that carried a promotion, what the customer ordered and in which
+  // currency, so a changed quantity is priced like `registrarVenta` prices it.
+  cantidadPedida?: number;
+  monedaSellada?: string;
+  promo?: boolean;
 };
+
+// WHAT ONE ORDER LINE COSTS ON THE REGISTRATION SCREENS, unrounded.
+//
+// CT-184, owner's decision of 2026-11-27 («2 rebajados y 1 normal»): a promotion line whose
+// quantity changed keeps the sealed price for what the customer ordered and charges the rest at
+// the edited (today's) price. THE SAME RULE AS `registrarVenta`, or the screen promises one
+// figure and the sale writes another -- the failure of 2026-10-26.
+//
+// One function for the three places that price a line -- the block total, the line's own
+// amount (`ImporteDeLinea`) and the summary card -- because on 2026-11-28 the line still said
+// $195,00 (3 × $65) under a total of $159,60 that had the split right.
+export function importeDeLaLinea({
+  cantidad,
+  cantidadPedida,
+  precioSellado,
+  precioEditado,
+  promo,
+}: {
+  cantidad: number;
+  cantidadPedida: number | null | undefined;
+  precioSellado: number;
+  // The edit's unit price, when the line was edited; it wins over the sealed one otherwise.
+  precioEditado: number | null | undefined;
+  promo: boolean | null | undefined;
+}): number {
+  const precioNuevo = precioEditado ?? precioSellado;
+  if (promo && cantidadPedida != null && cantidad !== cantidadPedida) {
+    const sellada = Math.min(cantidad, cantidadPedida);
+    return sellada * precioSellado + (cantidad - sellada) * precioNuevo;
+  }
+  return cantidad * precioNuevo;
+}
 
 export function totalDelBloque(
   lineas: readonly LineaSelladaDelBloque[],
@@ -135,7 +175,15 @@ export function totalDelBloque(
     if (l.productId == null) continue;
     const edicion = edicionDeLinea(borrador, l.id);
     if (edicion && String(edicion.currency) !== String(moneda)) continue;
-    suma += (edicion?.quantity ?? l.cantidad) * (edicion?.unitPrice ?? l.precioUnitario);
+    // A line moved to another currency was skipped just above, so the split below only ever
+    // sees a line priced in its sealed currency.
+    suma += importeDeLaLinea({
+      cantidad: edicion?.quantity ?? l.cantidad,
+      cantidadPedida: l.cantidadPedida,
+      precioSellado: l.precioUnitario,
+      precioEditado: edicion?.unitPrice,
+      promo: l.promo,
+    });
   }
   for (const a of lineasAgregadasEn(borrador, moneda)) {
     suma += a.quantity * (a.unitPrice ?? 0);

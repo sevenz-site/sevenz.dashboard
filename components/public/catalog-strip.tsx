@@ -6,6 +6,7 @@ import { CurrencyFlagIcon } from "@/components/dashboard/currency-flag-icon";
 import { ProductThumbnail } from "@/components/product-thumbnail";
 import { formatPriceAmount, type PriceCurrency } from "@/lib/products/price";
 import { CLAVE_VOLVER_AL_SALDO } from "@/components/public/back-to-balance";
+import { applyPromotion } from "@/lib/promotions/pricing";
 
 export type CatalogStripProduct = {
   id: string;
@@ -14,6 +15,9 @@ export type CatalogStripProduct = {
   price: number;
   base_currency: PriceCurrency;
   tier: "retail" | "wholesale";
+  // CT-184: the active promotion's % for this product and tier, added on the server by
+  // `withPromoPercent`. Absent or null: no promotion, the list price as before.
+  promo_percent?: number | null;
 };
 
 // WHAT THE CLIENT SEES OF THE SHOP'S CATALOGUE WITHOUT LEAVING THEIR BALANCE.
@@ -205,8 +209,15 @@ export function CatalogStrip({
               <div className="relative flex items-center gap-1">
                 <CurrencyFlagIcon currency={p.base_currency} className="size-4 shrink-0" />
                 <span className="truncate text-xs text-brand-secondary">
-                  {formatPriceAmount(p.price, p.base_currency)}
+                  {formatPriceAmount(applyPromotion(p.price, p.promo_percent, p.base_currency), p.base_currency)}
                 </span>
+                {/* CT-184: the list price struck through, as on the catalogue card. Not drawn in
+                    any frame -- the strip has no promotion frame -- so it copies the card. */}
+                {p.promo_percent ? (
+                  <span className="truncate text-[10px] text-brand-muted line-through">
+                    {formatPriceAmount(p.price, p.base_currency)}
+                  </span>
+                ) : null}
               </div>
               {/* ONLY WHEN IT IS THE WHOLESALE PRICE, and the frame does not
                   draw it because its mock products are all retail. A product

@@ -170,6 +170,9 @@ export default async function PagoDeBloquePage({
           productId: l.productId,
           cantidad: l.cantidadPedida,
           precioUnitario: l.precioUnitario,
+          cantidadPedida: l.cantidadPedida,
+          monedaSellada: l.monedaSellada,
+          promo: l.promo,
         }))}
         moneda={bloque.moneda}
         rates={rates}
@@ -184,6 +187,9 @@ export default async function PagoDeBloquePage({
           productId: l.productId,
           cantidad: l.cantidadPedida,
           precioUnitario: l.precioUnitario,
+          cantidadPedida: l.cantidadPedida,
+          monedaSellada: l.monedaSellada,
+          promo: l.promo,
         }))}
         rates={rates}
         prevista={prevista}
@@ -203,6 +209,7 @@ export default async function PagoDeBloquePage({
             id: i.id,
             cantidad: Number(i.quantity),
             precioUnitario: Number(i.unit_price),
+            promo: i.promo_percent != null,
             moneda: i.currency as PriceCurrency,
           }))}
         // TODAS las emparejadas, no la primera: con varias, cuál se usa lo

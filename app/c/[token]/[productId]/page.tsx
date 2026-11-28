@@ -15,6 +15,9 @@ import { DescriptionText } from "@/components/description-text";
 import { plainDescription } from "@/lib/products/description";
 import { ProductGallery } from "@/components/product-gallery";
 import { photosInOrder } from "@/lib/products/photos";
+import { PromoChip } from "@/components/public/promo-price";
+import { customerEndDay, promotionPercentFor, type SharedPromotion } from "@/lib/promotions/pricing";
+import { dayLabel } from "@/lib/promotions/rules";
 
 // EL DETALLE DE UN PRODUCTO EN EL CATÁLOGO PÚBLICO. Entregable B del frame
 // 1192:4185, pantalla `1190:5833`.
@@ -326,6 +329,27 @@ export default async function ProductoPublicoPage({
       : null;
   const rates: BolivarRates | null = tasaBase ? await getBolivarRates(tasaBase) : null;
 
+  // CT-184: the active promotion (migration 228). Masked like every read here: a failure
+  // shows the prices as before, never a broken page.
+  const promo = await (async (): Promise<SharedPromotion | null> => {
+    try {
+      const { data, error } = await supabase.rpc("get_shared_promotion", { p_token: token });
+      if (error) {
+        console.error("[productoPublico] promotion:", error.message);
+        return null;
+      }
+      return (data as SharedPromotion | null) ?? null;
+    } catch (error) {
+      console.error("[productoPublico] promotion threw:", error instanceof Error ? error.message : error);
+      return null;
+    }
+  })();
+  const promoPercent = {
+    retail: promotionPercentFor(promo, detalle.id, "retail"),
+    wholesale: promotionPercentFor(promo, detalle.id, "wholesale"),
+  };
+  const promoChip = promoPercent.retail ?? promoPercent.wholesale;
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       {/* LA FOTO A SANGRE Y EL CHEVRON ENCIMA, como el frame. El botón vuelve
@@ -362,6 +386,13 @@ export default async function ProductoPublicoPage({
           {detalle.unit ? (
             <p className="text-xs text-muted-foreground">{detalle.unit}</p>
           ) : null}
+          {/* CT-184, frame 12 of `2300:21627`: the chip and until when the price holds. */}
+          {promo && promoChip ? (
+            <p className="flex flex-wrap items-center gap-2 pt-1 text-sm text-muted-foreground">
+              <PromoChip percent={promoChip} />
+              Precio de {promo.name} hasta el {dayLabel(customerEndDay(promo))}.
+            </p>
+          ) : null}
         </div>
 
         {detalle.description ? (
@@ -384,6 +415,7 @@ export default async function ProductoPublicoPage({
             wholesale_min_quantity: detalle.wholesale_min_quantity,
           }}
           rates={rates}
+          promoPercent={promoPercent}
           stock={detalle.stock}
           // `?? 0` y no `?? 5`: sin la `164` corrida, nada se pone ámbar, que
           // es como se comportaba ayer. Mismo criterio que el catálogo.

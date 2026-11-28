@@ -11,7 +11,7 @@ import { useUnsavedChangesGuard } from "@/components/unsaved-changes-context";
 import { useRevisionEnCurso } from "@/components/import/revision-en-curso";
 import { RegisterSheet } from "@/components/dashboard/register-sheet";
 import { cn } from "@/lib/utils";
-import { isCatalogBrandingRoute, isProductDetailRoute } from "@/lib/products/routes";
+import { isCatalogBrandingRoute, isProductDetailRoute, isPromotionsRoute } from "@/lib/products/routes";
 import { useGuardiaDeCuentaPausada } from "@/components/dashboard/cuenta-pausada";
 import { useSearchFocus } from "@/components/dashboard/search-focus-context";
 import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
@@ -314,7 +314,9 @@ function MobileNavBar({ onRegistrar }: { onRegistrar: () => void }) {
     isProductDetailRoute(pathname) ||
     // «Personalizar catálogo» (CT-170), since 2026-11-15: «Guardar cambios» sits where
     // this bar would be.
-    isCatalogBrandingRoute(pathname);
+    isCatalogBrandingRoute(pathname) ||
+    // Promociones (CT-184), since 2026-11-27: full screens with their buttons pinned at the bottom.
+    isPromotionsRoute(pathname);
 
   // EL RESUMEN SÍ LLEVA EL FLOTANTE, desde el 2026-10-18 y a petición del
   // dueño: «en la pantalla final de transacción exitosa se debe ver el botón
