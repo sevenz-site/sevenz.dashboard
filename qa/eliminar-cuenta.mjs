@@ -14,6 +14,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -35,6 +36,10 @@ if (ref !== DEV_REF) {
 
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const anon = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+// A SECOND anon client that never signs in. `anon` above gets the owner's session from
+// `verifyOtp` in asOwner(), so «sin sesión» checks run on this one. Found on 2026-11-28: with
+// `anon`, check 17 «cancelled» as the owner and the suite reported a hole that was not there.
+const bare = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 
 async function asOwner(email) {
   const { data: link, error: eL } = await admin.auth.admin.generateLink({ type: "magiclink", email });
@@ -84,7 +89,7 @@ try {
   // 3. The owner cannot record a request by himself: that would skip the code.
   const self = await owner.rpc("request_account_deletion", { p_owner_id: ownerId, p_source: "app", p_days: 30 });
   check("3. el dueño NO puede pedirlo saltándose el código", Boolean(self.error), self.error?.code ?? JSON.stringify(self.data));
-  const stranger = await anon.rpc("request_account_deletion", { p_owner_id: ownerId, p_source: "app", p_days: 30 });
+  const stranger = await bare.rpc("request_account_deletion", { p_owner_id: ownerId, p_source: "app", p_days: 30 });
   check("4. sin sesión tampoco", Boolean(stranger.error), stranger.error?.code ?? JSON.stringify(stranger.data));
 
   // 5. The server records it, 30 days ahead.
@@ -127,6 +132,29 @@ try {
   // 16. Nothing was deleted: the owner row is still there.
   const { data: still } = await admin.from("owners").select("id").eq("id", ownerId).maybeSingle();
   check("16. no se borró nada", Boolean(still));
+
+  // 17. Without a session nobody cancels anything.
+  const anonCancel = await bare.rpc("cancel_my_account_deletion");
+  check("17. sin sesión no se cancela nada", Boolean(anonCancel.error), anonCancel.error?.code ?? JSON.stringify(anonCancel.data));
+
+  // 18-19. The web door's code (app/eliminar-cuenta): it carries a ticket, so a code asked
+  // from one browser cannot be typed from another. The cookie that holds the ticket is
+  // signed like the sign-in one; this checks the half that lives in the database.
+  const sha = (s) => createHash("sha256").update(s).digest("hex");
+  const webCode = "482913";
+  const webCodeRow = await admin.rpc("create_login_code", {
+    p_owner_id: ownerId, p_purpose: "delete_account", p_channel: "email", p_target: email,
+    p_code_hash: sha(`${webCode}:${ownerId}`), p_ticket_hash: sha("ticket:ticket-del-navegador"), p_ttl_minutes: 10,
+  });
+  await admin.rpc("mark_login_code_delivered", { p_id: webCodeRow.data?.id });
+  const wrongTicket = await admin.rpc("verify_login_code", {
+    p_owner_id: ownerId, p_purpose: "delete_account", p_code_hash: sha(`${webCode}:${ownerId}`), p_ticket_hash: sha("ticket:otro-navegador"),
+  });
+  check("18. el código de la web con el ticket de otro navegador no sirve", wrongTicket.data?.ok !== true, JSON.stringify(wrongTicket.data));
+  const rightTicket = await admin.rpc("verify_login_code", {
+    p_owner_id: ownerId, p_purpose: "delete_account", p_code_hash: sha(`${webCode}:${ownerId}`), p_ticket_hash: sha("ticket:ticket-del-navegador"),
+  });
+  check("19. con su propio ticket sí", rightTicket.data?.ok === true, JSON.stringify(rightTicket.data));
 } catch (e) {
   check("sin excepciones", false, e instanceof Error ? e.message : String(e));
 } finally {

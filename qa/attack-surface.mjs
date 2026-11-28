@@ -197,6 +197,8 @@ export const MANIFEST = {
     owner_device_places: { via: "none" },
     owner_security_state: { via: "none" },
     owner_security_tokens: { via: "none" },
+    // 227 (PL-48 step 1.3): every privilege revoked; reached only through its functions.
+    account_deletion_requests: { via: "none" },
     // 193 (C1 of PL-22): the second-factor codes and the access audit. Server only.
     owner_login_codes: { via: "none" },
     owner_security_audit: { via: "none" },
@@ -301,6 +303,13 @@ export const MANIFEST = {
     login_code_recently_verified: "service",
     set_second_factor: "service",
     my_second_factor: "owner",
+    // 227 (PL-48 step 1.3): recording a deletion request is service-only, after the code; the
+    // owner reads and cancels only his own (auth.uid()); the senders' list is service-only.
+    // qa:eliminar-cuenta proves the owner and anon get 42501 on the two service ones.
+    request_account_deletion: "service",
+    my_account_deletion: "owner",
+    cancel_my_account_deletion: "owner",
+    owners_pending_deletion: "service",
     second_factor_gate: "service",
     owner_security_facts: "service",
     log_security_audit: "service",
@@ -469,6 +478,14 @@ export const MANIFEST = {
     // the password ones go through verifyPassword (5 per 15 min) and the code ones through
     // verify_login_code. qa:segundo-factor covers the functions; the session half is the
     // same `getUser()` every action of the app starts with.
+    // PL-48 step 1.3, «Eliminar mi cuenta». Mi negocio's three re-read the session; the web
+    // door's two run without one by design (an email in, a code to that inbox, the same answer
+    // with or without an account), with a signed ticket cookie built like the sign-in one.
+    "app/(app)/profile/delete-account-actions.ts#startAccountDeletion": "cubierta: qa:eliminar-cuenta, el propósito delete_account y el tope de create_login_code",
+    "app/(app)/profile/delete-account-actions.ts#confirmAccountDeletion": "cubierta: qa:eliminar-cuenta, el dueño y anon no pueden llamar request_account_deletion sin el código (42501)",
+    "app/(app)/profile/delete-account-actions.ts#cancelAccountDeletion": "cubierta: qa:eliminar-cuenta, cancela solo el pedido propio; anon sin permiso (42501)",
+    "app/eliminar-cuenta/actions.ts#requestWebDeletionCode": "cubierta: qa:eliminar-cuenta y el navegador el 2026-11-28, misma respuesta con y sin cuenta",
+    "app/eliminar-cuenta/actions.ts#confirmWebDeletion": "cubierta: qa:eliminar-cuenta, código con ticket ajeno → bad_ticket; cookie firmada como la de qa:attack-actions",
     "app/(app)/profile/security-actions.ts#startSecondFactorEnable": "cubierta: qa:segundo-factor, el código de prueba y su tope por hora",
     "app/(app)/profile/security-actions.ts#confirmSecondFactorEnable": "cubierta: qa:segundo-factor, verify_login_code y set_second_factor",
     "app/(app)/profile/security-actions.ts#disableSecondFactor": "cubierta: qa:segundo-factor, contraseña mala y el tope de 5 intentos",
