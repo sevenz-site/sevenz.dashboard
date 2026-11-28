@@ -1,0 +1,25 @@
+{
+  "note": "One entry per Ayuda topic (Web/lib/soporte.ts). Variant rule, owner's decision of 2026-11-27: odd help numbers on secondary, even on primary. `saves` flows run between demo-state snapshot and restore. `skip` says why a topic is not recorded.",
+  "flows": [
+    { "slug": "registrar-un-fiado", "help": 1, "variant": "secondary", "saves": true },
+    { "slug": "vender-sin-producto", "help": 2, "variant": "primary", "saves": false },
+    { "slug": "escanear-codigos-de-barras", "help": 3, "skip": "Headless Chrome has no camera (owner, 2026-11-27: leave it out)." },
+    { "slug": "registrar-un-abono", "help": 4, "variant": "primary", "saves": true, "after": "registrar-un-fiado" },
+    { "slug": "atender-un-pedido", "help": 5, "variant": "secondary", "saves": true },
+    { "slug": "compartir-el-link-del-cliente", "help": 6, "variant": "primary", "saves": true },
+    { "slug": "registrar-una-devolucion", "help": 7, "variant": "secondary", "saves": true, "after": "registrar-un-abono" },
+    { "slug": "marcar-una-mala-paga", "help": 8, "variant": "primary", "saves": true },
+    { "slug": "ver-el-puntaje-del-cliente", "help": 9, "variant": "secondary", "saves": false },
+    { "slug": "filtrar-el-historial", "help": 10, "variant": "primary", "saves": false, "after": "registrar-un-abono" },
+    { "slug": "calculadora-de-tasa", "help": 11, "variant": "secondary", "saves": false },
+    { "slug": "ver-tus-reportes", "help": 12, "variant": "primary", "saves": false },
+    { "slug": "crear-un-producto", "help": 13, "variant": "secondary", "saves": true },
+    { "slug": "compartir-tu-catalogo", "help": 14, "variant": "primary", "saves": true },
+    { "slug": "personalizar-tu-catalogo", "help": 15, "variant": "secondary", "saves": true },
+    { "slug": "importar-tu-libreta", "help": 16, "variant": "primary", "saves": true },
+    { "slug": "la-papelera", "help": 17, "variant": "secondary", "saves": true },
+    { "slug": "mi-negocio", "help": 18, "variant": "primary", "saves": false },
+    { "slug": "instalar-la-app-en-tu-telefono", "help": 19, "skip": "Happens in the phone browser's own menus (owner, 2026-11-27: leave it out)." },
+    { "slug": "verificacion-en-dos-pasos", "help": 20, "skip": "Needs a real code sent to the owner's WhatsApp (owner, 2026-11-27: leave it out)." }
+  ]
+}

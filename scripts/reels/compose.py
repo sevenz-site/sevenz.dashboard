@@ -42,28 +42,85 @@ background().save(bg_path)
 # Variable-rate screencast -> constant frame rate, timed by the wall clock.
 tl = json.load(open(os.path.join(WORK, "timeline.json"), encoding="utf-8"))
 frames, t0 = tl["frames"], tl["frames"][0]["wall"]
-end = next((m["wall"] for m in tl["timeline"] if m["name"] == "end"), frames[-1]["wall"] + 1) - t0
+end_raw = next((m["wall"] for m in tl["timeline"] if m["name"] == "end"), frames[-1]["wall"] + 1) - t0
+
+# Server waits (record.mjs `server()`, marks ff / ff_end) play at whatever speed makes them
+# last FF seconds. `remap` turns a recording time into a video time, for frames and marks.
+FF = 1.0
+fast, open_at = [], None
+for m in tl["timeline"]:
+    if m["name"] == "ff":
+        open_at = m["wall"] - t0
+    elif m["name"] == "ff_end" and open_at is not None:
+        a, b = open_at, m["wall"] - t0
+        if b - a > FF:
+            fast.append((a, b))
+        open_at = None
+
+
+def remap(t):
+    out = t
+    for a, b in fast:
+        if t >= b:
+            out -= (b - a) - FF
+        elif t > a:
+            out -= (t - a) - (t - a) * FF / (b - a)
+    return out
+
+
+end = remap(end_raw)
 lst = os.path.join(WORK, "frames.ffconcat")
 with open(lst, "w", encoding="utf-8") as f:
     f.write("ffconcat version 1.0\n")
     for i, fr in enumerate(frames):
-        nxt = frames[i + 1]["wall"] - t0 if i + 1 < len(frames) else end
-        f.write(f"file 'frames/{fr['f']}'\nduration {max(nxt - (fr['wall'] - t0), 0.001):.4f}\n")
+        nxt = remap(frames[i + 1]["wall"] - t0) if i + 1 < len(frames) else end
+        f.write(f"file 'frames/{fr['f']}'\nduration {max(nxt - remap(fr['wall'] - t0), 0.001):.4f}\n")
     f.write(f"file 'frames/{frames[-1]['f']}'\n")
 
 s = P["screen"]
 sx, sy = P["x"] + s["x"], P["y"] + s["y"]
-fc = ";".join([
-    f"[1:v]fps={C['fps']},scale={s['width']}:{s['height']}:flags=lanczos,setsar=1[app]",
-    f"[0:v][app]overlay={sx}:{sy}:eof_action=pass:shortest=1[v1]",
-    f"[v1][2:v]overlay={P['x']}:{P['y']},format=yuv420p[out]",
-])
-cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-       "-loop", "1", "-framerate", str(C["fps"]), "-i", bg_path,
-       "-f", "concat", "-safe", "0", "-i", lst,
-       "-i", os.path.join(HERE, P["asset"]),
-       "-filter_complex", fc, "-map", "[out]", "-t", f"{end:.3f}", "-r", str(C["fps"]),
-       "-c:v", "libx264", "-profile:v", "high", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
-       "-movflags", "+faststart", OUT]
-subprocess.run(cmd, check=True, cwd=WORK)
-print("ok", OUT, f"{end:.2f}s")
+
+
+def render(start, stop, out):
+    fc = ";".join([
+        f"[1:v]fps={C['fps']},trim={start:.3f}:{stop:.3f},setpts=PTS-STARTPTS,"
+        f"scale={s['width']}:{s['height']}:flags=lanczos,setsar=1[app]",
+        f"[0:v][app]overlay={sx}:{sy}:eof_action=pass:shortest=1[v1]",
+        f"[v1][2:v]overlay={P['x']}:{P['y']},format=yuv420p[out]",
+    ])
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+           "-loop", "1", "-framerate", str(C["fps"]), "-i", bg_path,
+           "-f", "concat", "-safe", "0", "-i", lst,
+           "-i", os.path.join(HERE, P["asset"]),
+           "-filter_complex", fc, "-map", "[out]", "-t", f"{stop - start:.3f}", "-r", str(C["fps"]),
+           "-c:v", "libx264", "-profile:v", "high", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
+           "-movflags", "+faststart", out]
+    subprocess.run(cmd, check=True, cwd=WORK)
+    print("ok", out, f"{stop - start:.2f}s")
+
+
+# MAX 25 s PER VIDEO (owner, 2026-11-27: «partir en varios, máximo 25 segundos cada uno»).
+# A long flow is cut only at a step boundary, never mid-gesture: the marks the flow sets
+# just before each tap. Parts are balanced: with 26 s it is two of ~13, not 23 and a
+# 3-second leftover. Each cut takes the boundary nearest to an even share of what is left.
+LIMIT = C.get("maxPartSeconds", 25)
+marks = sorted({round(remap(m["wall"] - t0), 3) for m in tl["timeline"]
+                if m["name"] not in ("ff", "ff_end") and 0 < m["wall"] - t0 < end_raw})
+cuts, start = [], 0.0
+while end - start > LIMIT:
+    left = -(-(end - start) // LIMIT)  # parts still needed, rounded up
+    target = start + (end - start) / left
+    fits = [m for m in marks if start + 2 < m <= start + LIMIT and end - m >= 2]
+    if not fits:
+        sys.exit(f"No step boundary within {LIMIT}s after {start:.1f}s: add a mark to the flow.")
+    cut = min(fits, key=lambda m: abs(m - target))
+    cuts.append((start, cut))
+    start = cut
+cuts.append((start, end))
+for old in [f for f in os.listdir(os.path.dirname(OUT)) if f.startswith(f"{FLOW}-{VARIANT}")]:
+    os.remove(os.path.join(os.path.dirname(OUT), old))
+if len(cuts) == 1:
+    render(0, end, OUT)
+else:
+    for i, (a, b) in enumerate(cuts, 1):
+        render(a, b, OUT.replace(".mp4", f"-parte-{i}.mp4"))

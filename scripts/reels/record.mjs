@@ -78,15 +78,22 @@ try {
         writeFileSync(join(FR, f), Buffer.from(m.params.data, "base64"));
         frames.push({ f, wall: Date.now() / 1000 });
       }
+    } else if (m.method === "Page.fileChooserOpened") {
+      // The native picker never opens: the file the flow queued goes straight in.
+      const file = fileQueue.shift();
+      if (file) send("DOM.setFileInputFiles", { files: [file], backendNodeId: m.params.backendNodeId }).catch((e) => console.log("  ✖ file:", e.message));
+      else console.log("  ✖ a file picker opened with no file queued");
     } else if (m.method) events.push(m.method);
   };
+  const fileQueue = [];
   const evaluate = async (expr) => {
     const r = await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true, userGesture: true });
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     return r.result?.value;
   };
 
-  await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable");
+  await send("Page.enable"); await send("Network.enable"); await send("Runtime.enable"); await send("DOM.enable");
+  await send("Page.setInterceptFileChooserDialog", { enabled: true });
   // Keep recordings out of the analytics.
   await send("Network.setBlockedURLs", { urls: ["*mixpanel*"] });
   await send("Emulation.setDeviceMetricsOverride", { width: VP.width, height: VP.height, deviceScaleFactor: VP.deviceScaleFactor, mobile: true });
@@ -112,13 +119,30 @@ try {
       requestAnimationFrame(() => requestAnimationFrame(() => { d.style.transform = 'scale(1.5)'; d.style.opacity = '0'; }));
       setTimeout(() => d.remove(), 700);
     };
-    document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = 'nextjs-portal{display:none!important}'; document.head.appendChild(s); });
+    // The Next dev indicator («N», «Rendering…», «1 Issue») is not part of the app. A style
+    // added before <head> exists is dropped when React takes the document over (it showed in
+    // every frame on 2026-11-27), so it is added on DOMContentLoaded and put back by an
+    // observer whenever it goes missing.
+    (() => {
+      const ensure = () => {
+        if (document.getElementById('__reel_hide') || !document.head) return;
+        const s = document.createElement('style'); s.id = '__reel_hide';
+        s.textContent = 'nextjs-portal{display:none!important}';
+        document.head.appendChild(s);
+      };
+      document.addEventListener('DOMContentLoaded', ensure);
+      new MutationObserver(ensure).observe(document, { childList: true, subtree: true });
+    })();
   ` });
 
   const go = async (url, wait = 3000) => {
+    // A navigation while recording is a wait on the server, played fast like any other: it
+    // left 2-4 s of blank loading screen in the devolución and mala paga videos.
+    if (recording) timeline.push({ name: "ff", wall: Date.now() / 1000 });
     events.length = 0;
     await send("Page.navigate", { url: BASE + url });
     for (let i = 0; i < 120 && !events.includes("Page.loadEventFired"); i++) await sleep(250);
+    if (recording) timeline.push({ name: "ff_end", wall: Date.now() / 1000 });
     await sleep(wait);
   };
   // The first visible control whose text equals, starts with or contains `text`.
@@ -135,10 +159,18 @@ try {
   const extras = {};
 
   const api = {
-    sleep, evaluate, go, FIND, DIALOG,
+    sleep, evaluate, go, FIND, DIALOG, demo: DEMO,
     mark: (name) => { timeline.push({ name, wall: Date.now() / 1000 }); console.log("  mark", name); },
+    // Waiting on the server («Guardando…»): compose.py plays this stretch fast, so a slow dev
+    // server does not eat a third of a 25-second clip. Only server waits go in here, never a
+    // pause meant for reading.
+    async server(fn) {
+      timeline.push({ name: "ff", wall: Date.now() / 1000 });
+      try { return await fn(); } finally { timeline.push({ name: "ff_end", wall: Date.now() / 1000 }); }
+    },
     // A real touch at the element's centre, with the orange marker drawn first.
     async tap(expr) {
+      await api.reveal(expr);
       const r = await rectOf(expr);
       if (!r) throw new Error(`tap: not found ${expr.slice(0, 80)}`);
       await evaluate(`window.__tap(${r.x}, ${r.y})`);
@@ -147,9 +179,63 @@ try {
       await sleep(60);
       await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
     },
-    async type(text, gap = 220) { for (const ch of text) { await send("Input.insertText", { text: ch }); await sleep(gap); } },
-    async scrollIntoView(expr) { await evaluate(`(() => { const e = ${expr}; e && e.scrollIntoView({ block: 'center', behavior: 'smooth' }); })()`); },
+    // A target off screen, or under the fixed bars (the top 70px, the bottom 100px), is
+    // scrolled to the middle first, smoothly and on camera, the way a person would.
+    //
+    // «Visible» means the point the finger lands on belongs to the target. A bottom bar or the
+    // «Registrar» button can sit on top of it, and a tap there presses THEM: on 2026-11-27 a
+    // tap meant for «Repartir manualmente» ticked the client's WhatsApp consent, and one meant
+    // for a fiado opened a new sale. If it stays covered after scrolling, the flow stops.
+    async reveal(expr) {
+      const clear = `(() => { const e = ${expr}; if (!e) return null; const b = e.getBoundingClientRect();
+        if (b.top < 0 || b.bottom > innerHeight - 4) return false;
+        const h = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+        return !!h && (h === e || e.contains(h) || h.contains(e)); })()`;
+      const first = await evaluate(clear);
+      if (first === null || first === true) return;
+      for (const block of ["center", "start"]) {
+        await evaluate(`(() => { const e = ${expr}; e.scrollIntoView({ block: '${block}', behavior: 'smooth' }); })()`);
+        await sleep(900);
+        if (block === "start") { await evaluate("window.scrollBy({ top: -120, behavior: 'smooth' })"); await sleep(600); }
+        if (await evaluate(clear)) return;
+      }
+      throw new Error(`covered, will not tap: ${expr.slice(0, 80)}`);
+    },
+    // Radix menus, selects and dropdowns open on a mouse pointerdown, not on a touch tap.
+    async menu(expr) {
+      await api.reveal(expr);
+      const r = await rectOf(expr);
+      if (!r) throw new Error(`menu: not found ${expr.slice(0, 80)}`);
+      await evaluate(`window.__tap(${r.x}, ${r.y})`);
+      await sleep(120);
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: r.x, y: r.y });
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x: r.x, y: r.y, button: "left", clickCount: 1 });
+      await sleep(60);
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: r.x, y: r.y, button: "left", clickCount: 1 });
+    },
+    // An item of the open menu/select/listbox, by its text.
+    async pick(text) {
+      const expr = `[...document.querySelectorAll('[role=menuitem],[role=option],[role=menuitemradio],[role=menuitemcheckbox]')].find(e=>{const t=e.textContent.replace(/\\s+/g,' ').trim(); return t===${JSON.stringify(text)}||t.startsWith(${JSON.stringify(text)})})`;
+      await api.menu(expr);
+    },
+    async type(text, gap = 200) { for (const ch of text) { await send("Input.insertText", { text: ch }); await sleep(gap); } },
+    // Smooth scroll that puts the element `top` px from the top of the screen (or centres it).
+    async scrollTo(expr, top = null) {
+      await evaluate(`(() => { const e = ${expr}; if (!e) return; ${top === null
+        ? "e.scrollIntoView({ block: 'center', behavior: 'smooth' });"
+        : `const s = (n => { while (n && n !== document.body) { const o = getComputedStyle(n).overflowY; if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n; n = n.parentElement; } return null; })(e.parentElement);
+           if (s) s.scrollBy({ top: e.getBoundingClientRect().top - s.getBoundingClientRect().top - ${top}, behavior: 'smooth' });
+           else window.scrollBy({ top: e.getBoundingClientRect().top - ${top}, behavior: 'smooth' });`} })()`);
+    },
+    async scrollIntoView(expr) { await api.scrollTo(expr); },
+    async waitFor(expr, ms = 30000) {
+      for (let t = 0; t < ms; t += 250) { if (await evaluate(`!!(${expr})`)) return; await sleep(250); }
+      throw new Error(`waitFor timed out: ${expr.slice(0, 100)}`);
+    },
     async assert(expr, what) { if (!(await evaluate(expr))) throw new Error(`assert failed: ${what}`); },
+    // The next native file picker the page opens gets this file.
+    queueFile(path) { fileQueue.push(path); },
+    asset: (name) => join(HERE, "assets", name),
     // Saves a data URL the page produced (for example the shared card) next to the frames.
     async saveShared(file) {
       const url = await evaluate("window.__shared || null");
@@ -165,7 +251,15 @@ try {
     note: (k, v) => { extras[k] = v; },
   };
 
-  await flow(api);
+  try {
+    await flow(api);
+  } catch (e) {
+    // What the screen showed when the flow broke, for whoever fixes the flow.
+    const { data } = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(join(OUT, "error.png"), Buffer.from(data, "base64"));
+    console.log(`  ✖ ${e.message}\n    pantalla en ${join(OUT, "error.png")}`);
+    throw e;
+  }
   writeFileSync(join(OUT, "timeline.json"), JSON.stringify({ flow: FLOW, viewport: VP, frames, timeline, extras }, null, 1));
   console.log(`frames ${frames.length} -> ${OUT}`);
   ws.close();
