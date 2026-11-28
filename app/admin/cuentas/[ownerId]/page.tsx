@@ -17,6 +17,8 @@ import { mergeHistory } from "@/lib/admin/history";
 import { getAccountCommercial, getKams, getSecurityLog } from "@/lib/admin/kam";
 import { getCuentaSeguridad } from "@/lib/admin/security";
 import { EstadoChip } from "@/components/admin/estado-chip";
+import { listAccountDeletions } from "@/lib/admin/account-deletions";
+import { formatDateLong } from "@/lib/format";
 import { Fila, Grupo } from "@/components/dashboard/detail-rows";
 import { ScreenTitle } from "@/components/dashboard/screen-chrome";
 
@@ -63,14 +65,18 @@ export default async function CuentaDetallePage({
   // La lista completa y se filtra aquí, en vez de una función nueva por un
   // negocio. Son 24 filas: una consulta más contra la base costaría más que
   // recorrer un array.
-  const [cuentas, historial, seguridad, comercial, kams, bitacora] = await Promise.all([
+  const [cuentas, historial, seguridad, comercial, kams, bitacora, eliminaciones] = await Promise.all([
     getCuentas(),
     getHistorial(ownerId),
     getCuentaSeguridad(ownerId),
     getAccountCommercial(ownerId),
     getKams(),
     getSecurityLog(ownerId),
+    // PL-48 step 1.3: whether this account asked to be deleted, or was. A short list, read
+    // whole, so the account list's own function does not have to change.
+    listAccountDeletions(),
   ]);
+  const eliminacion = eliminaciones.rows.find((r) => r.owner_id === ownerId && !r.cancelled_at) ?? null;
   const cuenta: Cuenta | undefined = cuentas.find((c) => c.owner_id === ownerId);
   if (!cuenta || !comercial) notFound();
 
@@ -116,6 +122,28 @@ export default async function CuentaDetallePage({
           {cuenta.whatsapp ? ` · ${cuenta.whatsapp}` : ""} · {cuenta.country}
         </p>
       </div>
+
+      {/* PL-48 step 1.3. A deleted account stays here for its history (owner's decision of
+          2026-11-28); this says so before anybody reads the rest as a live business. */}
+      {eliminacion ? (
+        <div className="rounded-[10px] border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          {eliminacion.deleted_at ? (
+            <p className="font-medium text-destructive">
+              Eliminada el {formatDateLong(eliminacion.deleted_at, "America/Caracas")}
+              {eliminacion.deleted_by ? ` por ${eliminacion.deleted_by}` : ""}. Se conservan su ficha, sus pagos, su KAM y su
+              historial; sus datos de negocio y su acceso ya no existen.
+            </p>
+          ) : (
+            <p className="font-medium text-destructive">
+              Pidió eliminar su cuenta. Se podrá borrar el {formatDateLong(eliminacion.scheduled_for, "America/Caracas")}, en{" "}
+              <Link href="/admin/eliminaciones" className="underline underline-offset-2">
+                Eliminaciones
+              </Link>
+              .
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <CuentaAcciones cuenta={cuenta} />
 

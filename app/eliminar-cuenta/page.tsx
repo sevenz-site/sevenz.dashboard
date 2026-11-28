@@ -25,7 +25,7 @@ export default function EliminarCuentaPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">Eliminar tu cuenta de Sevenz</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Puedes pedir que borremos tu cuenta y todos sus datos: tu negocio, tus clientes, tus productos y tu historial.
+          Puedes pedir que borremos tu cuenta y los datos de tu negocio: tus clientes, tus productos y tu historial.
           Si tienes la app, también puedes hacerlo desde Mi negocio.
         </p>
       </div>
@@ -33,9 +33,10 @@ export default function EliminarCuentaPage() {
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Qué pasa después</h2>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Tienes 30 días para arrepentirte: entra a tu cuenta y cancélalo desde Mi negocio. Pasados los 30 días se borra
-          todo y no se puede recuperar. Solo conservamos lo que la ley o WhatsApp nos obligan a guardar, como el registro
-          de tu permiso para recibir mensajes.
+          Tienes 30 días para arrepentirte: entra a tu cuenta y cancélalo desde Mi negocio. Pasados los 30 días se borran tu
+          acceso, tus clientes, tu historial, tus productos, tu catálogo y tus fotos, y no se pueden recuperar. Conservamos
+          los datos de tu cuenta (nombre del negocio, correo, teléfono y país), los pagos de tu plan con sus comprobantes,
+          el registro de seguridad y tu permiso para recibir WhatsApp, para nuestra contabilidad y para el historial de la cuenta.
         </p>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">

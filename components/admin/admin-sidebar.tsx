@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Building2, Home } from "lucide-react";
+import { BarChart3, Building2, Home, Trash2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,8 @@ import {
 const SECCIONES = [
   { href: "/admin", label: "Métricas", icon: BarChart3, exacto: true },
   { href: "/admin/cuentas", label: "Cuentas", icon: Building2, exacto: false },
+  // PL-48 step 1.3: the requests to delete an account, and «Borrar ahora».
+  { href: "/admin/eliminaciones", label: "Eliminaciones", icon: Trash2, exacto: false },
 ];
 
 export function AdminSidebar({ email }: { email: string }) {
